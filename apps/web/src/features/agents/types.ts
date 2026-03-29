@@ -30,6 +30,15 @@ export type ResolvedAgentProfile =
     source?: string
   }
 
+// ── Draft / dirty-tracking types ─────────────────────────────────────────
+export type AgentStatus = 'unsaved' | 'draft' | 'published'
+
+export interface AgentDraftMeta {
+  isDirty: boolean
+  status: AgentStatus
+  publishSha?: string
+}
+
 // UI-only types — not in the compiler schema.
 export type ToolPermission = 'allow' | 'ask' | 'deny'
 

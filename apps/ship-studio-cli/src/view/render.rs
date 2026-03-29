@@ -147,10 +147,7 @@ fn draw_footer(frame: &mut Frame, nav: &NavState, area: Rect) {
 
 fn build_footer_hint(nav: &NavState) -> String {
     let panel = nav.panel();
-    let mut parts: Vec<&str> = vec![
-        "  \u{2191}\u{2193} jk nav",
-        "\u{23ce} open",
-    ];
+    let mut parts: Vec<&str> = vec!["  \u{2191}\u{2193} jk nav", "\u{23ce} open"];
     if panel == Panel::Notes {
         parts.extend(&["n new", "e edit", "d delete"]);
     } else if panel == Panel::Adrs {

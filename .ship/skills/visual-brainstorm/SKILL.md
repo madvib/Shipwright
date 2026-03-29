@@ -1,79 +1,60 @@
 ---
 name: visual-brainstorm
 stable-id: visual-brainstorm
-description: Use to generate and iterate on HTML mockups for UI design goals. Serves a local preview server, iterates on feedback, and outputs final HTML + intent for handoff to visual-spec.
+description: Use to generate and iterate on HTML mockups for UI design. Writes to .ship-session/ for live preview in Ship Studio's Session page with visual annotation support.
 tags: [design, ui, mockups, prototyping]
 authors: [ship]
 ---
 
 # Visual Brainstorm
 
-Ship-native interactive mockup generation. Production-level aesthetics — real typography, spacing, color. Not wireframes.
+Generate production-quality HTML mockups. Real typography, spacing, color — not wireframes. Iterate with visual feedback via Ship Studio's Session page.
 
 ## When to use
 
 - New UI from scratch
-- Redesigns and layout options
+- Redesigns and layout exploration
 - Component variants side-by-side
 
 ## Workflow
 
 ### 1. Understand the goal
 
-Ask at most 1–2 focused questions. Do not ask more. Make reasonable assumptions about everything else and note them.
-
-Good questions:
-- "What's the primary action this UI needs to drive?"
-- "Any brand colors or existing design system to align with?"
+Ask at most 1–2 focused questions. Make reasonable assumptions and note them.
 
 ### 2. Generate the mockup
 
-Create a single self-contained HTML file at `.ship-session/mockup.html`:
-- Tailwind CSS via CDN — no build step
-- Realistic placeholder data (names, numbers, copy — not "Lorem ipsum")
-- Full visual fidelity: real font sizes, weights, line-heights, border-radius, shadows
-- Think: senior designer who codes, not a wireframe
+Write a self-contained HTML file to `.ship-session/canvas.html`. Use Tailwind via CDN, Ship's design tokens, and realistic data. No lorem ipsum.
 
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <script src="https://cdn.tailwindcss.com"></script>
-  <title>Mockup</title>
-</head>
-<body>
-  <!-- ... -->
-</body>
-</html>
-```
+Include Ship's brand styles:
+- Font: DM Sans (body), Syne (headings) via Google Fonts
+- Colors: `--primary: #c67b2e`, `--bg: #18140f`, `--fg: #f8f4ef` (dark mode)
+- Light mode: `--primary: #b06a1f`, `--bg: #faf7f3`, `--fg: #18140f`
+- Support `data-theme="dark"` and `data-theme="light"` on the html element
 
-### 3. Serve locally
+### 3. Preview
 
+The mockup renders live in Ship Studio's Session page at `/studio/session`. No server needed.
+
+Fallback if Studio is not available:
 ```bash
 python3 -m http.server {{ server_port }} --directory .ship-session &
 ```
 
-Print the URL: `http://localhost:{{ server_port }}/mockup.html`
+### 4. Read annotations
 
-### 4. Iterate
+Before each revision, check `.ship-session/annotations.json` for structured user feedback. Each annotation has a `type` (click or box), a `selector` pointing to the DOM element, and a `note` with the user's feedback. Address each one.
 
-On each feedback round:
-- Overwrite `.ship-session/mockup.html` with the updated version
-- Tell the user to refresh their browser
-- Do not rename the file — keep the same URL
+### 5. Iterate
 
-### 5. On approval
+Overwrite `.ship-session/canvas.html` with the revision. Copy the previous version to `.ship-session/canvas-v{N}.html` to preserve history.
 
-Output:
-1. The final HTML (inline or as a file path)
-2. A one-paragraph intent description: layout decisions, color rationale, interaction model
+### 6. On approval
 
-### 6. Optional handoff
+Output the final HTML path and a one-paragraph intent description covering layout decisions, color rationale, and interaction model.
 
-If the user wants a structured implementation spec, proceed with the `visual-spec` skill.
+Proceed to `visual-spec` for implementation handoff if requested.
 
 ## Quality standard
 
-Match the quality bar of the `frontend-design` skill. Every mockup should look shippable. If spacing feels off, fix it. If colors lack contrast, fix it. Default to clean, modern, accessible UI.
+Every mockup should look shippable. Production aesthetics — proper spacing, contrast, accessibility. Senior designer who codes, not a wireframe.

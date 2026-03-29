@@ -62,9 +62,7 @@ enum PackageShape {
 /// First pass: detect package shape (`.ship/ship.jsonc` vs root `ship.jsonc`).
 /// Second pass: extract the relevant files.
 fn try_github_tarball(owner: &str, repo: &str, commit: &str, dest: &Path) -> anyhow::Result<()> {
-    let url = format!(
-        "https://api.github.com/repos/{owner}/{repo}/tarball/{commit}"
-    );
+    let url = format!("https://api.github.com/repos/{owner}/{repo}/tarball/{commit}");
 
     let resp = ureq::get(&url)
         .header("Accept", "application/vnd.github+json")
@@ -76,7 +74,8 @@ fn try_github_tarball(owner: &str, repo: &str, commit: &str, dest: &Path) -> any
         anyhow::bail!("GitHub tarball returned HTTP {}", resp.status());
     }
 
-    let body = resp.into_body()
+    let body = resp
+        .into_body()
         .read_to_vec()
         .context("reading tarball body")?;
 
@@ -95,18 +94,14 @@ fn try_github_tarball(owner: &str, repo: &str, commit: &str, dest: &Path) -> any
 
         // Determine the relative path to extract based on package shape.
         let rel = match shape {
-            PackageShape::ShipNative => {
-                match find_ship_segment(&path_str) {
-                    Some(pos) => path_str[pos..].to_string(),
-                    None => continue,
-                }
-            }
-            PackageShape::RootManifest => {
-                match strip_tarball_prefix(&path_str) {
-                    Some(rel) if !rel.is_empty() => rel,
-                    _ => continue,
-                }
-            }
+            PackageShape::ShipNative => match find_ship_segment(&path_str) {
+                Some(pos) => path_str[pos..].to_string(),
+                None => continue,
+            },
+            PackageShape::RootManifest => match strip_tarball_prefix(&path_str) {
+                Some(rel) if !rel.is_empty() => rel,
+                _ => continue,
+            },
         };
 
         found_content = true;
@@ -309,8 +304,7 @@ fn clone_and_extract(git_url: &str, commit: &str, dest: &Path) -> anyhow::Result
 
     if ship_dir.join("ship.jsonc").exists() {
         // Ship-native: copy only .ship/.
-        copy_dir_recursive(&ship_dir, &dest.join(".ship"))
-            .context("copying .ship/ from clone")?;
+        copy_dir_recursive(&ship_dir, &dest.join(".ship")).context("copying .ship/ from clone")?;
     } else if root_manifest.exists() {
         // Root-manifest: copy everything except .git/.
         copy_dir_recursive_excluding(&clone_dir, dest, &[".git"])
@@ -331,11 +325,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> anyhow::Result<()> {
 }
 
 /// Recursively copy `src` → `dst`, skipping directories in `exclude`.
-fn copy_dir_recursive_excluding(
-    src: &Path,
-    dst: &Path,
-    exclude: &[&str],
-) -> anyhow::Result<()> {
+fn copy_dir_recursive_excluding(src: &Path, dst: &Path, exclude: &[&str]) -> anyhow::Result<()> {
     std::fs::create_dir_all(dst)?;
     for entry in walkdir::WalkDir::new(src)
         .min_depth(1)

@@ -163,7 +163,9 @@ mod tests {
     fn format_skill_file_resolves_template_vars() {
         let mut skill = base_skill();
         skill.content = "Use {{ style }} commits.".to_string();
-        skill.vars.insert("style".to_string(), serde_json::json!("gitmoji"));
+        skill
+            .vars
+            .insert("style".to_string(), serde_json::json!("gitmoji"));
         let out = format_skill_file(&skill);
         assert!(out.contains("Use gitmoji commits."), "got:\n{out}");
     }

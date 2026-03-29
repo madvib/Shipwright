@@ -7,11 +7,7 @@
 use serde_json::Value as Json;
 
 fn load_schema(name: &str) -> Json {
-    let path = format!(
-        "{}/../../../schemas/{}",
-        env!("CARGO_MANIFEST_DIR"),
-        name
-    );
+    let path = format!("{}/../../../schemas/{}", env!("CARGO_MANIFEST_DIR"), name);
     let content =
         std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("Schema not found: {}", path));
     serde_json::from_str(&content).unwrap_or_else(|e| panic!("Invalid JSON in {}: {}", name, e))
@@ -69,7 +65,14 @@ fn agent_schema_providers_match_compiler() {
     let schema = load_schema("agent.schema.json");
     let schema_providers = schema_enum_values(
         &schema,
-        &["properties", "agent", "properties", "providers", "items", "enum"],
+        &[
+            "properties",
+            "agent",
+            "properties",
+            "providers",
+            "items",
+            "enum",
+        ],
     );
 
     let compiler_providers: Vec<&str> = crate::compile::list_providers()
@@ -91,7 +94,14 @@ fn ship_schema_providers_match_compiler() {
     let schema = load_schema("ship.schema.json");
     let schema_providers = schema_enum_values(
         &schema,
-        &["properties", "project", "properties", "providers", "items", "enum"],
+        &[
+            "properties",
+            "project",
+            "properties",
+            "providers",
+            "items",
+            "enum",
+        ],
     );
 
     let compiler_providers: Vec<&str> = crate::compile::list_providers()
@@ -113,10 +123,7 @@ fn ship_schema_providers_match_compiler() {
 #[test]
 fn mcp_schema_has_per_server_provider_fields() {
     let schema = load_schema("mcp.schema.json");
-    let server_props = schema_object_keys(
-        &schema,
-        &["$defs", "McpServerEntry", "properties"],
-    );
+    let server_props = schema_object_keys(&schema, &["$defs", "McpServerEntry", "properties"]);
 
     let required_fields = [
         "codex_enabled_tools",
@@ -141,19 +148,15 @@ fn mcp_schema_has_per_server_provider_fields() {
 fn mcp_schema_has_conditional_required() {
     let schema = load_schema("mcp.schema.json");
     // stdio (else branch) requires command
-    let else_required = schema_enum_values(
-        &schema,
-        &["$defs", "McpServerEntry", "else", "required"],
-    );
+    let else_required =
+        schema_enum_values(&schema, &["$defs", "McpServerEntry", "else", "required"]);
     assert!(
         else_required.contains(&"command".to_string()),
         "mcp.schema.json: stdio servers must require 'command'"
     );
     // http/sse (then branch) requires url
-    let then_required = schema_enum_values(
-        &schema,
-        &["$defs", "McpServerEntry", "then", "required"],
-    );
+    let then_required =
+        schema_enum_values(&schema, &["$defs", "McpServerEntry", "then", "required"]);
     assert!(
         then_required.contains(&"url".to_string()),
         "mcp.schema.json: http/sse servers must require 'url'"
@@ -165,13 +168,16 @@ fn mcp_schema_has_conditional_required() {
 #[test]
 fn permissions_schema_preset_fields_match_loader() {
     let schema = load_schema("permissions.schema.json");
-    let preset_props = schema_object_keys(
-        &schema,
-        &["$defs", "PermissionPreset", "properties"],
-    );
+    let preset_props = schema_object_keys(&schema, &["$defs", "PermissionPreset", "properties"]);
 
     // These 5 fields are what the permissions system reads
-    for field in ["default_mode", "tools_allow", "tools_deny", "tools_ask", "additional_directories"] {
+    for field in [
+        "default_mode",
+        "tools_allow",
+        "tools_deny",
+        "tools_ask",
+        "additional_directories",
+    ] {
         assert!(
             preset_props.contains(&field.to_string()),
             "permissions.schema.json missing {}",
@@ -185,10 +191,7 @@ fn permissions_schema_preset_fields_match_loader() {
 #[test]
 fn ship_schema_has_provider_defaults() {
     let schema = load_schema("ship.schema.json");
-    let project_props = schema_object_keys(
-        &schema,
-        &["properties", "project", "properties"],
-    );
+    let project_props = schema_object_keys(&schema, &["properties", "project", "properties"]);
 
     assert!(
         project_props.contains(&"provider_defaults".to_string()),
@@ -199,21 +202,23 @@ fn ship_schema_has_provider_defaults() {
 #[test]
 fn ship_schema_has_modes() {
     let schema = load_schema("ship.schema.json");
-    let project_props = schema_object_keys(
-        &schema,
-        &["properties", "project", "properties"],
-    );
+    let project_props = schema_object_keys(&schema, &["properties", "project", "properties"]);
     assert!(
         project_props.contains(&"modes".to_string()),
         "ship.schema.json project section missing modes"
     );
 
     // ModeConfig $def has required fields matching compiler's ModeConfig struct
-    let mode_props = schema_object_keys(
-        &schema,
-        &["$defs", "ModeConfig", "properties"],
-    );
-    for field in ["id", "name", "mcp_servers", "skills", "rules", "permissions", "target_agents"] {
+    let mode_props = schema_object_keys(&schema, &["$defs", "ModeConfig", "properties"]);
+    for field in [
+        "id",
+        "name",
+        "mcp_servers",
+        "skills",
+        "rules",
+        "permissions",
+        "target_agents",
+    ] {
         assert!(
             mode_props.contains(&field.to_string()),
             "ModeConfig $def missing field '{}'",
@@ -231,7 +236,12 @@ fn ship_schema_has_modes() {
 
 #[test]
 fn all_schemas_have_version_field() {
-    for name in ["agent.schema.json", "ship.schema.json", "mcp.schema.json", "permissions.schema.json"] {
+    for name in [
+        "agent.schema.json",
+        "ship.schema.json",
+        "mcp.schema.json",
+        "permissions.schema.json",
+    ] {
         let schema = load_schema(name);
         assert!(
             schema_has_key(&schema, &["properties", "schema_version"]),
@@ -290,9 +300,15 @@ fn agent_schema_provider_settings_exclude_managed_keys() {
         }
         // Navigate to provider_settings.<provider>.allOf[1].properties
         let allof = &schema["properties"]["provider_settings"]["properties"][provider_id]["allOf"];
-        let excluded = schema_object_keys_from(allof.get(1).expect(
-            &format!("agent.schema.json: provider_settings.{} missing allOf[1]", provider_id),
-        ), &["properties"]);
+        let excluded = schema_object_keys_from(
+            allof.get(1).unwrap_or_else(|| {
+                panic!(
+                    "agent.schema.json: provider_settings.{} missing allOf[1]",
+                    provider_id
+                )
+            }),
+            &["properties"],
+        );
         for &key in *expected_keys {
             assert!(
                 excluded.contains(&key.to_string()),
@@ -313,10 +329,17 @@ fn ship_schema_provider_defaults_exclude_managed_keys() {
         if expected_keys.is_empty() {
             continue;
         }
-        let allof = &schema["properties"]["project"]["properties"]["provider_defaults"]["properties"][provider_id]["allOf"];
-        let excluded = schema_object_keys_from(allof.get(1).expect(
-            &format!("ship.schema.json: provider_defaults.{} missing allOf[1]", provider_id),
-        ), &["properties"]);
+        let allof = &schema["properties"]["project"]["properties"]["provider_defaults"]["properties"]
+            [provider_id]["allOf"];
+        let excluded = schema_object_keys_from(
+            allof.get(1).unwrap_or_else(|| {
+                panic!(
+                    "ship.schema.json: provider_defaults.{} missing allOf[1]",
+                    provider_id
+                )
+            }),
+            &["properties"],
+        );
         for &key in *expected_keys {
             assert!(
                 excluded.contains(&key.to_string()),

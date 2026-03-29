@@ -6,8 +6,8 @@ use std::path::Path;
 
 use serde_json::Value as Json;
 
-use crate::types::{McpServerConfig, McpServerType, Rule};
 use crate::ProjectLibrary;
+use crate::types::{McpServerConfig, McpServerType, Rule};
 
 use super::gemini_policies::parse_gemini_policies;
 use super::json_string_array;
@@ -178,7 +178,10 @@ fn parse_gemini_mcp_server(id: &str, entry: &Json) -> Option<McpServerConfig> {
     let trust = obj.get("trust").and_then(|v| v.as_bool());
     let include_tools = json_string_array(obj.get("includeTools"));
     let exclude_tools = json_string_array(obj.get("excludeTools"));
-    let timeout_ms = obj.get("timeout").and_then(|v| v.as_u64()).map(|t| t as u32);
+    let timeout_ms = obj
+        .get("timeout")
+        .and_then(|v| v.as_u64())
+        .map(|t| t as u32);
 
     Some(McpServerConfig {
         id: id.to_string(),

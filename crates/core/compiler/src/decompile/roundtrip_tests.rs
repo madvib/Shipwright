@@ -28,31 +28,29 @@ fn write_file(dir: &TempDir, path: &str, content: &str) {
 
 fn test_library() -> ProjectLibrary {
     ProjectLibrary {
-        mcp_servers: vec![
-            McpServerConfig {
-                id: "ship".to_string(),
-                name: "ship".to_string(),
-                command: "ship".to_string(),
-                args: vec!["mcp".to_string(), "serve".to_string()],
-                env: {
-                    let mut m = std::collections::HashMap::new();
-                    m.insert("SHIP_PROJECT".to_string(), "/tmp/test".to_string());
-                    m
-                },
-                scope: "project".to_string(),
-                server_type: McpServerType::Stdio,
-                url: None,
-                disabled: false,
-                timeout_secs: None,
-                codex_enabled_tools: vec![],
-                codex_disabled_tools: vec![],
-                gemini_trust: None,
-                gemini_include_tools: vec![],
-                gemini_exclude_tools: vec![],
-                gemini_timeout_ms: None,
-                cursor_env_file: None,
+        mcp_servers: vec![McpServerConfig {
+            id: "ship".to_string(),
+            name: "ship".to_string(),
+            command: "ship".to_string(),
+            args: vec!["mcp".to_string(), "serve".to_string()],
+            env: {
+                let mut m = std::collections::HashMap::new();
+                m.insert("SHIP_PROJECT".to_string(), "/tmp/test".to_string());
+                m
             },
-        ],
+            scope: "project".to_string(),
+            server_type: McpServerType::Stdio,
+            url: None,
+            disabled: false,
+            timeout_secs: None,
+            codex_enabled_tools: vec![],
+            codex_disabled_tools: vec![],
+            gemini_trust: None,
+            gemini_include_tools: vec![],
+            gemini_exclude_tools: vec![],
+            gemini_timeout_ms: None,
+            cursor_env_file: None,
+        }],
         rules: vec![Rule {
             file_name: "engineering.md".to_string(),
             content: "# Engineering\n\nWrite tests first.".to_string(),
@@ -127,29 +125,37 @@ fn claude_roundtrip_preserves_key_fields() {
 
     // Assert key fields preserved
     assert_eq!(decompiled.model.as_deref(), Some("test-model"));
-    assert!(decompiled
-        .permissions
-        .tools
-        .allow
-        .contains(&"Read".to_string()));
-    assert!(decompiled
-        .permissions
-        .tools
-        .allow
-        .contains(&"Bash(git *)".to_string()));
-    assert!(decompiled
-        .permissions
-        .tools
-        .deny
-        .contains(&"Bash(rm -rf *)".to_string()));
+    assert!(
+        decompiled
+            .permissions
+            .tools
+            .allow
+            .contains(&"Read".to_string())
+    );
+    assert!(
+        decompiled
+            .permissions
+            .tools
+            .allow
+            .contains(&"Bash(git *)".to_string())
+    );
+    assert!(
+        decompiled
+            .permissions
+            .tools
+            .deny
+            .contains(&"Bash(rm -rf *)".to_string())
+    );
     assert_eq!(
         decompiled.permissions.default_mode.as_deref(),
         Some("acceptEdits")
     );
-    assert!(decompiled
-        .permissions
-        .additional_directories
-        .contains(&"/tmp/shared".to_string()));
+    assert!(
+        decompiled
+            .permissions
+            .additional_directories
+            .contains(&"/tmp/shared".to_string())
+    );
     assert_eq!(decompiled.hooks.len(), 1);
     assert_eq!(decompiled.hooks[0].command, "echo done");
     assert_eq!(
@@ -216,11 +222,11 @@ fn gemini_roundtrip_preserves_model_and_mcp() {
     // .gemini/settings.json — merge MCP servers + settings patch
     let mut settings = json!({});
     settings["mcpServers"] = output.mcp_servers.clone();
-    if let Some(patch) = &output.gemini_settings_patch {
-        if let Some(obj) = patch.as_object() {
-            for (k, v) in obj {
-                settings[k] = v.clone();
-            }
+    if let Some(patch) = &output.gemini_settings_patch
+        && let Some(obj) = patch.as_object()
+    {
+        for (k, v) in obj {
+            settings[k] = v.clone();
         }
     }
     write_file(
@@ -285,12 +291,14 @@ fn cursor_roundtrip_preserves_mcp_and_rules() {
     assert!(!decompiled.rules.is_empty());
     // Permissions round-trip through Cursor's Shell/Read/Write format
     if !decompiled.permissions.tools.allow.is_empty() {
-        assert!(decompiled
-            .permissions
-            .tools
-            .allow
-            .iter()
-            .any(|p| p.contains("Bash") || p.contains("Read")));
+        assert!(
+            decompiled
+                .permissions
+                .tools
+                .allow
+                .iter()
+                .any(|p| p.contains("Bash") || p.contains("Read"))
+        );
     }
 }
 

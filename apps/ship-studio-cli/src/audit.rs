@@ -10,11 +10,7 @@ pub fn run_audit(path: Option<PathBuf>, json: bool) -> Result<()> {
         None => {
             let cwd = std::env::current_dir()?;
             let ship = cwd.join(".ship");
-            if ship.is_dir() {
-                ship
-            } else {
-                cwd
-            }
+            if ship.is_dir() { ship } else { cwd }
         }
     };
 
@@ -47,7 +43,10 @@ pub fn run_audit(path: Option<PathBuf>, json: bool) -> Result<()> {
     }
 
     if findings.is_empty() {
-        println!("No suspicious Unicode characters found in {}", scan_dir.display());
+        println!(
+            "No suspicious Unicode characters found in {}",
+            scan_dir.display()
+        );
         return Ok(());
     }
 
@@ -71,7 +70,9 @@ pub fn run_audit(path: Option<PathBuf>, json: bool) -> Result<()> {
     );
 
     if critical > 0 {
-        eprintln!("\nCritical findings detected — these characters are invisible but tokenized by LLMs.");
+        eprintln!(
+            "\nCritical findings detected — these characters are invisible but tokenized by LLMs."
+        );
         std::process::exit(1);
     }
 

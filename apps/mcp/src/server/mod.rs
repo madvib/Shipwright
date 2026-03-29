@@ -4,15 +4,18 @@ mod tool_gate;
 use anyhow::{Result, anyhow};
 use rmcp::transport::stdio;
 use rmcp::{
-    ServiceExt,
+    Peer, RoleServer, ServiceExt,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     tool, tool_router,
 };
 use std::path::PathBuf;
 
 use crate::requests::*;
-use crate::tools::{agent, events, project, session, skills, studio, workspace, workspace_ops};
-use skills::{get_skill_vars_tool, list_skill_vars_tool, set_skill_var_tool};
+use crate::tools::{agent, events, project, session, skills, workspace, workspace_ops};
+use skills::{
+    get_skill_vars_tool, list_skill_vars_tool,
+    set_skill_var_tool,
+};
 
 #[cfg(feature = "unstable")]
 use crate::tools::{adr, job, notes, target};
@@ -28,6 +31,7 @@ use target::{
 pub struct ShipServer {
     tool_router: ToolRouter<Self>,
     pub active_project: std::sync::Arc<tokio::sync::Mutex<Option<PathBuf>>>,
+    pub notification_peer: std::sync::Arc<tokio::sync::Mutex<Option<Peer<RoleServer>>>>,
 }
 
 // ---- Stable tool registration ----
@@ -43,14 +47,35 @@ impl ShipServer {
             r.merge(Self::unstable_tool_router());
             r
         };
+        // Detect project from CWD at startup
+        let project_dir = runtime::project::get_project_dir(None)
+            .ok()
+            .map(|ship_dir| {
+                if ship_dir.file_name().and_then(|n| n.to_str()) == Some(".ship") {
+                    ship_dir.parent().unwrap_or(&ship_dir).to_path_buf()
+                } else {
+                    ship_dir
+                }
+            });
         Self {
             tool_router: router,
-            active_project: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+            active_project: std::sync::Arc::new(tokio::sync::Mutex::new(project_dir)),
+            notification_peer: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
 
     async fn get_effective_project_dir(&self) -> Result<PathBuf, String> {
         project::get_effective_project_dir(&self.active_project).await
+    }
+
+    pub async fn store_peer(&self, peer: Peer<RoleServer>) {
+        *self.notification_peer.lock().await = Some(peer);
+    }
+
+    async fn notify_resources_changed(&self) {
+        if let Some(peer) = self.notification_peer.lock().await.as_ref() {
+            let _ = peer.notify_resource_list_changed().await;
+        }
     }
 
     #[cfg(test)]
@@ -66,7 +91,10 @@ impl ShipServer {
 
     #[tool(description = "Set the active project for subsequent MCP tool calls")]
     async fn open_project(&self, Parameters(req): Parameters<OpenProjectRequest>) -> String {
-        let (msg, _) = project::open_project(&req.path, &self.active_project).await;
+        let (msg, resolved) = project::open_project(&req.path, &self.active_project).await;
+        if resolved.is_some() {
+            self.notify_resources_changed().await;
+        }
         msg
     }
 
@@ -85,38 +113,8 @@ impl ShipServer {
 
     // ---- Studio sync ----
 
-    #[tool(
-        description = "Pull all local agents with resolved skills, rules, and MCP configs. \
-        Returns the full agent profiles ready for import into Studio."
-    )]
-    async fn pull_agents(&self) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        studio::pull_agents(&project_dir)
-    }
-
-    #[tool(description = "List agent profile IDs that exist locally in .ship/agents/.")]
-    async fn list_local_agents(&self) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        studio::list_local_agents(&project_dir)
-    }
-
-    #[tool(
-        description = "Receive an agent config bundle from Studio and write it to .ship/. \
-        The bundle parameter is a JSON string containing agent profile, inline skills, and dependencies."
-    )]
-    async fn push_bundle(&self, Parameters(req): Parameters<PushBundleRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        studio::push_bundle(&project_dir, &req.bundle)
-    }
+    // Studio-only tools (pull_agents, list_local_agents, push_bundle) are on
+    // StudioServer, not here. Agents don't need to pull/push their own config.
 
     // ---- Workspace ----
 
@@ -270,7 +268,11 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        set_skill_var_tool(&project_dir, req)
+        let result = set_skill_var_tool(&project_dir, req);
+        if !result.starts_with("Error") {
+            self.notify_resources_changed().await;
+        }
+        result
     }
 
     #[tool(
@@ -284,6 +286,9 @@ impl ShipServer {
         };
         list_skill_vars_tool(&project_dir, req)
     }
+
+    // Studio-only tools (write_skill_file, delete_skill_file, list_project_skills)
+    // are on StudioServer. Agents use list_skills and skill_vars for their needs.
 
     // ---- Events ----
 

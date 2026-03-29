@@ -1,10 +1,10 @@
+use super::io::{get_config, get_effective_config, save_config};
+use super::project::{AgentProfile, McpServerConfig};
+use super::runtime_settings::{default_color_for, id_to_name};
+use super::types::{HookConfig, NamespaceConfig, StatusConfig};
+use crate::{EventAction, EventEntity, append_event};
 use anyhow::{Result, anyhow};
 use std::path::{Path, PathBuf};
-use crate::{EventAction, EventEntity, append_event};
-use super::io::{get_config, get_effective_config, save_config};
-use super::runtime_settings::{default_color_for, id_to_name};
-use super::project::{AgentProfile, McpServerConfig};
-use super::types::{HookConfig, NamespaceConfig, StatusConfig};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -266,4 +266,3 @@ pub fn list_hooks(project_dir: Option<PathBuf>) -> Result<Vec<HookConfig>> {
     let config = get_config(project_dir)?;
     Ok(config.hooks)
 }
-

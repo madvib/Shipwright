@@ -3,8 +3,8 @@ import {
   Zap,
   Grid3X3,
   Shield,
-  SlidersHorizontal,
   FileText,
+  SlidersHorizontal,
 } from 'lucide-react'
 
 export const SECTION_DEFS = [
@@ -31,7 +31,7 @@ export function AgentActivityBar({
   return (
     <nav
       aria-label="Agent sections"
-      className="hidden md:flex w-12 shrink-0 flex-col items-center gap-0.5 border-r border-border/30 bg-card/50 py-3"
+      className="hidden md:flex w-12 shrink-0 flex-col items-center gap-0.5 border-r border-border bg-card/50 py-3"
     >
       {SECTION_DEFS.map((section, i) => {
         const Icon = section.icon
@@ -48,7 +48,7 @@ export function AgentActivityBar({
             className={`relative flex items-center justify-center size-9 rounded-lg outline-none transition-all duration-150 ${
               isActive
                 ? 'text-primary'
-                : 'text-muted-foreground/40 hover:text-muted-foreground/80'
+                : 'text-muted-foreground hover:text-foreground'
             }`}
           >
             {/* Active indicator — left edge bar */}

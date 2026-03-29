@@ -43,6 +43,10 @@
           "items": { "type": "string" },
           "description": "Searchable tags for registry discovery (e.g. workflow, review, testing, frontend)."
         },
+        "icon": {
+          "type": "string",
+          "description": "Display icon — emoji or icon name (e.g. '\ud83e\uddea', 'test-tube')."
+        },
         "providers": {
           "type": "array",
           "items": {
@@ -57,33 +61,6 @@
     "model": {
       "type": "string",
       "description": "Model override for this agent. Compiled to the provider's model field (e.g. model in .claude/settings.json, model.name in .gemini/settings.json, model in .codex/config.toml)."
-    },
-    "env": {
-      "type": "object",
-      "description": "Environment variables injected into the provider's config.",
-      "additionalProperties": { "type": "string" }
-    },
-    "available_models": {
-      "type": "array",
-      "items": { "type": "string" },
-      "description": "Restrict the model picker to these model IDs."
-    },
-    "agent_limits": {
-      "type": "object",
-      "description": "Resource limits for the agent session.",
-      "properties": {
-        "max_cost_per_session": {
-          "type": "number",
-          "minimum": 0,
-          "description": "Maximum cost in USD per session."
-        },
-        "max_turns": {
-          "type": "integer",
-          "minimum": 1,
-          "description": "Maximum conversation turns per session."
-        }
-      },
-      "additionalProperties": false
     },
     "skills": {
       "type": "object",
@@ -149,16 +126,6 @@
           "type": "array",
           "items": { "$ref": "#/$defs/ToolPattern" },
           "description": "Tool patterns requiring user confirmation. Merged on top of the preset's ask list."
-        },
-        "default_mode": {
-          "type": "string",
-          "enum": ["default", "plan", "acceptEdits", "dontAsk", "bypassPermissions"],
-          "description": "Default permission mode for the agent session."
-        },
-        "additional_directories": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Additional directories the agent can access outside the project root. Compiled to Claude Code's additionalDirectories."
         }
       },
       "additionalProperties": false

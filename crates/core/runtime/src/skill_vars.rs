@@ -57,14 +57,13 @@ struct VarMeta {
     default: Option<Value>,
 }
 
-/// Parse `assets/vars.json` for a skill. Returns `None` if the file is absent.
+/// Parse `assets/vars.json` for a skill. Searches all configured skill_paths.
+/// Returns `None` if the file is absent in all paths.
 fn parse_vars_schema(ship_dir: &Path, skill_id: &str) -> Option<HashMap<String, VarMeta>> {
-    let path = ship_dir
-        .join("skills")
-        .join(skill_id)
-        .join("assets")
-        .join("vars.json");
-    let content = std::fs::read_to_string(&path).ok()?;
+    let content = crate::skill_paths::read_skill_paths(ship_dir)
+        .into_iter()
+        .map(|dir| dir.join(skill_id).join("assets").join("vars.json"))
+        .find_map(|path| std::fs::read_to_string(&path).ok())?;
     let raw: serde_json::Map<String, Value> = serde_json::from_str(&content).ok()?;
 
     let mut result = HashMap::new();
@@ -99,10 +98,7 @@ fn parse_vars_schema(ship_dir: &Path, skill_id: &str) -> Option<HashMap<String, 
 ///
 /// Returns `None` if the skill has no `assets/vars.json`.
 /// Merge order: defaults → global (KV) → local (KV) → project (KV).
-pub fn get_skill_vars(
-    ship_dir: &Path,
-    skill_id: &str,
-) -> Result<Option<HashMap<String, Value>>> {
+pub fn get_skill_vars(ship_dir: &Path, skill_id: &str) -> Result<Option<HashMap<String, Value>>> {
     let Some(schema) = parse_vars_schema(ship_dir, skill_id) else {
         return Ok(None);
     };
@@ -120,30 +116,30 @@ pub fn get_skill_vars(
     // 2. Global state (machine-wide)
     let ns_global = kv_ns_global(skill_id);
     for (name, meta) in &schema {
-        if meta.storage_hint == StorageHint::Global {
-            if let Ok(Some(val)) = crate::db::kv::get(&ns_global, name) {
-                merged.insert(name.clone(), val);
-            }
+        if meta.storage_hint == StorageHint::Global
+            && let Ok(Some(val)) = crate::db::kv::get(&ns_global, name)
+        {
+            merged.insert(name.clone(), val);
         }
     }
 
     // 3. Local state (this context, not shared)
     let ns_local = kv_ns_local(&ctx, skill_id);
     for (name, meta) in &schema {
-        if meta.storage_hint == StorageHint::Local {
-            if let Ok(Some(val)) = crate::db::kv::get(&ns_local, name) {
-                merged.insert(name.clone(), val);
-            }
+        if meta.storage_hint == StorageHint::Local
+            && let Ok(Some(val)) = crate::db::kv::get(&ns_local, name)
+        {
+            merged.insert(name.clone(), val);
         }
     }
 
     // 4. Project state (this context, intended to be shared)
     let ns_project = kv_ns_project(&ctx, skill_id);
     for (name, meta) in &schema {
-        if meta.storage_hint == StorageHint::Project {
-            if let Ok(Some(val)) = crate::db::kv::get(&ns_project, name) {
-                merged.insert(name.clone(), val);
-            }
+        if meta.storage_hint == StorageHint::Project
+            && let Ok(Some(val)) = crate::db::kv::get(&ns_project, name)
+        {
+            merged.insert(name.clone(), val);
         }
     }
 
@@ -153,12 +149,7 @@ pub fn get_skill_vars(
 /// Set a single variable value for a skill.
 ///
 /// Routes to the appropriate KV namespace based on the var's `storage-hint`.
-pub fn set_skill_var(
-    ship_dir: &Path,
-    skill_id: &str,
-    key: &str,
-    value: Value,
-) -> Result<()> {
+pub fn set_skill_var(ship_dir: &Path, skill_id: &str, key: &str, value: Value) -> Result<()> {
     let schema = parse_vars_schema(ship_dir, skill_id)
         .ok_or_else(|| anyhow::anyhow!("skill '{}' has no assets/vars.json", skill_id))?;
 
@@ -200,22 +191,27 @@ pub fn reset_skill_vars(ship_dir: &Path, skill_id: &str) -> Result<bool> {
     Ok(removed)
 }
 
-/// List all skills in the project that have `assets/vars.json`, with their merged state.
+/// List all skills across configured skill_paths that have `assets/vars.json`, with their merged state.
 pub fn list_skill_vars(ship_dir: &Path) -> Result<Vec<(String, HashMap<String, Value>)>> {
-    let skills_path = ship_dir.join("skills");
-    if !skills_path.exists() {
-        return Ok(vec![]);
-    }
-
+    let mut seen = std::collections::HashSet::new();
     let mut result = Vec::new();
-    for entry in std::fs::read_dir(&skills_path)?.flatten() {
-        let path = entry.path();
-        if !path.is_dir() || !path.join("assets").join("vars.json").exists() {
+
+    for skills_path in crate::skill_paths::read_skill_paths(ship_dir) {
+        if !skills_path.exists() {
             continue;
         }
-        let skill_id = entry.file_name().to_string_lossy().to_string();
-        if let Ok(Some(state)) = get_skill_vars(ship_dir, &skill_id) {
-            result.push((skill_id, state));
+        for entry in std::fs::read_dir(&skills_path)?.flatten() {
+            let path = entry.path();
+            if !path.is_dir() || !path.join("assets").join("vars.json").exists() {
+                continue;
+            }
+            let skill_id = entry.file_name().to_string_lossy().to_string();
+            if !seen.insert(skill_id.clone()) {
+                continue; // first path wins
+            }
+            if let Ok(Some(state)) = get_skill_vars(ship_dir, &skill_id) {
+                result.push((skill_id, state));
+            }
         }
     }
     result.sort_by(|a, b| a.0.cmp(&b.0));

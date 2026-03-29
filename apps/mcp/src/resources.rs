@@ -67,11 +67,7 @@ pub fn static_resource_template_list() -> Vec<rmcp::model::Annotated<RawResource
         tmpl("ship://skills/{id}", "Skill", "text/markdown"),
         tmpl("ship://jobs/{id}", "Job", "application/json"),
         tmpl("ship://targets/{id}", "Target", "application/json"),
-        tmpl(
-            "ship://capabilities/{id}",
-            "Capability",
-            "application/json",
-        ),
+        tmpl("ship://capabilities/{id}", "Capability", "application/json"),
     ]
 }
 

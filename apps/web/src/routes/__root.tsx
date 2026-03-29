@@ -8,6 +8,7 @@ import { lazy, Suspense } from 'react'
 import Footer from '../components/Footer'
 
 import TanStackQueryProvider from '../integrations/tanstack-query/root-provider'
+import { LocalMcpProvider } from '../features/studio/LocalMcpContext'
 
 import appCss from '../styles.css?url'
 
@@ -58,15 +59,17 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body className={`font-sans antialiased [overflow-wrap:anywhere] ${isStudio ? 'flex flex-col h-screen overflow-hidden' : 'min-h-screen flex flex-col'}`}>
         <TanStackQueryProvider>
-          {!isLanding && (
-            <Suspense fallback={<div className="h-12 border-b border-border/60" />}>
-              <Header />
-            </Suspense>
-          )}
-          <div className={isStudio ? 'flex-1 flex flex-col min-h-0 overflow-hidden' : 'flex-1'}>
-            {children}
-          </div>
-          {showFooter && <Footer />}
+          <LocalMcpProvider>
+            {!isLanding && (
+              <Suspense fallback={<div className="h-12 border-b border-border/60" />}>
+                <Header />
+              </Suspense>
+            )}
+            <div className={isStudio ? 'flex-1 flex flex-col min-h-0 overflow-hidden' : 'flex-1'}>
+              {children}
+            </div>
+            {showFooter && <Footer />}
+          </LocalMcpProvider>
         </TanStackQueryProvider>
         <Scripts />
       </body>

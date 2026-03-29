@@ -1,9 +1,9 @@
-use anyhow::Result;
+use super::project::{AgentProfile, McpServerConfig, ProjectConfig, ProjectCoreFile};
+use super::types::HookConfig;
 use crate::fs_util::write_atomic;
+use anyhow::Result;
 use std::collections::HashSet;
 use std::path::Path;
-use super::project::{AgentProfile, McpServerConfig, ProjectCoreFile, ProjectConfig};
-use super::types::HookConfig;
 
 pub(super) fn merge_string_lists(base: &[String], overlay: &[String]) -> Vec<String> {
     let mut merged = Vec::new();

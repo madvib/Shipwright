@@ -6,20 +6,51 @@ use runtime::registry::hash::{ExportHashes, compute_export_hashes};
 
 use crate::config::Credentials;
 
-/// Compute per-export hashes from the manifest exports.
-fn resolve_hashes(ship_dir: &Path, manifest: &ShipManifest) -> Result<ExportHashes> {
-    compute_export_hashes(
-        ship_dir,
-        &manifest.exports.skills,
-        &manifest.exports.agents,
-    )
-    .context("computing per-export content hashes")
+/// Filter manifest exports to a single export path.
+///
+/// Returns the filtered (skills, agents) vectors. Errors if the path is not
+/// found in either list.
+fn filter_exports(
+    manifest: &ShipManifest,
+    export_path: &str,
+) -> Result<(Vec<String>, Vec<String>)> {
+    if manifest.exports.skills.iter().any(|s| s == export_path) {
+        return Ok((vec![export_path.to_string()], vec![]));
+    }
+    if manifest.exports.agents.iter().any(|a| a == export_path) {
+        return Ok((vec![], vec![export_path.to_string()]));
+    }
+    anyhow::bail!(
+        "export '{}' not found in manifest — available exports:\n  skills: {:?}\n  agents: {:?}",
+        export_path,
+        manifest.exports.skills,
+        manifest.exports.agents,
+    );
+}
+
+/// Compute per-export hashes from the manifest exports, optionally filtered.
+fn resolve_hashes(
+    ship_dir: &Path,
+    manifest: &ShipManifest,
+    export_path: Option<&str>,
+) -> Result<ExportHashes> {
+    let (skills, agents) = match export_path {
+        Some(path) => filter_exports(manifest, path)?,
+        None => (
+            manifest.exports.skills.clone(),
+            manifest.exports.agents.clone(),
+        ),
+    };
+    compute_export_hashes(ship_dir, &skills, &agents).context("computing per-export content hashes")
 }
 
 /// `ship publish --dry-run` output.
-fn dry_run(manifest: &ShipManifest, hashes: &ExportHashes) {
+fn dry_run(manifest: &ShipManifest, hashes: &ExportHashes, export_path: Option<&str>) {
     println!("Package:  {}", manifest.module.name);
     println!("Version:  {}", manifest.module.version);
+    if let Some(path) = export_path {
+        println!("Export:   {}", path);
+    }
     println!("Hash:     {}", hashes.combined);
     if let Some(ref desc) = manifest.module.description {
         println!("Description: {}", desc);
@@ -40,10 +71,14 @@ fn dry_run(manifest: &ShipManifest, hashes: &ExportHashes) {
 }
 
 /// Build the JSON payload for the publish API.
+///
+/// When `export_path` is set, only the matching skill/agent export and its
+/// hash are included in the payload.
 fn build_payload(
     manifest: &ShipManifest,
     hashes: &ExportHashes,
     tag: Option<&str>,
+    export_path: Option<&str>,
 ) -> serde_json::Value {
     let mut payload = serde_json::json!({
         "name": manifest.module.name,
@@ -62,11 +97,36 @@ fn build_payload(
     if let Some(t) = tag {
         payload["tag"] = serde_json::Value::String(t.to_string());
     }
-    if !manifest.exports.skills.is_empty() {
-        payload["exports_skills"] = serde_json::json!(manifest.exports.skills);
+
+    // When filtering to a single export, only include that one.
+    let (skills, agents) = match export_path {
+        Some(path) => {
+            let skills: Vec<&String> = manifest
+                .exports
+                .skills
+                .iter()
+                .filter(|s| s.as_str() == path)
+                .collect();
+            let agents: Vec<&String> = manifest
+                .exports
+                .agents
+                .iter()
+                .filter(|a| a.as_str() == path)
+                .collect();
+            (skills, agents)
+        }
+        None => {
+            let skills: Vec<&String> = manifest.exports.skills.iter().collect();
+            let agents: Vec<&String> = manifest.exports.agents.iter().collect();
+            (skills, agents)
+        }
+    };
+
+    if !skills.is_empty() {
+        payload["exports_skills"] = serde_json::json!(skills);
     }
-    if !manifest.exports.agents.is_empty() {
-        payload["exports_agents"] = serde_json::json!(manifest.exports.agents);
+    if !agents.is_empty() {
+        payload["exports_agents"] = serde_json::json!(agents);
     }
     // Per-export hashes: primary integrity mechanism.
     if !hashes.per_export.is_empty() {
@@ -76,15 +136,23 @@ fn build_payload(
 }
 
 /// Publish the package at `root` to the Ship registry.
-pub fn run_publish(root: &Path, is_dry_run: bool, tag: Option<&str>) -> Result<()> {
+///
+/// When `export_path` is `Some`, only that single export is hashed and
+/// included in the publish payload.
+pub fn run_publish(
+    root: &Path,
+    export_path: Option<&str>,
+    is_dry_run: bool,
+    tag: Option<&str>,
+) -> Result<()> {
     let ship_dir = root.join(".ship");
     let manifest_path = ship_dir.join("ship.jsonc");
     let manifest = ShipManifest::from_file(&manifest_path)
         .context("reading .ship/ship.jsonc — is this a Ship project?")?;
-    let hashes = resolve_hashes(&ship_dir, &manifest)?;
+    let hashes = resolve_hashes(&ship_dir, &manifest, export_path)?;
 
     if is_dry_run {
-        dry_run(&manifest, &hashes);
+        dry_run(&manifest, &hashes, export_path);
         return Ok(());
     }
 
@@ -93,7 +161,7 @@ pub fn run_publish(root: &Path, is_dry_run: bool, tag: Option<&str>) -> Result<(
         anyhow::anyhow!("Not authenticated. Run `ship login` first, then retry `ship publish`.")
     })?;
 
-    let payload = build_payload(&manifest, &hashes, tag);
+    let payload = build_payload(&manifest, &hashes, tag, export_path);
 
     let mut resp = ureq::post("https://getship.dev/api/registry/publish")
         .header("Authorization", &format!("Bearer {}", token))
@@ -112,161 +180,17 @@ pub fn run_publish(root: &Path, is_dry_run: bool, tag: Option<&str>) -> Result<(
         anyhow::bail!("Publish failed ({}): {}", status, detail);
     }
 
-    println!(
-        "Published {}@{} ({})",
-        manifest.module.name, manifest.module.version, hashes.combined
-    );
+    let label = match export_path {
+        Some(path) => format!(
+            "{}@{} [{}]",
+            manifest.module.name, manifest.module.version, path
+        ),
+        None => format!("{}@{}", manifest.module.name, manifest.module.version),
+    };
+    println!("Published {} ({})", label, hashes.combined);
     Ok(())
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::collections::BTreeMap;
-    use tempfile::tempdir;
-
-    #[test]
-    fn dry_run_reads_manifest_and_hashes() -> Result<()> {
-        let dir = tempdir()?;
-        let ship_dir = dir.path().join(".ship");
-        std::fs::create_dir_all(&ship_dir)?;
-        std::fs::write(
-            ship_dir.join("ship.jsonc"),
-            r#"{
-  // Ship manifest
-  "module": {
-    "name": "github.com/test/pkg",
-    "version": "0.1.0",
-    "description": "Test package",
-    "license": "MIT",
-    "authors": ["Test Author"]
-  },
-  "exports": {
-    "skills": ["agents/skills/my-skill"]
-  }
-}"#,
-        )?;
-        // Create a dummy skill so the hash is non-empty
-        let skill_dir = ship_dir.join("agents").join("skills").join("my-skill");
-        std::fs::create_dir_all(&skill_dir)?;
-        std::fs::write(skill_dir.join("SKILL.md"), "# My Skill")?;
-
-        // dry_run should succeed without network
-        run_publish(dir.path(), true, None)?;
-        Ok(())
-    }
-
-    #[test]
-    fn publish_without_token_errors() -> Result<()> {
-        let dir = tempdir()?;
-        let ship_dir = dir.path().join(".ship");
-        std::fs::create_dir_all(&ship_dir)?;
-        std::fs::write(
-            ship_dir.join("ship.jsonc"),
-            r#"{
-  "module": {
-    "name": "github.com/test/pkg",
-    "version": "0.1.0"
-  }
-}"#,
-        )?;
-
-        let err = run_publish(dir.path(), false, None).unwrap_err();
-        assert!(
-            err.to_string().contains("ship login"),
-            "expected auth error, got: {err}"
-        );
-        Ok(())
-    }
-
-    fn sample_hashes() -> ExportHashes {
-        let mut per_export = BTreeMap::new();
-        per_export.insert("agents/skills/foo".into(), "sha256:aaa".into());
-        per_export.insert("agents/profiles/bar.toml".into(), "sha256:bbb".into());
-        ExportHashes {
-            combined: "sha256:abc123".into(),
-            per_export,
-        }
-    }
-
-    #[test]
-    fn build_payload_includes_all_fields() {
-        let manifest = ShipManifest::from_toml_str(
-            r#"
-[module]
-name = "github.com/test/pkg"
-version = "1.0.0"
-description = "A test"
-license = "MIT"
-authors = ["Alice"]
-
-[exports]
-skills = ["agents/skills/foo"]
-agents = ["agents/profiles/bar.toml"]
-"#,
-        )
-        .unwrap();
-
-        let hashes = sample_hashes();
-        let payload = build_payload(&manifest, &hashes, Some("beta"));
-        assert_eq!(payload["name"], "github.com/test/pkg");
-        assert_eq!(payload["version"], "1.0.0");
-        assert_eq!(payload["hash"], "sha256:abc123");
-        assert_eq!(payload["description"], "A test");
-        assert_eq!(payload["license"], "MIT");
-        assert_eq!(payload["tag"], "beta");
-        assert_eq!(payload["authors"][0], "Alice");
-        assert_eq!(payload["exports_skills"][0], "agents/skills/foo");
-        // Per-export hashes are present
-        assert_eq!(payload["export_hashes"]["agents/skills/foo"], "sha256:aaa");
-        assert_eq!(
-            payload["export_hashes"]["agents/profiles/bar.toml"],
-            "sha256:bbb"
-        );
-    }
-
-    #[test]
-    fn dry_run_reads_jsonc_manifest() -> Result<()> {
-        let dir = tempdir()?;
-        let ship_dir = dir.path().join(".ship");
-        std::fs::create_dir_all(&ship_dir)?;
-        std::fs::write(
-            ship_dir.join("ship.jsonc"),
-            r#"{
-  // JSONC manifest
-  "module": {
-    "name": "github.com/test/jsonc-pkg",
-    "version": "0.2.0"
-  },
-  "exports": {
-    "skills": ["agents/skills/my-skill"]
-  }
-}"#,
-        )?;
-        let skill_dir = ship_dir.join("agents").join("skills").join("my-skill");
-        std::fs::create_dir_all(&skill_dir)?;
-        std::fs::write(skill_dir.join("SKILL.md"), "# My Skill")?;
-
-        // Dry run should succeed using the JSONC manifest
-        run_publish(dir.path(), true, None)?;
-        Ok(())
-    }
-
-    #[test]
-    fn build_payload_omits_empty_export_hashes() {
-        let manifest = ShipManifest::from_toml_str(
-            r#"
-[module]
-name = "github.com/test/pkg"
-version = "1.0.0"
-"#,
-        )
-        .unwrap();
-        let hashes = ExportHashes {
-            combined: "sha256:empty".into(),
-            per_export: BTreeMap::new(),
-        };
-        let payload = build_payload(&manifest, &hashes, None);
-        assert!(payload.get("export_hashes").is_none());
-    }
-}
+#[path = "publish_tests.rs"]
+mod tests;

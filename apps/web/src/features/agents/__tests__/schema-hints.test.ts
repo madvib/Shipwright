@@ -50,10 +50,9 @@ describe('getFieldEnum', () => {
     expect(values).toContain('opencode')
   })
 
-  it('returns enum for permissions.default_mode', () => {
+  it('returns empty array for permissions.default_mode (moved to provider_settings)', () => {
     const values = getFieldEnum('permissions.default_mode')
-    expect(values).toContain('default')
-    expect(values).toContain('plan')
+    expect(values).toEqual([])
   })
 
   it('returns enum for plugins.scope', () => {
@@ -156,7 +155,8 @@ describe('getFieldProperties', () => {
     expect(props).toContain('preset')
     expect(props).toContain('tools_allow')
     expect(props).toContain('tools_deny')
-    expect(props).toContain('default_mode')
+    // default_mode moved to provider_settings.claude
+    expect(props).not.toContain('default_mode')
   })
 
   it('returns empty array for nonexistent path', () => {

@@ -203,8 +203,7 @@ pub fn list_targets(kind: Option<&str>) -> Result<Vec<Target>> {
 }
 
 pub fn update_target(id: &str, patch: TargetPatch) -> Result<()> {
-    let current =
-        get_target(id)?.ok_or_else(|| anyhow::anyhow!("target {id} not found"))?;
+    let current = get_target(id)?.ok_or_else(|| anyhow::anyhow!("target {id} not found"))?;
     let now = Utc::now().to_rfc3339();
     let scope = serde_json::to_string(&patch.file_scope.unwrap_or(current.file_scope))?;
     let mut conn = open_db()?;
@@ -283,8 +282,8 @@ pub fn get_capability(id: &str) -> Result<Option<Capability>> {
 }
 
 pub fn update_capability(id: &str, patch: CapabilityPatch) -> Result<()> {
-    let current = get_capability(id)?
-        .ok_or_else(|| anyhow::anyhow!("capability {id} not found"))?;
+    let current =
+        get_capability(id)?.ok_or_else(|| anyhow::anyhow!("capability {id} not found"))?;
     let now = Utc::now().to_rfc3339();
     let ac = serde_json::to_string(
         &patch

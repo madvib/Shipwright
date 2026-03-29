@@ -58,8 +58,16 @@ pub fn ensure_db() -> Result<()> {
     let mut conn = block_on(async { SqliteConnection::connect_with(&opts).await })?;
 
     // Connection-level PRAGMAs — not persisted in schema.
-    block_on(async { sqlx::query("PRAGMA journal_mode = WAL").execute(&mut conn).await })?;
-    block_on(async { sqlx::query("PRAGMA foreign_keys = ON").execute(&mut conn).await })?;
+    block_on(async {
+        sqlx::query("PRAGMA journal_mode = WAL")
+            .execute(&mut conn)
+            .await
+    })?;
+    block_on(async {
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&mut conn)
+            .await
+    })?;
 
     // Run migrations. sqlx manages its own `_sqlx_migrations` table.
     block_on_migrate(async { sqlx::migrate!("./migrations").run(&mut conn).await })?;

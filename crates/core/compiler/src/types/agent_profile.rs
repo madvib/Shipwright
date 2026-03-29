@@ -35,6 +35,9 @@ pub struct ProfileMeta {
     pub description: Option<String>,
     #[serde(default)]
     pub providers: Vec<String>,
+    /// Display icon — emoji or icon name (e.g. "\ud83e\uddea", "test-tube").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
 }
 
 #[cfg_attr(feature = "specta", derive(specta::Type))]

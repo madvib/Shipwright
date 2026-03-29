@@ -101,6 +101,14 @@
           "type": "array",
           "items": { "$ref": "#/$defs/ModeConfig" },
           "description": "Named modes that filter which MCP servers, skills, rules, and hooks are active. Selected per-workspace via `ship set-mode <id>`."
+        },
+        "skill_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": ["skills/"],
+          "description": "Directories to scan for skills, relative to .ship/. Default: [\"skills/\"]. Each directory is searched for subdirectories containing a SKILL.md file. First path wins when duplicate skill IDs exist across paths."
         }
       },
       "additionalProperties": false

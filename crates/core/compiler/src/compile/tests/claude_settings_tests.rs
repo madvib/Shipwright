@@ -215,6 +215,7 @@ fn agent_profiles_compiled_into_agent_files() {
             version: None,
             description: Some("Reviews code".to_string()),
             providers: vec!["claude".to_string()],
+            icon: None,
         },
         skills: SkillRefs::default(),
         mcp: McpRefs::default(),

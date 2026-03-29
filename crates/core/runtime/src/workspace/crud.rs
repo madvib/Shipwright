@@ -132,25 +132,23 @@ pub fn upsert_workspace(_ship_dir: &Path, workspace: &Workspace) -> Result<()> {
         .map(|ts| ts.to_rfc3339());
     let compiled_at = workspace.compiled_at.as_ref().map(|ts| ts.to_rfc3339());
 
-    upsert_workspace_db(
-        WorkspaceUpsert {
-            branch: &workspace.branch,
-            workspace_id: &workspace_id,
-            workspace_type: &workspace_type,
-            status: &status,
-            active_agent: workspace.active_agent.as_deref(),
-            providers: &workspace.providers,
-            mcp_servers: &workspace.mcp_servers,
-            skills: &workspace.skills,
-            is_worktree: workspace.is_worktree,
-            worktree_path: workspace.worktree_path.as_deref(),
-            last_activated_at: last_activated_at.as_deref(),
-            context_hash: workspace.context_hash.as_deref(),
-            config_generation: workspace.config_generation,
-            compiled_at: compiled_at.as_deref(),
-            compile_error: workspace.compile_error.as_deref(),
-        },
-    )
+    upsert_workspace_db(WorkspaceUpsert {
+        branch: &workspace.branch,
+        workspace_id: &workspace_id,
+        workspace_type: &workspace_type,
+        status: &status,
+        active_agent: workspace.active_agent.as_deref(),
+        providers: &workspace.providers,
+        mcp_servers: &workspace.mcp_servers,
+        skills: &workspace.skills,
+        is_worktree: workspace.is_worktree,
+        worktree_path: workspace.worktree_path.as_deref(),
+        last_activated_at: last_activated_at.as_deref(),
+        context_hash: workspace.context_hash.as_deref(),
+        config_generation: workspace.config_generation,
+        compiled_at: compiled_at.as_deref(),
+        compile_error: workspace.compile_error.as_deref(),
+    })
 }
 
 // ---- Provider matrix / repair (public) -------------------------------------

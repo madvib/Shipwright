@@ -8,15 +8,20 @@ use std::path::Path;
 
 use serde_json::Value as Json;
 
-use crate::types::{McpServerConfig, McpServerType, Rule};
 use crate::ProjectLibrary;
+use crate::types::{McpServerConfig, McpServerType, Rule};
 
 use super::json_string_array;
 use super::opencode_agents::parse_opencode_agent;
 
 /// Known top-level keys in `opencode.json` that map to structured Ship fields.
 const KNOWN_CONFIG_KEYS: &[&str] = &[
-    "agent", "mcp", "mcpServers", "model", "permission", "$schema",
+    "agent",
+    "mcp",
+    "mcpServers",
+    "model",
+    "permission",
+    "$schema",
 ];
 
 /// Parse OpenCode native config files and produce a partial [`ProjectLibrary`].

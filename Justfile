@@ -84,6 +84,16 @@ fmt:
 fmt-check:
     cargo fmt --check
 
+# ── Docs ──────────────────────────────────────────────────────────────────────
+
+# Build docs site
+docs:
+    cd apps/docs && npx tsx scripts/collect-skill-docs.ts && pnpm build
+
+# Dev docs site
+docs-dev:
+    cd apps/docs && pnpm dev --port 4321 --host
+
 # ── Deploy ─────────────────────────────────────────────────────────────────────
 
 # Deploy Studio to Cloudflare Workers

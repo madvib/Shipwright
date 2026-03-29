@@ -41,7 +41,7 @@ export {
   default as MarkdownEditor,
   type MarkdownEditorProps,
 } from "./components/editor/MarkdownEditor";
-export { default as CustomMilkdownEditor } from "./components/editor/CustomMilkdownEditor";
+// TiptapEditor: heavy dep (@tiptap/*), import directly if needed
 export { default as FrontmatterPanel } from "./components/editor/FrontmatterPanel";
 export * from "./components/editor/frontmatter";
 export * from "./components/editor/EditorLogo";

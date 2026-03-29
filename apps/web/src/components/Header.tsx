@@ -1,9 +1,9 @@
-import { Link, useRouterState } from '@tanstack/react-router'
-import { LogOut, Settings, Users, Zap, Server, Upload } from 'lucide-react'
-import { useEffect, useState, useRef, useMemo } from 'react'
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
+import { LogOut, Settings, Users, Zap, Server, Upload, Layers } from 'lucide-react'
+import { useEffect, useState, useRef } from 'react'
 import { ThemeToggle } from '@ship/primitives'
 import { authClient } from '#/lib/auth-client'
-import { useAgents } from '#/features/agents/useAgents'
+import { CliStatusPopover } from '#/features/studio/CliStatusPopover'
 
 function NavDropdown({ label, href, items, isActive }: {
   label: string
@@ -22,14 +22,14 @@ function NavDropdown({ label, href, items, isActive }: {
       <Link
         to={href as string}
         onClick={() => setOpen(false)}
-        className={`rounded-md px-3 py-1.5 text-sm transition select-none no-underline ${
+        className={`rounded-md px-3 py-2.5 text-sm transition select-none no-underline ${
           isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
         }`}
       >
         {label}
       </Link>
       {open && (
-        <div className="absolute left-0 top-full pt-1 z-50">
+        <div className="absolute right-0 top-full pt-1 z-50">
           <div className="w-56 rounded-xl border border-border/60 bg-card shadow-lg py-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
             {items.map((item) => {
               const Icon = item.icon
@@ -108,8 +108,49 @@ function UserMenu({ user }: { user: { name: string; email?: string | null; image
 const STUDIO_ITEMS = [
   { icon: Users, label: 'My Agents', href: '/studio/agents', desc: 'Configure your AI agents' },
   { icon: Zap, label: 'Skills IDE', href: '/studio/skills', desc: 'Create and edit skills' },
+  { icon: Layers, label: 'Session', href: '/studio/session', desc: 'Canvas, artifacts, and annotations' },
   { icon: Settings, label: 'Settings', href: '/studio/settings', desc: 'Account and defaults' },
 ]
+
+const STUDIO_NAV = [
+  { to: '/studio/agents', icon: Users, label: 'Agents' },
+  { to: '/studio/skills', icon: Zap, label: 'Skills' },
+  { to: '/studio/session', icon: Layers, label: 'Session' },
+  { to: '/studio/settings', icon: Settings, label: 'Settings' },
+] as const
+
+function StudioNav({ pathname }: { pathname: string }) {
+  const navigate = useNavigate()
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null)
+  return (
+    <nav aria-label="Studio navigation" className="flex items-center gap-1">
+      {STUDIO_NAV.map((item, i) => {
+        const isActive = pathname.startsWith(item.to)
+        const Icon = item.icon
+        return (
+          <button
+            key={item.to}
+            onClick={() => void navigate({ to: item.to as string })}
+            onMouseEnter={() => setHoverIdx(i)}
+            onMouseLeave={() => setHoverIdx(null)}
+            className={`relative flex items-center justify-center size-8 rounded-lg transition-colors ${
+              isActive
+                ? 'text-primary bg-primary/10'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
+            }`}
+          >
+            <Icon className="size-4" strokeWidth={isActive ? 2.2 : 1.8} />
+            {hoverIdx === i && (
+              <span className="absolute top-full mt-1.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-border/50 bg-popover px-2 py-1 text-[11px] font-medium text-foreground shadow-md animate-in fade-in slide-in-from-top-1 duration-150 pointer-events-none z-50">
+                {item.label}
+              </span>
+            )}
+          </button>
+        )
+      })}
+    </nav>
+  )
+}
 
 const REGISTRY_ITEMS = [
   { icon: Zap, label: 'Skills', href: '/registry', desc: 'Browse agent skills' },
@@ -119,22 +160,15 @@ const REGISTRY_ITEMS = [
 ]
 
 export default function Header() {
-  const { data: session, isPending } = authClient.useSession()
+  const { data: session } = authClient.useSession()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const user = session?.user
 
   const rawSegments = pathname.split('/').filter(Boolean)
   const isStudio = pathname.startsWith('/studio')
   const isRegistry = pathname.startsWith('/registry')
-  const { getAgent } = useAgents()
-
-  // Resolve agent ID to name in breadcrumb
-  const segments = useMemo(() => rawSegments.map((seg, i) => {
-    if (i === 2 && rawSegments[0] === 'studio' && rawSegments[1] === 'agents') {
-      return getAgent(seg)?.profile.name ?? seg
-    }
-    return seg
-  }), [rawSegments, getAgent])
+  // Breadcrumb segments — agent ID stays as-is (no MCP context outside studio)
+  const segments = rawSegments
 
   return (
     <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-md">
@@ -168,21 +202,21 @@ export default function Header() {
 
         <div className="flex-1" />
 
+        {isStudio && (
+          <div className="hidden sm:flex items-center">
+            <StudioNav pathname={pathname} />
+          </div>
+        )}
+
+        <div className="flex-1" />
+
         <div className="hidden sm:flex items-center gap-1">
           <NavDropdown label="Studio" href="/studio/agents" items={STUDIO_ITEMS} isActive={isStudio} />
           <NavDropdown label="Registry" href="/registry" items={REGISTRY_ITEMS} isActive={isRegistry} />
         </div>
 
         <div className="flex items-center gap-2">
-          {!isPending && !user && (
-            <button
-              onClick={() => void authClient.signIn.social({ provider: 'github', callbackURL: window.location.href })}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-border hover:text-foreground"
-            >
-              <svg className="size-3.5" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-              Sign in with GitHub
-            </button>
-          )}
+          {isStudio && <CliStatusPopover onAddSkill={() => {}} />}
           {user && <UserMenu user={{ name: user.name, email: user.email, image: user.image }} />}
           <ThemeToggle variant="icon" />
         </div>

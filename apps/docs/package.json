@@ -4,15 +4,23 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "node scripts/collect-skill-docs.mjs",
+    "collect": "pnpm exec tsx scripts/collect-skill-docs.ts",
+    "predev": "pnpm run collect",
     "dev": "astro dev",
-    "prebuild": "node scripts/collect-skill-docs.mjs",
+    "prebuild": "pnpm run collect",
     "build": "astro build",
     "preview": "astro preview"
   },
   "dependencies": {
-    "@astrojs/starlight": "^0.32.0",
-    "astro": "^5.0.0",
+    "@astrojs/starlight": "^0.38.2",
+    "@fontsource-variable/dm-sans": "^5.2.8",
+    "@fontsource-variable/syne": "^5.2.7",
+    "astro": "^6.1.1",
     "sharp": "^0.33.0"
+  },
+  "devDependencies": {
+    "@astrojs/markdoc": "^1.0.3",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0"
   }
 }

@@ -256,11 +256,7 @@ fn mcp_json_servers_parsed() {
             }
         }
     });
-    write_file(
-        &tmp,
-        ".mcp.json",
-        &serde_json::to_string(&mcp).unwrap(),
-    );
+    write_file(&tmp, ".mcp.json", &serde_json::to_string(&mcp).unwrap());
 
     let lib = decompile_claude(tmp.path());
 
@@ -268,11 +264,7 @@ fn mcp_json_servers_parsed() {
     let ship = lib.mcp_servers.iter().find(|s| s.id == "ship").unwrap();
     assert_eq!(ship.command, "ship");
     assert_eq!(ship.args, vec!["mcp", "serve"]);
-    let pg = lib
-        .mcp_servers
-        .iter()
-        .find(|s| s.id == "postgres")
-        .unwrap();
+    let pg = lib.mcp_servers.iter().find(|s| s.id == "postgres").unwrap();
     assert_eq!(pg.url.as_deref(), Some("http://localhost:5433/mcp"));
     assert!(pg.disabled);
 }
@@ -380,11 +372,7 @@ disabled_tools = ["delete"]
     let ship = lib.mcp_servers.iter().find(|s| s.id == "ship").unwrap();
     assert_eq!(ship.command, "ship");
 
-    let filtered = lib
-        .mcp_servers
-        .iter()
-        .find(|s| s.id == "filtered")
-        .unwrap();
+    let filtered = lib.mcp_servers.iter().find(|s| s.id == "filtered").unwrap();
     assert_eq!(filtered.codex_enabled_tools, vec!["read", "write"]);
     assert_eq!(filtered.codex_disabled_tools, vec!["delete"]);
 }
@@ -484,35 +472,25 @@ fn gemini_mcp_servers_with_provider_fields() {
 
     assert_eq!(lib.mcp_servers.len(), 3);
 
-    let trusted = lib
-        .mcp_servers
-        .iter()
-        .find(|s| s.id == "trusted")
-        .unwrap();
+    let trusted = lib.mcp_servers.iter().find(|s| s.id == "trusted").unwrap();
     assert_eq!(trusted.gemini_trust, Some(true));
     assert_eq!(trusted.gemini_include_tools, vec!["read"]);
     assert_eq!(trusted.gemini_exclude_tools, vec!["delete"]);
     assert_eq!(trusted.gemini_timeout_ms, Some(5000));
 
-    let remote = lib
-        .mcp_servers
-        .iter()
-        .find(|s| s.id == "remote")
-        .unwrap();
-    assert_eq!(
-        remote.url.as_deref(),
-        Some("https://api.example.com/mcp")
-    );
-    assert_eq!(
-        remote.server_type,
-        crate::types::McpServerType::Http
-    );
+    let remote = lib.mcp_servers.iter().find(|s| s.id == "remote").unwrap();
+    assert_eq!(remote.url.as_deref(), Some("https://api.example.com/mcp"));
+    assert_eq!(remote.server_type, crate::types::McpServerType::Http);
 }
 
 #[test]
 fn gemini_md_imported() {
     let tmp = TempDir::new().unwrap();
-    write_file(&tmp, "GEMINI.md", "# Gemini Rules\n\nUse structured output.");
+    write_file(
+        &tmp,
+        "GEMINI.md",
+        "# Gemini Rules\n\nUse structured output.",
+    );
 
     let lib = decompile_gemini(tmp.path());
 
@@ -537,7 +515,13 @@ decision = "allow"
 
     let lib = decompile_gemini(tmp.path());
 
-    assert!(lib.permissions.tools.deny.iter().any(|p| p.contains("Bash")));
+    assert!(
+        lib.permissions
+            .tools
+            .deny
+            .iter()
+            .any(|p| p.contains("Bash"))
+    );
     assert!(lib.permissions.tools.allow.contains(&"Read".to_string()));
 }
 
@@ -576,7 +560,8 @@ fn cursor_mcp_servers() {
 #[test]
 fn cursor_rules_parsed() {
     let tmp = TempDir::new().unwrap();
-    let rule = "---\ndescription: \"Style guide\"\nalwaysApply: true\n---\n\nUse functional components.";
+    let rule =
+        "---\ndescription: \"Style guide\"\nalwaysApply: true\n---\n\nUse functional components.";
     write_file(&tmp, ".cursor/rules/style.mdc", rule);
 
     let lib = decompile_cursor(tmp.path());
@@ -585,10 +570,7 @@ fn cursor_rules_parsed() {
     assert_eq!(lib.rules[0].file_name, "style.mdc");
     assert!(lib.rules[0].content.contains("Use functional components."));
     assert!(lib.rules[0].always_apply);
-    assert_eq!(
-        lib.rules[0].description.as_deref(),
-        Some("Style guide")
-    );
+    assert_eq!(lib.rules[0].description.as_deref(), Some("Style guide"));
 }
 
 #[test]
@@ -632,10 +614,25 @@ fn cursor_cli_json_permissions() {
 
     let lib = decompile_cursor(tmp.path());
 
-    assert!(lib.permissions.tools.allow.contains(&"Bash(git *)".to_string()));
+    assert!(
+        lib.permissions
+            .tools
+            .allow
+            .contains(&"Bash(git *)".to_string())
+    );
     assert!(lib.permissions.tools.allow.contains(&"Read(*)".to_string()));
-    assert!(lib.permissions.tools.allow.contains(&"Write(src/*)".to_string()));
-    assert!(lib.permissions.tools.deny.contains(&"Bash(rm -rf *)".to_string()));
+    assert!(
+        lib.permissions
+            .tools
+            .allow
+            .contains(&"Write(src/*)".to_string())
+    );
+    assert!(
+        lib.permissions
+            .tools
+            .deny
+            .contains(&"Bash(rm -rf *)".to_string())
+    );
 
     // Unknown keys → provider_defaults
     let defaults = lib.provider_defaults.get("cursor").unwrap();

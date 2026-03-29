@@ -171,6 +171,7 @@ describe('McpClient', () => {
         ok: true, status: 200, statusText: 'OK',
         headers: new Headers(),
         json: async () => ({}),
+        text: async () => '',
       })
     vi.stubGlobal('fetch', fetchMock)
 

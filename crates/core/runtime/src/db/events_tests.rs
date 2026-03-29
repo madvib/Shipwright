@@ -273,18 +273,9 @@ fn new_entity_types_serialize_correctly() {
 #[test]
 fn record_gate_pass_creates_event_and_completes_job() {
     let (_tmp, _ship_dir) = setup();
-    let job = crate::db::jobs::create_job(
-        "gate-test",
-        None,
-        None,
-        None,
-        None,
-        0,
-        None,
-        vec![],
-        vec![],
-    )
-    .unwrap();
+    let job =
+        crate::db::jobs::create_job("gate-test", None, None, None, None, 0, None, vec![], vec![])
+            .unwrap();
     crate::db::jobs::update_job_status(&job.id, "running").unwrap();
 
     let rec = record_gate_outcome(&job.id, true, "all tests green").unwrap();
@@ -295,27 +286,16 @@ fn record_gate_pass_creates_event_and_completes_job() {
     assert_eq!(rec.job_id.as_deref(), Some(job.id.as_str()));
 
     // Job should now be "complete"
-    let updated = crate::db::jobs::get_job(&job.id)
-        .unwrap()
-        .unwrap();
+    let updated = crate::db::jobs::get_job(&job.id).unwrap().unwrap();
     assert_eq!(updated.status, "complete");
 }
 
 #[test]
 fn record_gate_fail_creates_event_leaves_job_running() {
     let (_tmp, _ship_dir) = setup();
-    let job = crate::db::jobs::create_job(
-        "gate-test",
-        None,
-        None,
-        None,
-        None,
-        0,
-        None,
-        vec![],
-        vec![],
-    )
-    .unwrap();
+    let job =
+        crate::db::jobs::create_job("gate-test", None, None, None, None, 0, None, vec![], vec![])
+            .unwrap();
     crate::db::jobs::update_job_status(&job.id, "running").unwrap();
 
     let rec = record_gate_outcome(&job.id, false, "3 tests failed").unwrap();
@@ -324,39 +304,19 @@ fn record_gate_fail_creates_event_leaves_job_running() {
     assert_eq!(rec.details.as_deref(), Some("3 tests failed"));
 
     // Job should still be "running"
-    let updated = crate::db::jobs::get_job(&job.id)
-        .unwrap()
-        .unwrap();
+    let updated = crate::db::jobs::get_job(&job.id).unwrap().unwrap();
     assert_eq!(updated.status, "running");
 }
 
 #[test]
 fn list_gate_outcomes_filters_by_job() {
     let (_tmp, _ship_dir) = setup();
-    let job_a = crate::db::jobs::create_job(
-        "gate-a",
-        None,
-        None,
-        None,
-        None,
-        0,
-        None,
-        vec![],
-        vec![],
-    )
-    .unwrap();
-    let job_b = crate::db::jobs::create_job(
-        "gate-b",
-        None,
-        None,
-        None,
-        None,
-        0,
-        None,
-        vec![],
-        vec![],
-    )
-    .unwrap();
+    let job_a =
+        crate::db::jobs::create_job("gate-a", None, None, None, None, 0, None, vec![], vec![])
+            .unwrap();
+    let job_b =
+        crate::db::jobs::create_job("gate-b", None, None, None, None, 0, None, vec![], vec![])
+            .unwrap();
     crate::db::jobs::update_job_status(&job_a.id, "running").unwrap();
     crate::db::jobs::update_job_status(&job_b.id, "running").unwrap();
 

@@ -16,8 +16,8 @@ function makeTestAgent(overrides?: Partial<ResolvedAgentProfile>): ResolvedAgent
       version: '0.1.0',
     },
     skills: [
-      { id: 'skill-a', name: 'skill-a', content: 'Skill A content', source: 'custom' },
-      { id: 'skill-b', name: 'skill-b', content: 'Skill B content', source: 'community' },
+      { id: 'skill-a', name: 'skill-a', content: 'Skill A content', source: 'custom', vars: {} },
+      { id: 'skill-b', name: 'skill-b', content: 'Skill B content', source: 'community', vars: {} },
     ],
     mcpServers: [
       { name: 'github', command: 'npx', args: ['-y', '@mcp/github'], server_type: 'stdio', url: null, timeout_secs: null, codex_enabled_tools: [], codex_disabled_tools: [], gemini_include_tools: [], gemini_exclude_tools: [] },
@@ -41,7 +41,7 @@ function makeBaseLibrary(overrides?: Partial<ProjectLibrary>): ProjectLibrary {
   return {
     ...DEFAULT_LIBRARY,
     skills: [
-      { id: 'base-skill', name: 'base-skill', content: 'Base skill', source: 'builtin' },
+      { id: 'base-skill', name: 'base-skill', content: 'Base skill', source: 'builtin', vars: {} },
     ],
     mcp_servers: [
       { name: 'filesystem', command: 'npx', args: ['-y', '@mcp/fs'], server_type: 'stdio', url: null, timeout_secs: null, codex_enabled_tools: [], codex_disabled_tools: [], gemini_include_tools: [], gemini_exclude_tools: [] },
@@ -100,7 +100,7 @@ describe('agentToLibrary', () => {
 
   it('deduplicates skills by id when agent has same skill as base', () => {
     const agent = makeTestAgent({
-      skills: [{ id: 'base-skill', name: 'base-skill', content: 'Agent version', source: 'custom' }],
+      skills: [{ id: 'base-skill', name: 'base-skill', content: 'Agent version', source: 'custom', vars: {} }],
     })
     const result = agentToLibrary(agent, makeBaseLibrary())
 

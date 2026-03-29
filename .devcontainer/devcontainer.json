@@ -32,12 +32,13 @@
     "NPM_CONFIG_STORE_DIR": "/home/vscode/.local/share/pnpm/store"
   },
 
-  "forwardPorts": [3000, 3001, 3002, 7701],
+  "forwardPorts": [3000, 3001, 3002, 7701, 51741],
   "portsAttributes": {
     "3000": { "label": "Ship Studio", "onAutoForward": "openBrowser" },
     "3001": { "label": "Ship Studio (alt)", "onAutoForward": "openBrowser" },
     "3002": { "label": "Vite HMR", "onAutoForward": "silent" },
-    "7701": { "label": "Ship Server", "onAutoForward": "silent" }
+    "7701": { "label": "Ship Server", "onAutoForward": "silent" },
+    "51741": { "label": "Ship MCP", "onAutoForward": "silent" }
   },
 
   "customizations": {

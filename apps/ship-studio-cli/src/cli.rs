@@ -157,6 +157,8 @@ pub enum Commands {
 
     /// Publish this package to the Ship registry
     Publish {
+        /// Publish only this export (e.g. agents/skills/tdd, agents/profiles/red-green.toml)
+        export_path: Option<String>,
         /// Preview what would be published without making any network requests
         #[arg(long)]
         dry_run: bool,
@@ -229,6 +231,16 @@ pub enum Commands {
     Diff {
         #[arg(long)]
         milestone: Option<String>,
+    },
+
+    /// Launch Ship Studio -- visual IDE for skills and agents
+    Studio {
+        /// HTTP port for the Studio MCP server
+        #[arg(long, default_value_t = 51741)]
+        port: u16,
+        /// Open the Studio in your default browser
+        #[arg(long)]
+        open: bool,
     },
 
     /// Show help — same as --help

@@ -86,7 +86,7 @@ export function AnimatedShowcase() {
   const provider = PROVIDERS[providerIdx]
 
   return (
-    <section className="mx-auto mb-20 max-w-[62rem] px-6 sm:px-10">
+    <section className="mx-auto mb-12 max-w-[62rem] px-6 sm:px-10">
       <div className="overflow-hidden rounded-2xl border border-border/60 shadow-2xl shadow-black/20 bg-card/20">
         {/* Browser bar */}
         <div className="flex items-center gap-1.5 border-b border-border/60 bg-muted/40 px-4 py-2.5">

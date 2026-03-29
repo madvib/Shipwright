@@ -235,7 +235,7 @@ pub(crate) fn compile_workspace_context(
             workspace.compiled_at = Some(now);
             workspace.compile_error = Some(contextual.to_string());
             workspace.context_hash = Some(next_context_hash.clone());
-                upsert_workspace(ship_dir, workspace)?;
+            upsert_workspace(ship_dir, workspace)?;
             return Err(contextual);
         }
     }

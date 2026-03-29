@@ -59,15 +59,6 @@ export function PermissionsSection({
         />
       </div>
 
-      {/* Default mode */}
-      {permissions.default_mode && (
-        <div className="mt-3 rounded-lg border border-border/40 bg-card/30 px-3 py-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] text-muted-foreground/60">Default mode</span>
-            <span className="text-[11px] text-foreground/80">{permissions.default_mode}</span>
-          </div>
-        </div>
-      )}
     </SectionShell>
   )
 }

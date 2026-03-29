@@ -2,6 +2,7 @@
 name = "mcp"
 version = "0.1.0"
 edition = "2024"
+publish = false
 
 [lib]
 name = "mcp"
@@ -17,6 +18,7 @@ async-trait = "0.1"
 compiler = { path = "../../crates/core/compiler" }
 runtime = { path = "../../crates/core/runtime" }
 anyhow = "1.0"
+base64 = "0.22"
 chrono = "0.4"
 axum = { version = "0.8", features = ["http1", "tokio"] }
 toml = "0.8"
@@ -31,4 +33,5 @@ unstable = []
 
 [dev-dependencies]
 tempfile = "3.13"
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rmcp = { version = "0.16.0", features = ["server", "client", "transport-io"] }

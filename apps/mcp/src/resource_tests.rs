@@ -27,8 +27,18 @@ async fn jobs_list_resource_empty() {
 #[tokio::test(flavor = "multi_thread")]
 async fn jobs_list_and_get_round_trip() {
     let (_tmp, ship_dir) = setup();
-    let job = jobs::create_job("compile", Some("main"), None, None, None, 0, None, vec![], vec![])
-        .unwrap();
+    let job = jobs::create_job(
+        "compile",
+        Some("main"),
+        None,
+        None,
+        None,
+        0,
+        None,
+        vec![],
+        vec![],
+    )
+    .unwrap();
 
     let list = resolve("ship://jobs", &ship_dir).await.unwrap();
     assert!(list.contains(&job.id), "job list should contain id: {list}");
@@ -44,7 +54,11 @@ async fn jobs_list_and_get_round_trip() {
 #[tokio::test(flavor = "multi_thread")]
 async fn job_get_nonexistent_returns_none() {
     let (_tmp, ship_dir) = setup();
-    assert!(resolve("ship://jobs/nonexistent", &ship_dir).await.is_none());
+    assert!(
+        resolve("ship://jobs/nonexistent", &ship_dir)
+            .await
+            .is_none()
+    );
 }
 
 // ── Target resources ──────────────────────────────────────────────
@@ -74,7 +88,11 @@ async fn target_get_round_trip() {
 #[tokio::test(flavor = "multi_thread")]
 async fn target_get_nonexistent_returns_none() {
     let (_tmp, ship_dir) = setup();
-    assert!(resolve("ship://targets/nonexistent", &ship_dir).await.is_none());
+    assert!(
+        resolve("ship://targets/nonexistent", &ship_dir)
+            .await
+            .is_none()
+    );
 }
 
 // ── Capability resources ──────────────────────────────────────────
@@ -95,7 +113,11 @@ async fn capability_get_round_trip() {
 #[tokio::test(flavor = "multi_thread")]
 async fn capability_get_nonexistent_returns_none() {
     let (_tmp, ship_dir) = setup();
-    assert!(resolve("ship://capabilities/nonexistent", &ship_dir).await.is_none());
+    assert!(
+        resolve("ship://capabilities/nonexistent", &ship_dir)
+            .await
+            .is_none()
+    );
 }
 
 // ── Spec resources (file-based) ───────────────────────────────────
@@ -112,7 +134,11 @@ async fn specs_list_and_get_round_trip() {
     let (_tmp, ship_dir) = setup();
     let specs_path = runtime::project::specs_dir(&ship_dir);
     std::fs::create_dir_all(&specs_path).unwrap();
-    std::fs::write(specs_path.join("design-v1.md"), "# Design V1\n\nSpec content here.").unwrap();
+    std::fs::write(
+        specs_path.join("design-v1.md"),
+        "# Design V1\n\nSpec content here.",
+    )
+    .unwrap();
 
     let list = resolve("ship://specs", &ship_dir).await.unwrap();
     assert!(list.contains("design-v1"), "spec list: {list}");
@@ -125,7 +151,11 @@ async fn specs_list_and_get_round_trip() {
 #[tokio::test(flavor = "multi_thread")]
 async fn spec_get_nonexistent_returns_none() {
     let (_tmp, ship_dir) = setup();
-    assert!(resolve("ship://specs/nonexistent", &ship_dir).await.is_none());
+    assert!(
+        resolve("ship://specs/nonexistent", &ship_dir)
+            .await
+            .is_none()
+    );
 }
 
 // ── Existing resources still work ─────────────────────────────────

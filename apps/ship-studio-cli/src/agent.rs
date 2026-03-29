@@ -36,18 +36,9 @@ fn ship_dir() -> Result<std::path::PathBuf> {
 #[allow(dead_code)]
 pub fn create_job(kind: &str, branch: Option<&str>) -> Result<()> {
     let _dir = ship_dir()?;
-    let job = runtime::db::jobs::create_job(
-        kind,
-        branch,
-        None,
-        None,
-        None,
-        0,
-        None,
-        vec![],
-        vec![],
-    )
-    .with_context(|| format!("failed to create job (kind={kind})"))?;
+    let job =
+        runtime::db::jobs::create_job(kind, branch, None, None, None, 0, None, vec![], vec![])
+            .with_context(|| format!("failed to create job (kind={kind})"))?;
     println!("{}", job.id);
     Ok(())
 }

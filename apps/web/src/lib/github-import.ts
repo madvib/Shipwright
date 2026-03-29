@@ -76,7 +76,7 @@ function extractFromShipProject(files: RepoFiles): ProjectLibrary {
     // .ship/agents/skills/<id>/SKILL.md → skills
     const skillMatch = path.match(/^\.ship\/agents\/skills\/([^/]+)\/SKILL\.md$/)
     if (skillMatch) {
-      skills.push({ id: skillMatch[1], name: skillMatch[1], content })
+      skills.push({ id: skillMatch[1], name: skillMatch[1], content, vars: {} })
     }
   }
 

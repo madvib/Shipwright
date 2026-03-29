@@ -65,11 +65,11 @@ const PERMISSION_PRESET_ENUM = getEnumFromNode(
     : {},
 ) ?? []
 
-const DEFAULT_MODE_ENUM = getEnumFromNode(
-  (agentSchema.properties.permissions as SchemaNode).properties
-    ? ((agentSchema.properties.permissions as SchemaNode).properties as SchemaNode).default_mode as SchemaNode
-    : {},
-) ?? []
+const DEFAULT_MODE_ENUM: string[] = (() => {
+  const permsProps = (agentSchema.properties.permissions as SchemaNode)?.properties as SchemaNode | undefined
+  const node = permsProps?.default_mode as SchemaNode | undefined
+  return node ? (getEnumFromNode(node) ?? []) : []
+})()
 
 const PLUGIN_SCOPE_ENUM = getEnumFromNode(
   (agentSchema.properties.plugins as SchemaNode).properties

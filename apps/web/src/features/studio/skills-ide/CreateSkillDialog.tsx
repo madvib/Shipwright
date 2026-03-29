@@ -56,7 +56,7 @@ export function CreateSkillDialog({ open, onOpenChange, onCreateSkill, existingI
             className={error ? 'border-destructive' : ''}
           />
           {error && <p className="text-[11px] text-destructive mt-1.5">{error}</p>}
-          <p className="text-[10px] text-muted-foreground/60 mt-2">
+          <p className="text-[10px] text-muted-foreground mt-2">
             Creates <code className="bg-muted px-1 rounded text-[9px]">.ship/agents/skills/{id || '<id>'}/SKILL.md</code>
           </p>
         </div>

@@ -7,8 +7,8 @@ use std::net::TcpListener;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
-    CallToolRequestParams, CallToolResult, Implementation, ListToolsResult,
-    PaginatedRequestParams, ProtocolVersion, ServerCapabilities, ServerInfo,
+    CallToolRequestParams, CallToolResult, Implementation, ListToolsResult, PaginatedRequestParams,
+    ProtocolVersion, ServerCapabilities, ServerInfo,
 };
 use rmcp::service::RequestContext;
 use rmcp::transport::streamable_http_server::{
@@ -42,10 +42,7 @@ impl MockStudioServer {
     }
 
     #[tool(description = "Return the transfer bundle for a shared agent config.")]
-    fn transfer_bundle(
-        &self,
-        Parameters(_params): Parameters<TransferBundleParams>,
-    ) -> String {
+    fn transfer_bundle(&self, Parameters(_params): Parameters<TransferBundleParams>) -> String {
         serde_json::json!({
             "agent": {
                 "id": "mcp-test-agent",
@@ -102,9 +99,7 @@ impl ServerHandler for MockStudioServer {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
-        Ok(ListToolsResult::with_all_items(
-            self.tool_router.list_all(),
-        ))
+        Ok(ListToolsResult::with_all_items(self.tool_router.list_all()))
     }
 
     fn get_tool(&self, name: &str) -> Option<rmcp::model::Tool> {
@@ -164,16 +159,20 @@ async fn mcp_bridge_fetches_transfer_bundle() {
     let url = format!("http://127.0.0.1:{port}/mcp");
 
     // Use the CLI's internal fetch function (it's pub for testing).
-    let bundle = fetch_via_mcp_test(&url).await.expect("MCP fetch must succeed");
+    let bundle = fetch_via_mcp_test(&url)
+        .await
+        .expect("MCP fetch must succeed");
 
     assert_eq!(bundle.agent.id, "mcp-test-agent");
     assert_eq!(bundle.agent.name.as_deref(), Some("MCP Test Agent"));
     assert_eq!(bundle.agent.skills, vec!["tdd"]);
     assert_eq!(bundle.agent.rules.len(), 2);
     assert_eq!(bundle.dependencies.len(), 1);
-    assert!(bundle
-        .dependencies
-        .contains_key("github.com/anthropics/ship-skills"));
+    assert!(
+        bundle
+            .dependencies
+            .contains_key("github.com/anthropics/ship-skills")
+    );
     assert_eq!(bundle.skills.len(), 1);
     assert!(bundle.skills.contains_key("tdd"));
 
@@ -207,10 +206,7 @@ async fn json_fallback_fetches_bundle() {
             let body = json_str.clone();
             async move {
                 (
-                    [(
-                        axum::http::header::CONTENT_TYPE,
-                        "application/json",
-                    )],
+                    [(axum::http::header::CONTENT_TYPE, "application/json")],
                     body,
                 )
             }
@@ -253,7 +249,7 @@ async fn mcp_bridge_blocks_malicious_bundle() {
         .get_mut("tdd")
         .unwrap()
         .files
-        .insert("SKILL.md".into(), format!("clean text \u{202E} hidden"));
+        .insert("SKILL.md".into(), "clean text \u{202E} hidden".to_string());
 
     // Re-scan should fail.
     let result = scan_bundle_test(&bundle);
@@ -291,9 +287,9 @@ struct SkillBundle {
 }
 
 async fn fetch_via_mcp_test(url: &str) -> anyhow::Result<TransferBundle> {
+    use rmcp::ServiceExt;
     use rmcp::model::{CallToolRequestParams, ClientInfo, Implementation, RawContent};
     use rmcp::transport::StreamableHttpClientTransport;
-    use rmcp::ServiceExt;
 
     let transport = StreamableHttpClientTransport::from_uri(url);
 

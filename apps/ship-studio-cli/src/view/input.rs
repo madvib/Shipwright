@@ -149,7 +149,11 @@ fn count_filtered<'a>(statuses: impl Iterator<Item = &'a str>, filter: Option<&s
 fn collect_statuses<'a>(nav: &NavState, data: &'a ViewData) -> Vec<&'a str> {
     match nav.panel() {
         Panel::Targets => data.targets.iter().map(|t| t.status.as_str()).collect(),
-        Panel::Capabilities => data.capabilities.iter().map(|c| c.status.as_str()).collect(),
+        Panel::Capabilities => data
+            .capabilities
+            .iter()
+            .map(|c| c.status.as_str())
+            .collect(),
         Panel::Jobs => data.all_jobs.iter().map(|j| j.status.as_str()).collect(),
         Panel::Adrs => data.adrs.iter().map(|a| a.status.as_str()).collect(),
         _ => vec![],

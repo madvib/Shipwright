@@ -5,8 +5,8 @@ use std::path::Path;
 
 use serde_json::Value as Json;
 
-use crate::types::{McpServerConfig, McpServerType, Rule};
 use crate::ProjectLibrary;
+use crate::types::{McpServerConfig, McpServerType, Rule};
 
 /// Known top-level keys in `.codex/config.toml` that map to structured Ship fields.
 const KNOWN_CONFIG_KEYS: &[&str] = &[

@@ -15,6 +15,7 @@ export type {
   FsPermissions,
   GitConfig,
   HookConfig,
+  JsonValue,
   HookTrigger,
   ListAgentsResponse,
   McpRefs,

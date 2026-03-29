@@ -89,6 +89,24 @@ async fn mcp_workspace_control_plane_round_trip() {
     );
 }
 
+// ── notification peer lifecycle ─────────────────────────────────────
+
+#[tokio::test]
+async fn notification_peer_starts_as_none() {
+    let server = ShipServer::new();
+    assert!(
+        server.notification_peer.lock().await.is_none(),
+        "notification_peer should be None after construction"
+    );
+}
+
+#[tokio::test]
+async fn notify_resources_changed_is_noop_without_peer() {
+    let server = ShipServer::new();
+    // Should not panic when no peer is stored
+    server.notify_resources_changed().await;
+}
+
 // ── normalize_mode_tool_id ──────────────────────────────────────────
 
 #[test]
@@ -242,9 +260,6 @@ fn stable_build_registers_only_platform_tools() {
     let expected: &[&str] = &[
         "open_project",
         "set_agent",
-        "pull_agents",
-        "list_local_agents",
-        "push_bundle",
         "activate_workspace",
         "list_workspaces",
         "create_workspace",
@@ -258,9 +273,14 @@ fn stable_build_registers_only_platform_tools() {
         "set_skill_var",
         "list_skill_vars",
         "list_events",
+        // Studio-only tools NOT here: pull_agents, list_local_agents,
+        // push_bundle, write/delete_skill_file, list_project_skills
     ];
     for tool in expected {
-        assert!(names.iter().any(|n| n == tool), "{tool} missing from router");
+        assert!(
+            names.iter().any(|n| n == tool),
+            "{tool} missing from router"
+        );
     }
     #[cfg(not(feature = "unstable"))]
     assert_eq!(
@@ -303,11 +323,11 @@ fn unstable_build_registers_all_tools() {
             "{tool} missing from unstable router"
         );
     }
-    // 18 stable + 18 unstable
+    // 15 stable + 18 unstable = 33
     assert_eq!(
         names.len(),
-        36,
-        "unstable build should register 36 tools, got: {:?}",
+        33,
+        "unstable build should register 33 tools, got: {:?}",
         names
     );
 }

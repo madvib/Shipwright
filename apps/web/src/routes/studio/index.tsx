@@ -10,6 +10,7 @@ export const Route = createFileRoute('/studio/')({
 function StudioRedirect() {
   const navigate = useNavigate()
 
+  // First visit: create a default agent (side effect in useEffect, not render)
   useEffect(() => {
     void navigate({ to: '/studio/agents', replace: true })
   }, [])

@@ -1,5 +1,4 @@
 use super::*;
-use crate::project::init_project;
 use std::collections::HashMap;
 use std::fs;
 use tempfile::tempdir;
@@ -99,8 +98,8 @@ fn save_config_keeps_ship_toml_free_of_agent_sections() -> anyhow::Result<()> {
         "legacy agents/config.toml should not be written"
     );
 
-    let runtime_settings = crate::db::agents::get_agent_runtime_settings_db()?
-        .expect("expected runtime settings row");
+    let runtime_settings =
+        crate::db::agents::get_agent_runtime_settings_db()?.expect("expected runtime settings row");
     assert_eq!(
         runtime_settings.providers,
         vec!["claude".to_string(), "codex".to_string()]

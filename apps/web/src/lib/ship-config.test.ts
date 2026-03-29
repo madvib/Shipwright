@@ -39,7 +39,7 @@ describe('libraryToShipFiles', () => {
     const lib: ProjectLibrary = {
       ...EMPTY_LIB,
       skills: [
-        { id: 'commit', name: 'Commit', content: '# Smart commit' },
+        { id: 'commit', name: 'Commit', content: '# Smart commit', vars: {} },
       ],
     }
     const files = libraryToShipFiles(lib)
@@ -77,7 +77,7 @@ describe('libraryToShipFiles', () => {
     const lib: ProjectLibrary = {
       ...EMPTY_LIB,
       mcp_servers: [{ name: 'github', command: 'npx', url: null, timeout_secs: null, codex_enabled_tools: [], codex_disabled_tools: [], gemini_include_tools: [], gemini_exclude_tools: [] }],
-      skills: [{ id: 'commit', name: 'Commit', content: '...' }],
+      skills: [{ id: 'commit', name: 'Commit', content: '...', vars: {} }],
     }
     const files = libraryToShipFiles(lib, 'dev')
     const preset = files['.ship/agents/presets/dev.toml']

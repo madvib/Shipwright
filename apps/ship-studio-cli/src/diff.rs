@@ -246,19 +246,15 @@ mod tests {
     #[test]
     fn test_diff_groups_capabilities_correctly() {
         let (_tmp, ship_dir) = setup();
-        let ms =
-            targets::create_target("milestone", "v0.1.0", None, None, None).unwrap();
-        let surface =
-            targets::create_target("surface", "compiler", None, None, None).unwrap();
+        let ms = targets::create_target("milestone", "v0.1.0", None, None, None).unwrap();
+        let surface = targets::create_target("surface", "compiler", None, None, None).unwrap();
 
         let c_actual =
-            targets::create_capability(&surface.id, "Profile compile", Some(&ms.id))
-                .unwrap();
+            targets::create_capability(&surface.id, "Profile compile", Some(&ms.id)).unwrap();
         targets::mark_capability_actual(&c_actual.id, "test: compile_ok").unwrap();
 
         let c_inprog =
-            targets::create_capability(&surface.id, "Gemini output", Some(&ms.id))
-                .unwrap();
+            targets::create_capability(&surface.id, "Gemini output", Some(&ms.id)).unwrap();
         let payload = serde_json::json!({
             "description": "compile gemini provider",
             "capability_id": c_inprog.id
@@ -280,8 +276,7 @@ mod tests {
         jobs::claim_job(&all[0].id, "test").unwrap();
 
         let _c_todo =
-            targets::create_capability(&surface.id, "Codex output", Some(&ms.id))
-                .unwrap();
+            targets::create_capability(&surface.id, "Codex output", Some(&ms.id)).unwrap();
 
         // Should not panic; we just verify it runs successfully with all three buckets present
         let result = run_with_dir(&ship_dir, Some(&ms.id));

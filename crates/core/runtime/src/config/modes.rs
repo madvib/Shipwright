@@ -1,12 +1,12 @@
-use anyhow::Result;
-use std::collections::HashSet;
-use std::path::Path;
 use super::artifact_registry::{
-    ARTIFACT_KIND_MCP, ARTIFACT_KIND_RULE, ARTIFACT_KIND_SKILL,
-    resolve_external_ids_to_refs, resolve_refs_to_external_ids, sync_agent_artifact_registry,
+    ARTIFACT_KIND_MCP, ARTIFACT_KIND_RULE, ARTIFACT_KIND_SKILL, resolve_external_ids_to_refs,
+    resolve_refs_to_external_ids, sync_agent_artifact_registry,
 };
 use super::project::AgentProfile;
 use super::types::{HookConfig, PermissionConfig};
+use anyhow::Result;
+use std::collections::HashSet;
+use std::path::Path;
 
 pub(super) fn get_modes_config(ship_dir: &Path) -> Result<Vec<AgentProfile>> {
     sync_agent_artifact_registry(ship_dir)?;

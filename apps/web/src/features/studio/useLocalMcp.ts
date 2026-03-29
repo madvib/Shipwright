@@ -1,9 +1,13 @@
-// React hook for connecting to a local `ship mcp serve --http` instance.
+// React hook for connecting to a local `ship studio` instance.
 // Manages connection lifecycle, exposes tool calls, and tracks status.
+// Listens for server-pushed notifications via SSE to reactively invalidate
+// React Query caches instead of polling.
 
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { McpClient, McpClientError } from '#/lib/mcp-client'
 import type { McpTool } from '#/lib/mcp-client'
+import { mcpKeys } from '#/lib/query-keys'
 
 export type McpConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
@@ -17,6 +21,7 @@ interface McpConfig {
 }
 
 function loadConfig(): McpConfig {
+  if (typeof window === 'undefined') return { port: DEFAULT_PORT }
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) return JSON.parse(raw) as McpConfig
@@ -52,9 +57,12 @@ export function useLocalMcp(): UseLocalMcpReturn {
   const [localAgentIds, setLocalAgentIds] = useState<Set<string>>(new Set())
   const [config, setConfig] = useState<McpConfig>(loadConfig)
   const [hasEverConnected, setHasEverConnected] = useState(
-    () => localStorage.getItem(EVER_CONNECTED_KEY) === 'true',
+    () => typeof window !== 'undefined' && localStorage.getItem(EVER_CONNECTED_KEY) === 'true',
   )
   const clientRef = useRef<McpClient | null>(null)
+  const queryClient = useQueryClient()
+  // Track whether the notification listener is actively running
+  const listenerActiveRef = useRef(false)
 
   const setPort = useCallback((port: number) => {
     setConfig((prev) => {
@@ -73,6 +81,10 @@ export function useLocalMcp(): UseLocalMcpReturn {
   }, [])
 
   const disconnect = useCallback(() => {
+    if (clientRef.current) {
+      clientRef.current.stopNotificationListener()
+    }
+    listenerActiveRef.current = false
     clientRef.current = null
     setStatus('disconnected')
     setError(null)
@@ -98,9 +110,21 @@ export function useLocalMcp(): UseLocalMcpReturn {
 
       const toolList = await client.listTools()
       setTools(toolList)
+
+      // Health check: verify the session actually works with a real tool call.
+      // If the server doesn't recognize the session, this will throw and we
+      // won't falsely report 'connected'.
+      if (toolList.some((t) => t.name === 'get_project_info')) {
+        await client.callTool('get_project_info')
+      }
+
       setStatus('connected')
       setHasEverConnected(true)
       localStorage.setItem(EVER_CONNECTED_KEY, 'true')
+
+      // Start the SSE notification listener for reactive cache invalidation.
+      // Runs in the background -- stream drop triggers a single refetch as fallback.
+      startNotificationListener(client)
 
       // Fetch which agents exist locally for sync badges
       try {
@@ -117,23 +141,93 @@ export function useLocalMcp(): UseLocalMcpReturn {
         err instanceof McpClientError
           ? err.message
           : err instanceof TypeError
-            ? `Cannot reach localhost:${config.port} — is \`ship mcp serve --http\` running?`
+            ? `Cannot reach localhost:${config.port} — is \`ship studio\` running?`
             : 'Connection failed'
       setError(msg)
       setStatus('error')
     }
-  }, [config.port, config.token, disconnect])
+  }, [config.port, config.token, disconnect]) // eslint-disable-line react-hooks/exhaustive-deps -- startNotificationListener is stable via refs
+
+  /** Start a persistent SSE listener for server-pushed notifications.
+   *  When the server sends `notifications/resources/list_changed`, all MCP
+   *  query caches are invalidated so components re-fetch fresh data.
+   *  If the stream drops, a single cache invalidation is triggered as fallback,
+   *  and the listener reconnects after a short delay. */
+  function startNotificationListener(client: McpClient) {
+    if (listenerActiveRef.current) return
+    listenerActiveRef.current = true
+
+    void (async () => {
+      const RECONNECT_DELAY_MS = 3_000
+      while (listenerActiveRef.current && clientRef.current === client) {
+        try {
+          await client.startNotificationListener((method) => {
+            if (method === 'notifications/resources/list_changed') {
+              void queryClient.invalidateQueries({ queryKey: mcpKeys.all })
+            }
+          })
+          // Stream closed normally (server shut down or session ended).
+          // If we're still supposed to be connected, do a fallback invalidation.
+          if (listenerActiveRef.current && clientRef.current === client) {
+            void queryClient.invalidateQueries({ queryKey: mcpKeys.all })
+          }
+        } catch {
+          // Connection failed or errored -- fallback invalidation
+          if (listenerActiveRef.current && clientRef.current === client) {
+            void queryClient.invalidateQueries({ queryKey: mcpKeys.all })
+          }
+        }
+        // Wait before reconnecting to avoid tight loops
+        if (listenerActiveRef.current && clientRef.current === client) {
+          await new Promise((r) => setTimeout(r, RECONNECT_DELAY_MS))
+        }
+      }
+    })()
+  }
+
+  // Track whether a reconnect is in-flight to prevent concurrent reconnects
+  const reconnectingRef = useRef<Promise<void> | null>(null)
 
   const callTool = useCallback(
     async (name: string, args: Record<string, unknown> = {}): Promise<string> => {
       const client = clientRef.current
       if (!client) throw new Error('Not connected to MCP server')
 
-      const result = await client.callTool(name, args)
-      const textContent = result.content.find((c) => c.type === 'text')
-      return textContent?.text ?? JSON.stringify(result.content)
+      try {
+        const result = await client.callTool(name, args)
+        const textContent = result.content.find((c) => c.type === 'text')
+        const text = textContent?.text ?? JSON.stringify(result.content)
+
+        // Bug 3: Surface project-not-found errors clearly
+        if (result.content.some((c) =>
+          c.type === 'text' && c.text && /no active project|project.not.(found|set|open)/i.test(c.text),
+        )) {
+          setError('No active project. Run `ship studio` from your project directory.')
+        }
+
+        return text
+      } catch (err) {
+        // Bug 1: Detect stale session after server restart.
+        // Server returns 4xx or errors mentioning "initialized" when session is dead.
+        const isStaleSession =
+          (err instanceof McpClientError && err.code !== undefined && err.code >= 400 && err.code < 500) ||
+          (err instanceof Error && /initializ/i.test(err.message))
+
+        if (isStaleSession) {
+          // Reconnect once, then let React Query's refetch retry the call
+          if (!reconnectingRef.current) {
+            reconnectingRef.current = connect().finally(() => {
+              reconnectingRef.current = null
+            })
+          }
+          await reconnectingRef.current
+          throw new Error('Session expired — reconnecting. Retry automatically.')
+        }
+
+        throw err
+      }
     },
-    [],
+    [connect],
   )
 
   const refreshLocalAgents = useCallback(async () => {
@@ -161,7 +255,13 @@ export function useLocalMcp(): UseLocalMcpReturn {
 
   // Clean up on unmount
   useEffect(() => {
-    return () => { clientRef.current = null }
+    return () => {
+      listenerActiveRef.current = false
+      if (clientRef.current) {
+        clientRef.current.stopNotificationListener()
+      }
+      clientRef.current = null
+    }
   }, [])
 
   return {

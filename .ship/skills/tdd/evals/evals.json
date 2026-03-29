@@ -1,0 +1,65 @@
+{
+  "evals": [
+    {
+      "id": "eval-test-before-code",
+      "prompt": "Add a function that checks if a string is a valid email address",
+      "expected": "Agent writes a failing test for email validation BEFORE writing the implementation",
+      "assertions": [
+        "A test file is created or modified before the implementation file",
+        "The test is run and shown to fail",
+        "Implementation code is written only after seeing the failure"
+      ]
+    },
+    {
+      "id": "eval-minimum-code",
+      "prompt": "The test expects isEmail('user@example.com') to return true. Make it pass.",
+      "expected": "Agent writes the simplest correct implementation, not a full regex library",
+      "assertions": [
+        "Implementation handles the specific test case",
+        "No unnecessary complexity or edge case handling beyond what tests require",
+        "Test is run and passes"
+      ]
+    },
+    {
+      "id": "eval-bug-fix-tdd",
+      "prompt": "Users report that login fails when their email has a plus sign like user+tag@gmail.com",
+      "expected": "Agent writes a reproducing test FIRST, then fixes the bug",
+      "assertions": [
+        "A test case for plus-sign emails is written first",
+        "Test is run and fails (reproducing the bug)",
+        "Fix is applied and test passes"
+      ]
+    },
+    {
+      "id": "eval-detect-runner-cargo",
+      "prompt": "Write a test for the parse_config function",
+      "expected": "Agent detects Cargo.toml and uses cargo test",
+      "assertions": [
+        "Uses cargo test to run the test",
+        "Test is in a #[test] function or #[cfg(test)] module"
+      ],
+      "vars": { "test_runner": "cargo" }
+    },
+    {
+      "id": "eval-detect-runner-vitest",
+      "prompt": "Write a test for the formatDate utility function",
+      "expected": "Agent uses vitest when test_runner is set to vitest",
+      "assertions": [
+        "Uses npx vitest run to execute",
+        "Test uses describe/it or test() syntax",
+        "Test file has .test.ts or .spec.ts extension"
+      ],
+      "vars": { "test_runner": "vitest" }
+    },
+    {
+      "id": "eval-no-auto-commit",
+      "prompt": "Add a test for the calculateTotal function and make it pass",
+      "expected": "Agent does not auto-commit when commit_at_green is false",
+      "assertions": [
+        "Test is written and passes",
+        "No git commit is made automatically"
+      ],
+      "vars": { "commit_at_green": false }
+    }
+  ]
+}

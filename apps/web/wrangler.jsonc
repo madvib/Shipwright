@@ -5,6 +5,22 @@
   "compatibility_flags": ["nodejs_compat"],
   "main": "@tanstack/react-start/server-entry",
   "observability": { "enabled": true },
+  // Top-level bindings used by @cloudflare/vite-plugin for local dev (Miniflare).
+  // Migrations are applied automatically on `vite dev` startup.
+  "d1_databases": [
+    {
+      "binding": "AUTH_DB",
+      "database_name": "ship-auth-local",
+      "database_id": "local-auth",
+      "migrations_dir": "migrations/auth"
+    },
+    {
+      "binding": "REGISTRY_DB",
+      "database_name": "ship-registry-local",
+      "database_id": "local-registry",
+      "migrations_dir": "migrations/registry"
+    }
+  ],
   "env": {
     "staging": {
       "name": "ship-studio-staging",

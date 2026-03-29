@@ -1,0 +1,69 @@
+---
+title: Introduction
+description: Ship — get the most out of your AI agents with skills, compilation, and a visual studio.
+hero:
+  tagline: Get the most out of your AI agents. Ship extends the Agent Skills specification with typed variables, multi-provider compilation, and a visual studio.
+  actions:
+    - text: Get Started
+      link: /reference/getting-started/
+      icon: right-arrow
+    - text: Browse the Registry
+      link: https://getship.dev/registry
+      variant: minimal
+---
+
+## How it works
+
+{% flow %}
+{% step title="Declare" %}
+`ship init` scaffolds your `.ship/` config. Add skills and agents from the registry or write your own.
+{% /step %}
+{% step title="Activate" %}
+Set an active agent. Ship compiles everything into provider-native config.
+{% /step %}
+{% step title="Run" %}
+Each provider gets its own output format. Same source, every provider.
+{% /step %}
+{% /flow %}
+
+## What Ship gives you
+
+{% cards %}
+{% card title="Smart Skills" icon="⚡" %}
+Instruction sets with typed variables that adapt to each user and project. Same skill, personalized output for everyone.
+{% /card %}
+{% card title="Agent Profiles" icon="👤" %}
+Compose skills, MCP servers, permissions, and rules into portable agent configs.
+{% /card %}
+{% card title="Ship Studio" icon="🖥️" %}
+A visual IDE connected to your local projects. Edit skills, set variables, browse the registry.
+{% /card %}
+{% card title="Registry" icon="📦" %}
+Publish and install at getship.dev. Content-hashed, versioned, verified.
+{% /card %}
+{% /cards %}
+
+## Supported providers
+
+- **Claude Code** — CLAUDE.md, .mcp.json, .claude/skills/
+- **Cursor** — .cursor/rules, .cursor/mcp.json
+- **Gemini CLI** — GEMINI.md, .gemini/settings.json
+- **Codex** — AGENTS.md, .codex/config.toml
+- **OpenCode** — opencode.json
+
+## Quick start
+
+```bash
+curl -fsSL https://getship.dev/install | sh
+cd your-project
+ship init
+ship studio --open
+```
+
+{% aside type="tip" title="Migrating from existing provider config?" %}
+Ship converts CLAUDE.md, .cursor/rules, and other provider configs into `.ship/` format:
+
+```bash
+ship convert .
+```
+{% /aside %}

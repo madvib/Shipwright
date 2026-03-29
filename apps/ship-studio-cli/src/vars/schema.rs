@@ -8,9 +8,10 @@ use std::path::Path;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum VarType {
+    #[default]
     String,
     Bool,
     Enum,
@@ -23,9 +24,10 @@ pub enum VarType {
 /// - `global`  — machine-wide preference, shared across all contexts
 /// - `local`   — this context only, not shared (personal override)
 /// - `project` — this context, intended to be shared with the team
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum StorageHint {
+    #[default]
     Global,
     Local,
     Project,
@@ -47,18 +49,6 @@ pub struct VarDef {
     pub label: Option<String>,
     /// Description shown in Studio and `ship vars get`.
     pub description: Option<String>,
-}
-
-impl Default for VarType {
-    fn default() -> Self {
-        VarType::String
-    }
-}
-
-impl Default for StorageHint {
-    fn default() -> Self {
-        StorageHint::Global
-    }
 }
 
 // ── Validation ────────────────────────────────────────────────────────────────

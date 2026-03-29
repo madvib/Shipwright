@@ -1,0 +1,54 @@
+{
+  "evals": [
+    {
+      "id": "eval-verify-page-loads",
+      "prompt": "Check if the homepage at localhost:3000 loads correctly",
+      "expected": "Agent navigates to the URL, checks for visible content, and reports the page state",
+      "assertions": [
+        "Uses goto command to navigate",
+        "Checks page content with text, snapshot, or is visible",
+        "Reports what was found on the page"
+      ]
+    },
+    {
+      "id": "eval-test-login-flow",
+      "prompt": "Test the login flow on localhost:3000/login with test@example.com and password123",
+      "expected": "Agent fills the login form, submits, and verifies the result",
+      "assertions": [
+        "Uses snapshot -i to discover form elements",
+        "Uses fill to enter credentials",
+        "Uses click to submit the form",
+        "Verifies success or failure after submission"
+      ]
+    },
+    {
+      "id": "eval-take-evidence-screenshot",
+      "prompt": "Take a screenshot of the current page state for the bug report",
+      "expected": "Agent takes an annotated screenshot saved to the configured screenshot directory",
+      "assertions": [
+        "Uses snapshot -a or screenshot command",
+        "Saves to the screenshot_dir path",
+        "File path is reported to the user"
+      ]
+    },
+    {
+      "id": "eval-responsive-check",
+      "prompt": "Check if the navbar looks right on mobile",
+      "expected": "Agent sets mobile viewport, takes screenshot, and checks for mobile nav patterns",
+      "assertions": [
+        "Sets viewport to mobile dimensions",
+        "Takes a screenshot at mobile viewport",
+        "Checks for mobile-specific elements (hamburger menu, collapsed nav)"
+      ]
+    },
+    {
+      "id": "eval-assert-element-state",
+      "prompt": "Verify the submit button is disabled when the form is empty",
+      "expected": "Agent uses assertion commands to check element state",
+      "assertions": [
+        "Uses 'is disabled' assertion on the submit button",
+        "Reports the result clearly"
+      ]
+    }
+  ]
+}

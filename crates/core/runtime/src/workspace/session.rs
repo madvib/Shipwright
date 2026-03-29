@@ -159,14 +159,12 @@ pub fn get_active_workspace_session(
     };
     let mut generation_by_branch = HashMap::new();
     generation_by_branch.insert(workspace.branch.clone(), workspace.config_generation);
-    Ok(
-        get_active_workspace_session_db(&workspace.id)?.map(|row| {
-            let mut session = hydrate_workspace_session(row);
-            annotate_session_stale_state(&mut session, &generation_by_branch);
-            let _ = annotate_session_record(ship_dir, &mut session);
-            session
-        }),
-    )
+    Ok(get_active_workspace_session_db(&workspace.id)?.map(|row| {
+        let mut session = hydrate_workspace_session(row);
+        annotate_session_stale_state(&mut session, &generation_by_branch);
+        let _ = annotate_session_record(ship_dir, &mut session);
+        session
+    }))
 }
 
 pub fn list_workspace_sessions(
@@ -210,10 +208,7 @@ pub fn get_workspace_session_record(
     if session_id.is_empty() {
         return Err(anyhow!("Session ID cannot be empty"));
     }
-    Ok(
-        get_workspace_session_record_db(session_id)?
-            .map(hydrate_workspace_session_record),
-    )
+    Ok(get_workspace_session_record_db(session_id)?.map(hydrate_workspace_session_record))
 }
 
 pub fn record_workspace_session_progress(ship_dir: &Path, branch: &str, note: &str) -> Result<()> {

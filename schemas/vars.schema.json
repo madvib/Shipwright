@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://getship.dev/schemas/vars.schema.json",
+  "title": "Skill Variables Schema",
+  "description": "Defines typed, scoped configuration variables for a Ship smart skill.",
+  "type": "object",
+  "additionalProperties": {
+    "$ref": "#/$defs/variable"
+  },
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference."
+    }
+  },
+  "$defs": {
+    "variable": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["string", "bool", "enum", "array", "object"],
+          "default": "string",
+          "description": "Variable type. Determines validation and UI control."
+        },
+        "default": {
+          "description": "Default value when no user state is set. Type must match the 'type' field."
+        },
+        "storage-hint": {
+          "type": "string",
+          "enum": ["global", "local", "project"],
+          "default": "global",
+          "description": "Where user values are stored. global = machine-wide, local = this project only (personal), project = this project (team-shared)."
+        },
+        "values": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Allowed values for enum type. Validated on set and at compile time."
+        },
+        "label": {
+          "type": "string",
+          "description": "Human-readable name shown in Studio and CLI output."
+        },
+        "description": {
+          "type": "string",
+          "description": "Longer explanation shown in Studio tooltips and the docs site."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

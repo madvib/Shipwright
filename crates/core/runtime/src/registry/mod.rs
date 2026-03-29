@@ -24,7 +24,9 @@ pub mod verify;
 pub use cache::{CachedPackage, PackageCache};
 pub use constraint::{VersionConstraint, parse_constraint};
 pub use hash::{ExportHashes, compute_export_hashes, compute_file_hash, compute_tree_hash};
-pub use init_deps::{DEFAULT_INIT_DEPS, SeedResult, seed_default_dependencies, try_install_init_deps};
+pub use init_deps::{
+    DEFAULT_INIT_DEPS, SeedResult, seed_default_dependencies, try_install_init_deps,
+};
 pub use install::{InstallOptions, InstallResult, resolve_and_fetch};
 pub use resolver::{ResolvedVersion, resolve_alias, resolve_version};
 pub use types::{

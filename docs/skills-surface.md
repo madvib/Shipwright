@@ -65,7 +65,7 @@ Badge: "Verified by Ship" for registry-listed skills. The scanner runs client-si
 
 **Documentation site**
 
-`references/docs/` Markdoc files compiled into a browsable documentation site (Astro + Starlight). Skills become first-class documentation primitives — human-readable and agent-discoverable. `ship docs` serves locally; agentskills.io hosts the canonical site.
+`references/docs/` Markdoc files compiled into a browsable documentation site (Astro + Starlight). Skills become first-class documentation primitives — human-readable and agent-discoverable. `ship docs` serves locally; getship.dev hosts the canonical site.
 
 **Computed and dynamic vars**
 

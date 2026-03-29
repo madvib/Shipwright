@@ -27,13 +27,14 @@ export function pullAgentToResolved(pull: PullAgent): ResolvedAgentProfile {
   }
 }
 
-function pullSkillToSkill(s: { id: string; name: string; description?: string | null; content: string; source: string }): Skill {
+function pullSkillToSkill(s: { id: string; name: string; description?: string | null; content: string; source: string; tags?: string[]; authors?: string[]; files?: string[]; reference_docs?: Partial<{ [key in string]: string }> }): Skill {
   return {
     id: s.id,
     name: s.name,
     description: s.description ?? '',
     content: s.content,
     source: s.source as Skill['source'],
+    vars: {},
   }
 }
 

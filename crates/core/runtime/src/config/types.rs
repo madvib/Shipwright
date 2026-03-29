@@ -180,4 +180,3 @@ pub fn default_namespaces() -> Vec<NamespaceConfig> {
         },
     ]
 }
-

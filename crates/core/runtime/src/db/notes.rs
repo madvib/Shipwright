@@ -154,7 +154,10 @@ fn row_to_note(row: &sqlx::sqlite::SqliteRow) -> Note {
         title: row.get(1),
         content: row.get(2),
         tags: serde_json::from_str::<Vec<String>>(&row.get::<String, _>(3)).unwrap_or_else(|e| {
-            eprintln!("[ship warn] corrupt JSON in note.tags_json (id={}): {e}", row.get::<String, _>(0));
+            eprintln!(
+                "[ship warn] corrupt JSON in note.tags_json (id={}): {e}",
+                row.get::<String, _>(0)
+            );
             Default::default()
         }),
         branch: row.get(4),
@@ -181,13 +184,7 @@ mod tests {
     #[test]
     fn test_create_and_get_note() {
         let (_tmp, _ship_dir) = setup();
-        let note = create_note(
-            "My Note",
-            "hello world",
-            vec!["tag1".to_string()],
-            None,
-        )
-        .unwrap();
+        let note = create_note("My Note", "hello world", vec!["tag1".to_string()], None).unwrap();
         let got = get_note(&note.id).unwrap().unwrap();
         assert_eq!(got.title, "My Note");
         assert_eq!(got.tags, vec!["tag1".to_string()]);
@@ -242,13 +239,9 @@ mod tests {
         let (_tmp, _ship_dir) = setup();
 
         let note = create_note("A note", "note body", vec![], None).unwrap();
-        let adr = crate::db::adrs::create_adr(
-            "An ADR",
-            "some context",
-            "some decision",
-            "proposed",
-        )
-        .unwrap();
+        let adr =
+            crate::db::adrs::create_adr("An ADR", "some context", "some decision", "proposed")
+                .unwrap();
 
         // Both exist.
         assert_eq!(list_notes(None).unwrap().len(), 1);
@@ -275,16 +268,11 @@ mod tests {
         let (_tmp, _ship_dir) = setup();
 
         create_note("Persistent note", "body", vec![], None).unwrap();
-        let adr = crate::db::adrs::create_adr("Transient ADR", "ctx", "dec", "proposed")
-            .unwrap();
+        let adr = crate::db::adrs::create_adr("Transient ADR", "ctx", "dec", "proposed").unwrap();
 
         crate::db::adrs::delete_adr(&adr.id).unwrap();
 
-        assert!(
-            crate::db::adrs::get_adr(&adr.id)
-                .unwrap()
-                .is_none()
-        );
+        assert!(crate::db::adrs::get_adr(&adr.id).unwrap().is_none());
         assert_eq!(list_notes(None).unwrap().len(), 1);
     }
 }
