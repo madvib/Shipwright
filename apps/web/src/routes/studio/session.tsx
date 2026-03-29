@@ -1,14 +1,16 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useCallback } from 'react'
-import { Layers, PanelRight, WifiOff } from 'lucide-react'
+import { Layers, PanelRight, WifiOff, Maximize2, Minimize2 } from 'lucide-react'
 import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
 import { SessionCanvas } from '#/features/studio/session/SessionCanvas'
-import { SessionActivity } from '#/features/studio/session/SessionActivity'
 import { ArtifactViewer } from '#/features/studio/session/ArtifactViewer'
 import { DiffViewer } from '#/features/studio/session/DiffViewer'
-import { useSessionFiles, useSessionFileContent, useDeleteSessionFile, useUploadSessionFile } from '#/features/studio/session/useSessionFiles'
+import { SessionSidebar } from '#/features/studio/session/SessionSidebar'
+import { SessionInfoPanel } from '#/features/studio/session/SessionInfoPanel'
+import { useSessionFiles, useSessionFileContent, useUploadSessionFile } from '#/features/studio/session/useSessionFiles'
 import { useAnnotations } from '#/features/studio/session/useAnnotations'
 import { useDiffContent } from '#/features/studio/session/useDiffContent'
+import { useGitStatus, useGitLog } from '#/features/studio/session/useGitInfo'
 import { SessionSkeleton } from '#/features/studio/session/SessionSkeleton'
 import { DropZoneOverlay } from '#/features/studio/session/DropZoneOverlay'
 import type { ViewMode } from '#/features/studio/session/types'
@@ -23,24 +25,30 @@ function SessionPage() {
   const mcp = useLocalMcpContext()
   const isConnected = mcp?.status === 'connected'
 
-  const { files, isLoading } = useSessionFiles()
+  // ── All hooks called unconditionally at the top level ──
+  const { files } = useSessionFiles()
+  const uploadMutation = useUploadSessionFile()
+  const { diffText } = useDiffContent()
+  const { data: gitStatus } = useGitStatus()
+  const { data: gitLog } = useGitLog(5)
+  const ann = useAnnotations()
+
+  // ── UI state ──
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null)
-  const [activityOpen, setActivityOpen] = useState(true)
+  const [infoPanelOpen, setInfoPanelOpen] = useState(true)
   const [isDragging, setIsDragging] = useState(false)
   const [openCanvasTabs, setOpenCanvasTabs] = useState<string[]>([])
   const [activeCanvasTab, setActiveCanvasTab] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('canvas')
+  const [isFullscreen, setIsFullscreen] = useState(false)
 
-  const deleteMutation = useDeleteSessionFile()
-  const uploadMutation = useUploadSessionFile()
-  const { diffText } = useDiffContent()
-
+  // ── Derived state ──
   const effectivePath = activeFilePath ?? files.find((f) => f.name === 'canvas.html')?.path ?? null
   const activeFile = effectivePath ? files.find((f) => f.path === effectivePath) : null
   const activeFileType = activeFile?.type ?? null
   const { data: fileContent } = useSessionFileContent(effectivePath)
-  const ann = useAnnotations()
 
+  // ── Callbacks ──
   const handleExport = useCallback(async () => {
     const content = JSON.stringify(ann.toExportJSON(), null, 2)
     if (mcp && isConnected) {
@@ -90,17 +98,15 @@ function SessionPage() {
     setViewMode('canvas')
   }, [])
 
-  const handleDeleteFile = useCallback((path: string) => {
-    deleteMutation.mutate(path)
-    if (activeFilePath === path) setActiveFilePath(null)
-  }, [deleteMutation, activeFilePath])
-
   const handleUploadFiles = useCallback((fileList: FileList) => {
     for (let i = 0; i < fileList.length; i++) {
-      const file = fileList[i]
-      uploadMutation.mutate(file)
+      uploadMutation.mutate(fileList[i])
     }
   }, [uploadMutation])
+
+  const handleShowDiff = useCallback(() => {
+    setViewMode('diff')
+  }, [])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -127,6 +133,7 @@ function SessionPage() {
 
   return (
     <>
+      {/* Mobile fallback */}
       <div className="flex md:hidden flex-col items-center justify-center gap-4 px-8 py-20 text-center min-h-[60vh]">
         <div className="flex size-12 items-center justify-center rounded-xl border border-border bg-muted/40">
           <Layers className="size-5 text-muted-foreground" />
@@ -137,6 +144,7 @@ function SessionPage() {
         </p>
       </div>
 
+      {/* Desktop layout */}
       <div
         className="hidden md:flex flex-1 flex-col h-full min-h-0 overflow-hidden relative"
         onDragOver={handleDragOver}
@@ -151,95 +159,158 @@ function SessionPage() {
         )}
 
         <div className="flex flex-1 min-h-0">
-          {/* Main area: canvas, diff, or artifact viewer */}
-          {showCanvas && (
-            <SessionCanvas
-              htmlContent={fileContent ?? ''}
-              fileType={activeFileType}
+          {/* Left sidebar */}
+          {!isFullscreen && (
+            <SessionSidebar
+              files={files}
+              activeFile={effectivePath}
               annotations={ann.annotations}
-              activeId={ann.activeId}
-              annotationMode={ann.annotationMode}
-              openTabs={openCanvasTabs}
-              activeTab={activeCanvasTab}
-              onTabSelect={handleSelectCanvasTab}
-              onTabClose={handleCloseCanvasTab}
-              onAnnotationClick={ann.toggleActiveId}
-              onDismissActive={ann.dismissActive}
-              onRemoveAnnotation={ann.removeAnnotation}
-              onAddClick={ann.addClickAnnotation}
-              onAddBox={ann.addBoxAnnotation}
-              onAddAction={ann.addActionAnnotation}
-              onToggleAnnotationMode={() => ann.setAnnotationMode(!ann.annotationMode)}
-              onClearAnnotations={ann.clearAnnotations}
-              onExport={handleExport}
+              isConnected={isConnected ?? false}
+              onSelectFile={handleSelectFile}
+              onUploadFiles={handleUploadFiles}
             />
           )}
-          {showDiff && (
-            <div className="flex flex-1 flex-col min-h-0 min-w-0">
-              {diffText ? (
-                <DiffViewer diffText={diffText} />
-              ) : (
-                <div className="flex items-center justify-center h-full text-muted-foreground">
+
+          {/* Center: content area */}
+          <main className="flex-1 flex flex-col min-w-0">
+            {/* Tab bar */}
+            <div className="flex items-center border-b border-border bg-card/20 px-2 h-9 shrink-0 overflow-x-auto">
+              {openCanvasTabs.map((tabPath) => {
+                const tabFile = files.find((f) => f.path === tabPath)
+                const isActive = viewMode === 'canvas' && activeCanvasTab === tabPath
+                return (
+                  <button
+                    key={tabPath}
+                    onClick={() => handleSelectCanvasTab(tabPath)}
+                    className={`group flex items-center gap-1.5 px-3 py-1.5 text-xs whitespace-nowrap border-b-2 transition-colors ${
+                      isActive
+                        ? 'border-primary text-foreground font-medium'
+                        : 'border-transparent text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {tabFile?.name ?? tabPath.split('/').pop()}
+                    <span
+                      onClick={(e) => { e.stopPropagation(); handleCloseCanvasTab(tabPath) }}
+                      className="size-4 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive transition"
+                    >
+                      &times;
+                    </span>
+                  </button>
+                )
+              })}
+
+              {/* Diff pseudo-tab */}
+              {diffText != null && (
+                <button
+                  onClick={handleShowDiff}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs whitespace-nowrap border-b-2 transition-colors ${
+                    showDiff
+                      ? 'border-primary text-foreground font-medium'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Diff
+                </button>
+              )}
+
+              <div className="flex-1" />
+
+              {/* Toolbar */}
+              <div className="flex items-center gap-1">
+                {showCanvas && (
+                  <button
+                    onClick={() => ann.setAnnotationMode(!ann.annotationMode)}
+                    className={`h-6 px-2 rounded text-[10px] font-medium flex items-center gap-1 transition ${
+                      ann.annotationMode
+                        ? 'bg-primary/15 text-primary'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/30'
+                    }`}
+                  >
+                    Annotate
+                  </button>
+                )}
+                <button
+                  onClick={() => setIsFullscreen(!isFullscreen)}
+                  className="flex size-6 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/30 transition"
+                  title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+                >
+                  {isFullscreen ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Content viewport */}
+            <div className="flex-1 min-h-0 min-w-0 relative">
+              {showCanvas && (
+                <SessionCanvas
+                  htmlContent={fileContent ?? ''}
+                  fileType={activeFileType}
+                  annotations={ann.annotations}
+                  activeId={ann.activeId}
+                  annotationMode={ann.annotationMode}
+                  openTabs={openCanvasTabs}
+                  activeTab={activeCanvasTab}
+                  onTabSelect={handleSelectCanvasTab}
+                  onTabClose={handleCloseCanvasTab}
+                  onAnnotationClick={ann.toggleActiveId}
+                  onDismissActive={ann.dismissActive}
+                  onRemoveAnnotation={ann.removeAnnotation}
+                  onAddClick={ann.addClickAnnotation}
+                  onAddBox={ann.addBoxAnnotation}
+                  onAddAction={ann.addActionAnnotation}
+                  onToggleAnnotationMode={() => ann.setAnnotationMode(!ann.annotationMode)}
+                  onClearAnnotations={ann.clearAnnotations}
+                  onExport={handleExport}
+                />
+              )}
+              {showDiff && (
+                diffText ? (
+                  <DiffViewer diffText={diffText} />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                    <div className="text-center">
+                      <p className="text-sm font-medium">No diff available</p>
+                      <p className="text-xs mt-1 max-w-[280px]">
+                        Run <code className="text-[10px] bg-muted px-1 rounded">/diff</code> to generate one
+                      </p>
+                    </div>
+                  </div>
+                )
+              )}
+              {showArtifactViewer && activeFile && (
+                <ArtifactViewer file={activeFile} content={fileContent ?? ''} />
+              )}
+              {!showCanvas && !showDiff && !showArtifactViewer && (
+                <div className="flex flex-1 items-center justify-center h-full text-muted-foreground">
                   <div className="text-center">
-                    <p className="text-sm font-medium">No diff available</p>
+                    <Layers className="size-8 mx-auto mb-3 opacity-40" />
+                    <p className="text-sm font-medium">No file open</p>
                     <p className="text-xs mt-1 max-w-[280px]">
-                      Run <code className="text-[10px] bg-muted px-1 rounded">/diff</code> to generate one,
-                      or have an agent write to .ship-session/diff.txt
+                      Select a file from the sidebar to start editing.
                     </p>
                   </div>
                 </div>
               )}
             </div>
-          )}
-          {showArtifactViewer && activeFile && (
-            <div className="flex flex-1 flex-col min-h-0 min-w-0">
-              <ArtifactViewer file={activeFile} content={fileContent ?? ''} />
-            </div>
-          )}
-          {/* Fallback when nothing matches (e.g. artifact mode with no file) */}
-          {!showCanvas && !showDiff && !showArtifactViewer && (
-            <div className="flex flex-1 items-center justify-center text-muted-foreground">
-              <div className="text-center">
-                <Layers className="size-8 mx-auto mb-3 opacity-40" />
-                <p className="text-sm font-medium">Select a file or view</p>
-                <p className="text-xs mt-1 max-w-[280px]">
-                  Use the sidebar to open a canvas, view a diff, or browse artifacts.
-                </p>
-              </div>
-            </div>
-          )}
+          </main>
 
-          {activityOpen ? (
-            <SessionActivity
-              files={files}
-              activeFile={effectivePath}
-              isLoading={isLoading}
-              isConnected={isConnected ?? false}
-              annotations={ann.annotations}
-              viewMode={viewMode}
-              hasDiff={diffText != null}
-              openCanvasTabs={openCanvasTabs}
-              activeCanvasTab={activeCanvasTab}
-              annotationMode={ann.annotationMode}
-              onSelectFile={handleSelectFile}
-              onDeleteFile={handleDeleteFile}
-              onUploadFiles={handleUploadFiles}
-              onRemoveAnnotation={ann.removeAnnotation}
-              onExportAnnotations={handleExport}
-              onClose={() => setActivityOpen(false)}
-              onSetViewMode={setViewMode}
-              onSelectCanvasTab={handleSelectCanvasTab}
-              onToggleAnnotationMode={() => ann.setAnnotationMode(!ann.annotationMode)}
+          {/* Right panel */}
+          {!isFullscreen && infoPanelOpen ? (
+            <SessionInfoPanel
+              gitStatus={gitStatus}
+              gitLog={gitLog}
+              onClose={() => setInfoPanelOpen(false)}
+              onShowDiff={handleShowDiff}
             />
-          ) : (
+          ) : !isFullscreen ? (
             <button
-              onClick={() => setActivityOpen(true)}
-              className="shrink-0 border-l border-border/60 px-2 py-3 text-muted-foreground hover:text-foreground hover:bg-muted/30 transition"
-              aria-label="Open activity panel"
+              onClick={() => setInfoPanelOpen(true)}
+              className="shrink-0 border-l border-border px-2 py-3 text-muted-foreground hover:text-foreground hover:bg-muted/30 transition"
+              aria-label="Open session panel"
             >
               <PanelRight className="size-4" />
             </button>
-          )}
+          ) : null}
         </div>
 
         {isDragging && isConnected && <DropZoneOverlay />}

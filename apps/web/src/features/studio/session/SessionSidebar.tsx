@@ -1,0 +1,250 @@
+// Left sidebar for Session page: Files, Git, Sessions tabs.
+// Mirrors the Skills IDE SkillsFileExplorer pattern (w-60, border-r, file tree).
+
+import { useState, useRef } from 'react'
+import {
+  FileText, CheckSquare, Image, ChevronDown, ChevronRight,
+  Plus, MapPin,
+} from 'lucide-react'
+import type { SessionFile, Annotation } from './types'
+
+type SidebarTab = 'files' | 'git' | 'sessions'
+
+interface SessionSidebarProps {
+  files: SessionFile[]
+  activeFile: string | null
+  annotations: Annotation[]
+  isConnected: boolean
+  onSelectFile: (path: string) => void
+  onUploadFiles: (files: FileList) => void
+}
+
+const FILE_ICONS: Record<SessionFile['type'], { icon: typeof FileText; color: string }> = {
+  html: { icon: FileText, color: 'text-sky-500' },
+  markdown: { icon: FileText, color: 'text-emerald-500' },
+  image: { icon: Image, color: 'text-amber-500' },
+  other: { icon: FileText, color: 'text-muted-foreground' },
+}
+
+function isTodoFile(name: string): boolean {
+  return /^todo\.md$/i.test(name)
+}
+
+export function SessionSidebar({
+  files, activeFile, annotations, isConnected,
+  onSelectFile, onUploadFiles,
+}: SessionSidebarProps) {
+  const [tab, setTab] = useState<SidebarTab>('files')
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
+  const [annotationsOpen, setAnnotationsOpen] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const toggleFolder = (folder: string) => {
+    setExpandedFolders((prev) => {
+      const next = new Set(prev)
+      if (next.has(folder)) next.delete(folder)
+      else next.add(folder)
+      return next
+    })
+  }
+
+  // Group files by directory
+  const { rootFiles, folders } = groupFiles(files)
+
+  return (
+    <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-card/30">
+      {/* Tab bar */}
+      <div className="flex border-b border-border shrink-0">
+        {(['files', 'git', 'sessions'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`flex-1 py-2.5 text-center text-[11px] font-medium border-b-2 transition-colors capitalize ${
+              tab === t
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      <div className="flex-1 overflow-y-auto">
+        {tab === 'files' && (
+          <div className="px-3 pt-3 pb-1">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                Artifacts
+              </span>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={!isConnected}
+                className="flex size-5 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/50 transition disabled:opacity-40"
+              >
+                <Plus className="size-3.5" />
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files?.length) onUploadFiles(e.target.files)
+                  e.target.value = ''
+                }}
+              />
+            </div>
+
+            {/* Root files */}
+            <div className="space-y-0.5">
+              {rootFiles.map((f) => (
+                <FileEntry
+                  key={f.path}
+                  file={f}
+                  isActive={activeFile === f.path}
+                  onClick={() => onSelectFile(f.path)}
+                />
+              ))}
+
+              {/* Folders */}
+              {Object.entries(folders).map(([dir, dirFiles]) => (
+                <div key={dir} className="mt-1">
+                  <button
+                    onClick={() => toggleFolder(dir)}
+                    className="flex items-center gap-1.5 w-full px-2 py-1 text-[10px] font-medium text-muted-foreground/60 hover:text-muted-foreground transition"
+                  >
+                    {expandedFolders.has(dir) ? (
+                      <ChevronDown className="size-3" />
+                    ) : (
+                      <ChevronRight className="size-3" />
+                    )}
+                    {dir}/
+                    <span className="ml-auto text-[9px]">{dirFiles.length}</span>
+                  </button>
+                  {expandedFolders.has(dir) && (
+                    <div className="pl-4 space-y-0.5">
+                      {dirFiles.map((f) => (
+                        <FileEntry
+                          key={f.path}
+                          file={f}
+                          isActive={activeFile === f.path}
+                          onClick={() => onSelectFile(f.path)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Annotations section */}
+            {annotations.length > 0 && (
+              <>
+                <div className="mx-0 my-3 border-t border-border/40" />
+                <button
+                  onClick={() => setAnnotationsOpen(!annotationsOpen)}
+                  className="flex items-center gap-1.5 w-full"
+                >
+                  {annotationsOpen ? (
+                    <ChevronDown className="size-3 text-muted-foreground/40" />
+                  ) : (
+                    <ChevronRight className="size-3 text-muted-foreground/40" />
+                  )}
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                    Annotations
+                  </span>
+                  <span className="ml-auto text-[9px] text-muted-foreground/40 bg-muted/50 px-1.5 py-0.5 rounded">
+                    {annotations.length}
+                  </span>
+                </button>
+                {annotationsOpen && (
+                  <div className="mt-1.5 space-y-1">
+                    {annotations.map((ann, i) => (
+                      <div
+                        key={ann.id}
+                        className="flex items-center gap-2 px-2 py-1 rounded text-xs text-muted-foreground hover:text-foreground hover:bg-muted/30 cursor-pointer transition"
+                      >
+                        <MapPin className="size-3 text-primary shrink-0" />
+                        <span className="truncate">
+                          {ann.type === 'click' ? ann.note || ann.text : ann.type === 'box' ? ann.note : ann.text}
+                        </span>
+                        <span className="ml-auto text-[9px] text-muted-foreground/40">#{i + 1}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {tab === 'git' && (
+          <div className="px-3 pt-3 text-xs text-muted-foreground">
+            <p className="text-[10px] text-muted-foreground/60">
+              Git info is shown in the right panel.
+            </p>
+          </div>
+        )}
+
+        {tab === 'sessions' && (
+          <div className="px-3 pt-3 text-xs text-muted-foreground">
+            <p className="text-[10px] text-muted-foreground/60">
+              Session history will appear here.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Footer: CLI status */}
+      <div className="shrink-0 border-t border-border px-3 py-2 flex items-center gap-2">
+        <div className={`size-1.5 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`} />
+        <span className="text-[10px] text-muted-foreground">
+          {isConnected ? 'Synced to CLI' : 'Offline'}
+        </span>
+      </div>
+    </aside>
+  )
+}
+
+function FileEntry({ file, isActive, onClick }: { file: SessionFile; isActive: boolean; onClick: () => void }) {
+  const { icon: Icon, color } = FILE_ICONS[file.type]
+  const isTodo = isTodoFile(file.name)
+
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs transition ${
+        isActive
+          ? 'border-l-2 border-primary bg-primary/5 text-primary font-medium'
+          : 'text-muted-foreground hover:text-foreground hover:bg-muted/30'
+      }`}
+    >
+      {isTodo ? (
+        <CheckSquare className={`size-3.5 shrink-0 ${isActive ? 'text-primary' : 'text-emerald-500'}`} />
+      ) : (
+        <Icon className={`size-3.5 shrink-0 ${isActive ? 'text-primary' : color}`} />
+      )}
+      <span className="truncate">{file.name}</span>
+    </button>
+  )
+}
+
+function groupFiles(files: SessionFile[]): { rootFiles: SessionFile[]; folders: Record<string, SessionFile[]> } {
+  const rootFiles: SessionFile[] = []
+  const folders: Record<string, SessionFile[]> = {}
+
+  for (const f of files) {
+    const parts = f.path.split('/')
+    if (parts.length === 1) {
+      rootFiles.push(f)
+    } else {
+      const dir = parts.slice(0, -1).join('/')
+      if (!folders[dir]) folders[dir] = []
+      folders[dir].push(f)
+    }
+  }
+
+  return { rootFiles, folders }
+}
