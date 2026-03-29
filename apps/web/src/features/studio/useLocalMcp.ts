@@ -21,6 +21,7 @@ interface McpConfig {
 }
 
 function loadConfig(): McpConfig {
+  if (typeof window === 'undefined') return { port: DEFAULT_PORT }
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) return JSON.parse(raw) as McpConfig
@@ -56,7 +57,7 @@ export function useLocalMcp(): UseLocalMcpReturn {
   const [localAgentIds, setLocalAgentIds] = useState<Set<string>>(new Set())
   const [config, setConfig] = useState<McpConfig>(loadConfig)
   const [hasEverConnected, setHasEverConnected] = useState(
-    () => localStorage.getItem(EVER_CONNECTED_KEY) === 'true',
+    () => typeof window !== 'undefined' && localStorage.getItem(EVER_CONNECTED_KEY) === 'true',
   )
   const clientRef = useRef<McpClient | null>(null)
   const queryClient = useQueryClient()

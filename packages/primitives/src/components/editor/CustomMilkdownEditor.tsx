@@ -5,11 +5,46 @@ import { replaceAll } from '@milkdown/kit/utils';
 import { cn } from '@/lib/utils';
 import './editor.css';
 
-// Icons from lucide icon library — exact path data from lucide-react v0.575.0
-// message-square-plus: chat bubble with + sign
-const COMMENT_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/><path d="M12 8v6"/><path d="M9 11h6"/></svg>';
-// sparkles: star sparkle effect
-const SPARKLES_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/><path d="M20 2v4"/><path d="M22 4h-4"/><circle cx="4" cy="20" r="2"/></svg>';
+// Icon node data from lucide-react v0.575.0 (message-square-plus, sparkles).
+// Structured as lucide IconNode arrays for verifiability against the source.
+type IconNode = [string, Record<string, string>][];
+
+function iconNodeToSvg(nodes: IconNode, size = 24): string {
+    const children = nodes
+        .map(([tag, attrs]) => {
+            const pairs = Object.entries(attrs)
+                .filter(([k]) => k !== 'key')
+                .map(([k, v]) => `${k}="${v}"`)
+                .join(' ');
+            return `<${tag} ${pairs}/>`;
+        })
+        .join('');
+    return (
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"` +
+        ` viewBox="0 0 24 24" fill="none" stroke="currentColor"` +
+        ` stroke-width="2" stroke-linecap="round" stroke-linejoin="round">` +
+        children +
+        `</svg>`
+    );
+}
+
+// Source: lucide-react/dist/esm/icons/message-square-plus.js
+const messageSquarePlusNode: IconNode = [
+    ['path', { d: 'M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z' }],
+    ['path', { d: 'M12 8v6' }],
+    ['path', { d: 'M9 11h6' }],
+];
+
+// Source: lucide-react/dist/esm/icons/sparkles.js
+const sparklesNode: IconNode = [
+    ['path', { d: 'M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z' }],
+    ['path', { d: 'M20 2v4' }],
+    ['path', { d: 'M22 4h-4' }],
+    ['circle', { cx: '4', cy: '20', r: '2' }],
+];
+
+const COMMENT_ICON = iconNodeToSvg(messageSquarePlusNode);
+const SPARKLES_ICON = iconNodeToSvg(sparklesNode);
 
 export interface CustomMilkdownEditorProps {
     value: string;
@@ -158,18 +193,20 @@ export default function CustomMilkdownEditor({
 
             crepeRef.current = crepe;
 
-            // Disable spellcheck on the editor content area
-            const proseMirrorEl = root.querySelector('.ProseMirror');
-            if (proseMirrorEl) {
-                proseMirrorEl.setAttribute('spellcheck', 'false');
-            }
-
             const liveValue = crepe.getMarkdown();
             if (liveValue !== externalValueRef.current) {
                 crepe.editor.action(replaceAll(externalValueRef.current, true));
             }
 
             const annotateTooltips = () => {
+                // Disable spellcheck on ProseMirror contenteditable elements.
+                // ProseMirror may recreate DOM elements, so we re-apply on every mutation.
+                for (const el of root.querySelectorAll('.ProseMirror')) {
+                    if (el.getAttribute('spellcheck') !== 'false') {
+                        el.setAttribute('spellcheck', 'false');
+                    }
+                }
+
                 const slashCandidates = root.querySelectorAll('.milkdown-slash-menu li');
                 const toolbarCandidates = root.querySelectorAll('.milkdown-toolbar .toolbar-item');
                 const toolbarLabels = ['Bold', 'Italic', 'Strike', 'Code', 'Link', 'Math', 'Comment'];

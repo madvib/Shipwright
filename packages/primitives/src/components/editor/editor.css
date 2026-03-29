@@ -88,9 +88,16 @@
   color: var(--foreground);
 }
 
-/* Prevent toolbar from causing layout shift */
+/* Prevent toolbar from causing layout shift.
+   The toolbar is position:absolute inside .milkdown (position:relative from reset.css).
+   contain:layout on ProseMirror prevents its reflow from propagating.
+   contain:layout on the toolbar ensures its own sizing is isolated. */
 .ship-milkdown-shell .milkdown .ProseMirror {
   contain: layout style;
+}
+
+.ship-milkdown-shell .milkdown .milkdown-toolbar {
+  contain: layout;
 }
 
 .ship-milkdown-shell .milkdown .milkdown-toolbar .toolbar-item.active,
@@ -113,6 +120,41 @@
   background: oklch(var(--primary) / 0.1);
   opacity: 1;
   font-weight: 700;
+}
+
+/* Theme-aware CodeMirror overrides for code blocks */
+.ship-milkdown-shell .milkdown .cm-editor {
+  background: var(--muted) !important;
+}
+
+.ship-milkdown-shell .milkdown .cm-editor .cm-content {
+  color: var(--foreground) !important;
+}
+
+.ship-milkdown-shell .milkdown .cm-editor .cm-line {
+  color: var(--foreground) !important;
+}
+
+.ship-milkdown-shell .milkdown .cm-editor .cm-gutters {
+  background: var(--muted) !important;
+  color: var(--muted-foreground) !important;
+  border-color: var(--border) !important;
+}
+
+.ship-milkdown-shell .milkdown .cm-editor .cm-activeLine {
+  background: color-mix(in oklch, var(--primary) 5%, transparent) !important;
+}
+
+.ship-milkdown-shell .milkdown .cm-editor .cm-cursor {
+  border-left-color: var(--foreground) !important;
+}
+
+.ship-milkdown-shell .milkdown .cm-editor .cm-selectionBackground {
+  background: color-mix(in oklch, var(--primary) 25%, transparent) !important;
+}
+
+.ship-milkdown-shell .milkdown .cm-editor.cm-focused .cm-selectionBackground {
+  background: color-mix(in oklch, var(--primary) 30%, transparent) !important;
 }
 
 @keyframes ship-slash-fade {
