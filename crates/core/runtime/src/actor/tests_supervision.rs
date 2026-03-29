@@ -2,7 +2,6 @@
 mod tests_supervision {
     use crate::actor::supervisor::{SupervisionAction, SupervisorPolicy, evaluate};
     use crate::actor::{create_actor, crash_actor, run_supervision};
-    use crate::db::actor_events::ActorUpsert;
     use crate::db::{block_on, db_path, ensure_db, open_db_at};
     use crate::events::envelope::EventEnvelope;
     use crate::events::types::{ActorCrashed, ActorWoke, event_types};
@@ -14,17 +13,6 @@ mod tests_supervision {
         crate::project::init_project(tmp.path().to_path_buf()).unwrap();
         ensure_db().unwrap();
         tmp
-    }
-
-    fn default_upsert<'a>(id: &'a str) -> ActorUpsert<'a> {
-        ActorUpsert {
-            id,
-            kind: "test-worker",
-            environment_type: "local",
-            workspace_id: None,
-            parent_actor_id: None,
-            restart_count: 0,
-        }
     }
 
     fn actor_status(id: &str) -> String {
@@ -129,15 +117,8 @@ mod tests_supervision {
         let supervisor_id = "supervisor-restart-t4";
         let child_id = "child-restart-t4";
 
-        create_actor(default_upsert(supervisor_id))?;
-        create_actor(ActorUpsert {
-            id: child_id,
-            kind: "test-worker",
-            environment_type: "local",
-            workspace_id: None,
-            parent_actor_id: Some(supervisor_id),
-            restart_count: 0,
-        })?;
+        create_actor(supervisor_id, "test-worker", "local", None, None)?;
+        create_actor(child_id, "test-worker", "local", None, Some(supervisor_id))?;
 
         // crash with restart_count=0 — below max_restarts=3, should trigger Restart
         crash_actor(child_id, "oom", 0, None, Some(supervisor_id))?;
@@ -167,15 +148,8 @@ mod tests_supervision {
         let supervisor_id = "supervisor-stop-t5";
         let child_id = "child-stop-t5";
 
-        create_actor(default_upsert(supervisor_id))?;
-        create_actor(ActorUpsert {
-            id: child_id,
-            kind: "test-worker",
-            environment_type: "local",
-            workspace_id: None,
-            parent_actor_id: Some(supervisor_id),
-            restart_count: 0,
-        })?;
+        create_actor(supervisor_id, "test-worker", "local", None, None)?;
+        create_actor(child_id, "test-worker", "local", None, Some(supervisor_id))?;
 
         // crash with restart_count=3 — equal to max_restarts=3, should trigger Stop
         crash_actor(child_id, "fatal", 3, None, Some(supervisor_id))?;

@@ -6,7 +6,6 @@
 #[cfg(test)]
 mod tests {
     use crate::actor::create_actor;
-    use crate::db::actor_events::ActorUpsert;
     use crate::db::session_events::insert_session_with_started_event;
     use crate::db::types::WorkspaceSessionDb;
     use crate::db::{block_on, db_path, ensure_db, open_db_at};
@@ -33,14 +32,7 @@ mod tests {
         let ws_id = "ws-test-actor";
         let actor_id = "actor-1";
 
-        create_actor(ActorUpsert {
-            id: actor_id,
-            kind: "test-worker",
-            environment_type: "local",
-            workspace_id: Some(ws_id),
-            parent_actor_id: None,
-            restart_count: 0,
-        })?;
+        create_actor(actor_id, "test-worker", "local", Some(ws_id), None)?;
 
         // Must appear in workspace DB
         let mut ws_conn = open_workspace_db(&ship_dir, ws_id)?;
@@ -137,22 +129,8 @@ mod tests {
         let ws_alpha = "ws-alpha";
         let ws_beta = "ws-beta";
 
-        create_actor(ActorUpsert {
-            id: "actor-alpha",
-            kind: "worker",
-            environment_type: "local",
-            workspace_id: Some(ws_alpha),
-            parent_actor_id: None,
-            restart_count: 0,
-        })?;
-        create_actor(ActorUpsert {
-            id: "actor-beta",
-            kind: "worker",
-            environment_type: "local",
-            workspace_id: Some(ws_beta),
-            parent_actor_id: None,
-            restart_count: 0,
-        })?;
+        create_actor("actor-alpha", "worker", "local", Some(ws_alpha), None)?;
+        create_actor("actor-beta", "worker", "local", Some(ws_beta), None)?;
 
         // ws-alpha DB: own event present, ws-beta event absent
         let mut alpha_conn = open_workspace_db(&ship_dir, ws_alpha)?;

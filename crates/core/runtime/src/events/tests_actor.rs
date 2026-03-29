@@ -89,7 +89,7 @@ fn supervisor_queries_elevated_child_events_by_parent_actor_id() -> anyhow::Resu
     let (_tmp, store) = setup();
 
     // Parent actor event (elevated, actor_id="supervisor-1") — should NOT appear
-    let parent_ev = EventEnvelope::new(event_types::ACTOR_CREATED, "supervisor-1", &crate::events::types::ActorCreated { kind: "supervisor".into(), environment_type: "local".into() })?
+    let parent_ev = EventEnvelope::new(event_types::ACTOR_CREATED, "supervisor-1", &crate::events::types::ActorCreated { kind: "supervisor".into(), environment_type: "local".into(), workspace_id: None, parent_actor_id: None, restart_count: 0 })?
         .with_actor_id("supervisor-1")
         .elevate();
     store.append(&parent_ev)?;

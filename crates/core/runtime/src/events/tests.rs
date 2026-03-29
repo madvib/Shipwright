@@ -175,7 +175,7 @@ fn test_payload_round_trip() -> anyhow::Result<()> {
     rt!(event_types::SESSION_STARTED,       SessionStarted { goal: Some("deploy".into()) });
     rt!(event_types::SESSION_PROGRESS,      SessionProgress { message: "halfway".into() });
     rt!(event_types::SESSION_ENDED,         SessionEnded { summary: Some("done".into()), duration_secs: Some(120), gate_result: Some("pass".into()) });
-    rt!(event_types::ACTOR_CREATED,         ActorCreated { kind: "worker".into(), environment_type: "cli".into() });
+    rt!(event_types::ACTOR_CREATED,         ActorCreated { kind: "worker".into(), environment_type: "cli".into(), workspace_id: None, parent_actor_id: None, restart_count: 0 });
     rt!(event_types::ACTOR_WOKE,            ActorWoke {});
     rt!(event_types::ACTOR_SLEPT,           ActorSlept { idle_secs: 45 });
     rt!(event_types::ACTOR_STOPPED,         ActorStopped { reason: "shutdown".into() });

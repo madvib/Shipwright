@@ -3,7 +3,6 @@ mod tests {
     use crate::actor::{
         create_actor, crash_actor, sleep_actor, stop_actor, wake_actor,
     };
-    use crate::db::actor_events::ActorUpsert;
     use crate::db::{block_on, ensure_db, open_db_at};
     use crate::events::filter::EventFilter;
     use crate::events::store::{EventStore, SqliteEventStore};
@@ -22,17 +21,6 @@ mod tests {
         SqliteEventStore::new().unwrap()
     }
 
-    fn default_upsert(id: &str) -> ActorUpsert<'_> {
-        ActorUpsert {
-            id,
-            kind: "test-worker",
-            environment_type: "local",
-            workspace_id: None,
-            parent_actor_id: None,
-            restart_count: 0,
-        }
-    }
-
     // ── test 1: create_actor emits actor.created ──────────────────────────────
 
     #[test]
@@ -40,7 +28,7 @@ mod tests {
         let _tmp = setup();
         let id = "actor-create-t1";
 
-        create_actor(default_upsert(id))?;
+        create_actor(id, "test-worker", "local", None, None)?;
 
         let store = event_store();
         let events = store.query(&EventFilter {
@@ -63,7 +51,7 @@ mod tests {
         let _tmp = setup();
         let id = "actor-wake-t2";
 
-        create_actor(default_upsert(id))?;
+        create_actor(id, "test-worker", "local", None, None)?;
         wake_actor(id, None, None)?;
 
         let store = event_store();
@@ -84,7 +72,7 @@ mod tests {
         let _tmp = setup();
         let id = "actor-sleep-t3";
 
-        create_actor(default_upsert(id))?;
+        create_actor(id, "test-worker", "local", None, None)?;
         sleep_actor(id, 30, None, None)?;
 
         let store = event_store();
@@ -108,7 +96,7 @@ mod tests {
         let _tmp = setup();
         let id = "actor-stop-t4";
 
-        create_actor(default_upsert(id))?;
+        create_actor(id, "test-worker", "local", None, None)?;
         stop_actor(id, "graceful shutdown", None, None)?;
 
         let store = event_store();
@@ -125,7 +113,7 @@ mod tests {
         Ok(())
     }
 
-    // ── test 5: crash_actor emits actor.crashed + increments restart_count ───
+    // ── test 5: crash_actor emits actor.crashed + persists restart_count ─────
 
     #[test]
     fn crash_actor_emits_crashed_event() -> Result<()> {
@@ -133,7 +121,7 @@ mod tests {
         let id = "actor-crash-t5";
         let db = crate::db::db_path()?;
 
-        create_actor(default_upsert(id))?;
+        create_actor(id, "test-worker", "local", None, None)?;
         crash_actor(id, "OOM", 1, None, None)?;
 
         // Event check
@@ -150,7 +138,7 @@ mod tests {
         assert_eq!(payload.error, "OOM");
         assert_eq!(payload.restart_count, 1);
 
-        // DB check: restart_count must equal what we passed
+        // DB check: restart_count must equal what we passed (set by projection)
         let mut conn = open_db_at(&db)?;
         let count: i64 = block_on(async {
             sqlx::query_scalar("SELECT restart_count FROM actors WHERE id = ?")
@@ -169,22 +157,22 @@ mod tests {
         let _tmp = setup();
         let id = "actor-meta-t6";
 
-        create_actor(ActorUpsert {
-            id,
-            kind: "meta-worker",
-            environment_type: "local",
-            workspace_id: Some("ws-meta"),
-            parent_actor_id: Some("parent-meta"),
-            restart_count: 0,
-        })?;
+        create_actor(id, "meta-worker", "local", Some("ws-meta"), Some("parent-meta"))?;
         wake_actor(id, Some("ws-meta"), Some("parent-meta"))?;
         sleep_actor(id, 10, Some("ws-meta"), Some("parent-meta"))?;
         stop_actor(id, "done", Some("ws-meta"), Some("parent-meta"))?;
 
-        let store = event_store();
-        let all_events = store.query(&EventFilter {
-            entity_id: Some(id.to_string()),
-            ..Default::default()
+        // Actor events go to workspace DB, query there
+        let ship_dir = crate::project::get_global_dir()?;
+        let mut ws_conn = crate::db::workspace_db::open_workspace_db(&ship_dir, "ws-meta")?;
+        let all_events: Vec<(String, String, Option<String>, bool)> = block_on(async {
+            sqlx::query_as(
+                "SELECT event_type, entity_id, actor_id, elevated FROM events \
+                 WHERE entity_id = ? ORDER BY created_at",
+            )
+            .bind(id)
+            .fetch_all(&mut ws_conn)
+            .await
         })?;
 
         assert!(
@@ -192,23 +180,22 @@ mod tests {
             "expected actor lifecycle events for id '{id}'"
         );
 
-        for ev in &all_events {
-            assert_eq!(ev.entity_id, id, "entity_id must equal actor id");
+        for (event_type, entity_id, actor_id, elevated) in &all_events {
+            assert_eq!(entity_id, id, "entity_id must equal actor id");
             assert_eq!(
-                ev.actor_id.as_deref(),
+                actor_id.as_deref(),
                 Some(id),
-                "actor_id must equal actor id, got {:?}",
-                ev.actor_id
+                "actor_id must equal actor id for event {event_type}"
             );
-            assert!(ev.elevated, "actor lifecycle events must have elevated=true");
+            assert!(elevated, "actor lifecycle events must have elevated=true");
         }
         Ok(())
     }
 
-    // ── test 7: event insert failure rolls back actor write ───────────────────
+    // ── test 7: event insert failure rolls back ──────────────────────────────
 
     #[test]
-    fn actor_event_failure_rolls_back_actor_write() -> Result<()> {
+    fn actor_event_failure_rolls_back() -> Result<()> {
         let _tmp = setup();
         let db = crate::db::db_path()?;
 
@@ -229,21 +216,14 @@ mod tests {
         drop(conn);
 
         let sentinel_id = "atomicity-actor-sentinel";
-        let result = create_actor(ActorUpsert {
-            id: sentinel_id,
-            kind: "sentinel",
-            environment_type: "local",
-            workspace_id: None,
-            parent_actor_id: None,
-            restart_count: 0,
-        });
+        let result = create_actor(sentinel_id, "sentinel", "local", None, None);
 
         assert!(
             result.is_err(),
             "transaction must fail when event INSERT is blocked by trigger"
         );
 
-        // actors row must NOT have been committed.
+        // actors row must NOT have been committed (projection never ran).
         let mut conn2 = open_db_at(&db)?;
         let count: i64 = block_on(async {
             sqlx::query_scalar("SELECT COUNT(*) FROM actors WHERE id = ?")
@@ -253,7 +233,7 @@ mod tests {
         })?;
         assert_eq!(
             count, 0,
-            "actors row must be rolled back when event INSERT fails; got {count} rows"
+            "actors row must not exist when event INSERT fails; got {count} rows"
         );
 
         Ok(())

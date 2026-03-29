@@ -1,14 +1,13 @@
 //! Projection system tests — prove that events are the source of truth.
 
 #[cfg(test)]
-mod tests {
+mod workspace_tests {
     use crate::db::{block_on, db_path, ensure_db, open_db_at};
     use crate::events::types::event_types;
     use crate::events::EventEnvelope;
     use crate::projections::{EventBus, WorkspaceProjection};
 
     fn setup() -> sqlx::SqliteConnection {
-        // init_project sets up the global dir + runs migrations
         let ship_dir = crate::project::get_global_dir().unwrap();
         let base = ship_dir.parent().unwrap().to_path_buf();
         crate::project::init_project(base).unwrap();
@@ -139,7 +138,6 @@ mod tests {
         let mut conn = setup();
         let bus = bus();
 
-        // 1) Apply events live
         let events = vec![
             workspace_created_event("feature/rebuild-a"),
             workspace_compiled_event("feature/rebuild-a"),
@@ -151,15 +149,12 @@ mod tests {
             bus.dispatch(event, &mut conn);
         }
 
-        // capture live state
         let status_a = query_workspace_status(&mut conn, "feature/rebuild-a");
         let status_b = query_workspace_status(&mut conn, "feature/rebuild-b");
 
-        // 2) Truncate and rebuild
         let report = bus.rebuild(&events, &mut conn).unwrap();
         assert_eq!(report.events_replayed, 4);
 
-        // 3) Rebuilt state must match live state
         let rebuilt_a = query_workspace_status(&mut conn, "feature/rebuild-a");
         let rebuilt_b = query_workspace_status(&mut conn, "feature/rebuild-b");
         assert_eq!(status_a, rebuilt_a, "rebuild must produce identical state for workspace A");
