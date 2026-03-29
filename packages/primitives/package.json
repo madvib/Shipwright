@@ -24,10 +24,6 @@
     },
     "dependencies": {
         "@base-ui/react": "^1.2.0",
-        "@codemirror/state": "^6.6.0",
-        "@codemirror/view": "^6.40.0",
-        "@milkdown/crepe": "^7.18.0",
-        "@milkdown/kit": "^7.18.0",
         "@tiptap/core": "^3.21.0",
         "@tiptap/extension-code-block-lowlight": "^3.21.0",
         "@tiptap/extension-image": "^3.21.0",

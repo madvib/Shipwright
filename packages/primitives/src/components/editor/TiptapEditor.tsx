@@ -17,7 +17,7 @@ import './editor.css';
 
 const lowlight = createLowlight(common);
 
-export interface CustomMilkdownEditorProps {
+export interface TiptapEditorProps {
     value: string;
     onChange: (value: string) => void;
     placeholder?: string;
@@ -28,7 +28,7 @@ export interface CustomMilkdownEditorProps {
     onGenerate?: (selectedText: string) => void;
 }
 
-export default function CustomMilkdownEditor({
+export default function TiptapEditor({
     value,
     onChange,
     placeholder,
@@ -37,7 +37,7 @@ export default function CustomMilkdownEditor({
     className,
     onComment,
     onGenerate,
-}: CustomMilkdownEditorProps) {
+}: TiptapEditorProps) {
     const onChangeRef = useRef(onChange);
     const onCommentRef = useRef(onComment);
     const onGenerateRef = useRef(onGenerate);
@@ -149,6 +149,7 @@ export default function CustomMilkdownEditor({
                 <div
                     className="ship-tiptap-bubble"
                     style={{ position: 'absolute', top: toolbarPos.top, left: toolbarPos.left, zIndex: 40 }}
+                    onMouseDown={(e) => e.preventDefault()}
                 >
                     <button onClick={() => editor.chain().focus().toggleBold().run()} className={editor.isActive('bold') ? 'is-active' : ''} title="Bold"><strong>B</strong></button>
                     <button onClick={() => editor.chain().focus().toggleItalic().run()} className={editor.isActive('italic') ? 'is-active' : ''} title="Italic"><em>I</em></button>

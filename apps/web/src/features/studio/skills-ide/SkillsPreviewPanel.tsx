@@ -1,10 +1,12 @@
 import { X, AlertTriangle, AlertCircle } from 'lucide-react'
 import { useAgents } from '#/features/agents/useAgents'
-import { parseFrontmatter, validateFrontmatter } from './skill-frontmatter'
+import { validateFrontmatter } from './skill-frontmatter'
+import { FrontmatterEditor } from './FrontmatterEditor'
 import type { LibrarySkill } from './useSkillsLibrary'
+import type { FrontmatterEntry } from '@ship/primitives'
 import { VarsTab } from './preview-vars-tab'
 
-type PreviewTab = 'vars' | 'info' | 'used-by'
+type PreviewTab = 'vars' | 'metadata' | 'used-by'
 
 interface Props {
   skill: LibrarySkill | null
@@ -12,27 +14,34 @@ interface Props {
   onTabChange: (tab: PreviewTab) => void
   onClose: () => void
   onAddFile?: (skillId: string, filePath: string, content: string) => void
+  /** Parsed frontmatter from the active editor */
+  frontmatterEntries: FrontmatterEntry[]
+  frontmatterRaw: string | null
+  /** Called when frontmatter is edited in the metadata panel */
+  onFrontmatterUpdate?: (newRaw: string) => void
 }
 
 const TABS: { id: PreviewTab; label: string }[] = [
   { id: 'vars', label: 'Variables' },
-  { id: 'info', label: 'Info' },
+  { id: 'metadata', label: 'Metadata' },
   { id: 'used-by', label: 'Used by' },
 ]
 
-// -- Info Tab -----------------------------------------------------------------
+// ── Metadata Tab ──
 
-function InfoTab({ skill }: { skill: LibrarySkill }) {
-  // Always validate the skill's SKILL.md content, not the active editor file
-  const skillContent = skill.content
-  const fm = parseFrontmatter(skillContent)
-  const warnings = validateFrontmatter(skillContent)
-  const tags = skill.tags.length > 0 ? skill.tags : (Array.isArray(fm.tags) ? fm.tags : [])
+function MetadataTab({ skill, entries, raw, onUpdate }: {
+  skill: LibrarySkill
+  entries: FrontmatterEntry[]
+  raw: string | null
+  onUpdate?: (newRaw: string) => void
+}) {
+  const warnings = validateFrontmatter(skill.content)
 
   return (
-    <div className="space-y-4">
+    <div>
+      {/* Validation warnings */}
       {warnings.length > 0 && (
-        <div className="space-y-1">
+        <div className="space-y-1 px-4 py-3 border-b border-border/40">
           {warnings.map((w, i) => (
             <div
               key={i}
@@ -51,46 +60,43 @@ function InfoTab({ skill }: { skill: LibrarySkill }) {
         </div>
       )}
 
-      <div>
-        <h4 className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Identity</h4>
-        <div className="space-y-0.5">
-          {([
-            ['stable-id', skill.stableId ?? fm['stable-id'] ?? skill.id],
-            ['Authors', skill.authors.length > 0 ? skill.authors.join(', ') : '--'],
-            ['License', fm.license ?? skill.license ?? '--'],
-            ['Source', skill.origin],
-          ] as [string, string][]).map(([key, val]) => (
-            <div key={key} className="flex justify-between text-[11px] py-0.5">
-              <span className="text-muted-foreground">{key}</span>
-              <span className="text-foreground/80 truncate ml-2">{val}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {tags.length > 0 && (
-        <div>
-          <h4 className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Tags</h4>
-          <div className="flex flex-wrap gap-1">
-            {tags.map((tag) => (
-              <span key={tag} className="bg-muted text-foreground/70 text-[10px] px-1.5 py-0.5 rounded">{tag}</span>
-            ))}
-          </div>
-        </div>
+      {/* Editable frontmatter fields */}
+      {onUpdate ? (
+        <FrontmatterEditor entries={entries} raw={raw} onUpdate={onUpdate} />
+      ) : (
+        <ReadOnlyMetadata entries={entries} skill={skill} />
       )}
 
+      {/* Files list */}
       {skill.files.length > 0 && (
-        <div>
-          <h4 className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Files ({skill.files.length})</h4>
+        <div className="px-4 py-3 border-t border-border/40">
+          <h4 className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+            Files ({skill.files.length})
+          </h4>
           <div className="space-y-0.5 font-mono text-[10px] text-foreground/70">
             {skill.files.map((f) => <div key={f}>{f}</div>)}
           </div>
         </div>
       )}
+    </div>
+  )
+}
 
+function ReadOnlyMetadata({ entries, skill }: { entries: FrontmatterEntry[]; skill: LibrarySkill }) {
+  return (
+    <div className="px-4 py-3 space-y-2">
+      {entries.length > 0 ? (
+        entries.map((e) => (
+          <div key={e.key} className="flex justify-between text-[11px] py-0.5">
+            <span className="text-muted-foreground font-mono">{e.key}</span>
+            <span className="text-foreground/80 truncate ml-2 max-w-[140px]">{e.value}</span>
+          </div>
+        ))
+      ) : (
+        <p className="text-[11px] text-muted-foreground">No frontmatter defined.</p>
+      )}
       {skill.description && (
-        <div>
-          <h4 className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Description</h4>
+        <div className="pt-2 border-t border-border/40">
           <p className="text-[11px] text-foreground/70 leading-relaxed">{skill.description}</p>
         </div>
       )}
@@ -98,7 +104,7 @@ function InfoTab({ skill }: { skill: LibrarySkill }) {
   )
 }
 
-// -- Used By Tab --------------------------------------------------------------
+// ── Used By Tab ──
 
 function UsedByTab({ skill }: { skill: LibrarySkill }) {
   const { agents } = useAgents()
@@ -127,12 +133,18 @@ function UsedByTab({ skill }: { skill: LibrarySkill }) {
   )
 }
 
-// -- Panel --------------------------------------------------------------------
+// ── Panel ──
 
-export function SkillsPreviewPanel({ skill, activeTab, onTabChange, onClose, onAddFile }: Props) {
+export function SkillsPreviewPanel({
+  skill, activeTab, onTabChange, onClose, onAddFile,
+  frontmatterEntries, frontmatterRaw, onFrontmatterUpdate,
+}: Props) {
   if (!skill) return null
 
-  const tab = (activeTab === 'vars' || activeTab === 'info' || activeTab === 'used-by') ? activeTab : 'vars'
+  const tab: PreviewTab = (activeTab === 'vars' || activeTab === 'metadata' || activeTab === 'used-by')
+    ? activeTab
+    // Migrate old 'info' tab to 'metadata'
+    : activeTab === 'info' ? 'metadata' : 'vars'
 
   return (
     <div className="flex w-80 shrink-0 flex-col border-l border-border bg-card/10">
@@ -161,27 +173,34 @@ export function SkillsPreviewPanel({ skill, activeTab, onTabChange, onClose, onA
         })}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3">
+      <div className="flex-1 overflow-y-auto">
         {tab === 'vars' && (
-          <VarsTab
+          <div className="p-3">
+            <VarsTab
+              skill={skill}
+              onAddVars={onAddFile ? () => {
+                const defaultVars = JSON.stringify({
+                  $schema: 'https://getship.dev/schemas/vars.schema.json',
+                  example_var: { type: 'string', default: '', 'storage-hint': 'global', label: 'Example variable', description: 'Replace this with your first variable.' },
+                }, null, 2)
+                onAddFile(skill.id, 'assets/vars.json', defaultVars)
+              } : undefined}
+            />
+          </div>
+        )}
+        {tab === 'metadata' && (
+          <MetadataTab
             skill={skill}
-            onAddVars={onAddFile ? () => {
-              const defaultVars = JSON.stringify({
-                $schema: 'https://getship.dev/schemas/vars.schema.json',
-                example_var: {
-                  type: 'string',
-                  default: '',
-                  'storage-hint': 'global',
-                  label: 'Example variable',
-                  description: 'Replace this with your first variable.',
-                },
-              }, null, 2)
-              onAddFile(skill.id, 'assets/vars.json', defaultVars)
-            } : undefined}
+            entries={frontmatterEntries}
+            raw={frontmatterRaw}
+            onUpdate={onFrontmatterUpdate}
           />
         )}
-        {tab === 'info' && <InfoTab skill={skill} />}
-        {tab === 'used-by' && <UsedByTab skill={skill} />}
+        {tab === 'used-by' && (
+          <div className="p-3">
+            <UsedByTab skill={skill} />
+          </div>
+        )}
       </div>
     </div>
   )

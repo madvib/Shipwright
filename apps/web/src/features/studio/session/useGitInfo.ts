@@ -21,7 +21,10 @@ export interface GitStatusResult {
 
 export interface GitLogEntry {
   hash: string
-  subject: string
+  short_hash?: string
+  /** MCP returns `message`, legacy code expected `subject` */
+  message?: string
+  subject?: string
   author: string
   date: string
 }

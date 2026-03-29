@@ -1,13 +1,14 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useCallback, useEffect } from 'react'
-import { Layers, WifiOff, X } from 'lucide-react'
+import { Layers, WifiOff } from 'lucide-react'
 import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
 import { SessionCanvas } from '#/features/studio/session/SessionCanvas'
 import { ArtifactViewer } from '#/features/studio/session/ArtifactViewer'
-import { DiffViewer } from '#/features/studio/session/DiffViewer'
+import { DiffViewer, type DiffComment } from '#/features/studio/session/DiffViewer'
 import { SessionSidebar } from '#/features/studio/session/SessionSidebar'
 import { useSessionFiles, useSessionFileContent, useUploadSessionFile } from '#/features/studio/session/useSessionFiles'
 import { useSessionDrafts } from '#/features/studio/session/useSessionDrafts'
+import { SessionTabBar } from '#/features/studio/session/SessionTabBar'
 import { useAnnotations } from '#/features/studio/session/useAnnotations'
 import { useDiffContent } from '#/features/studio/session/useDiffContent'
 import { useGitStatus, useGitLog, useGitDiff } from '#/features/studio/session/useGitInfo'
@@ -135,9 +136,22 @@ function SessionPage() {
   }, [ann, mcp, isConnected])
 
   const handleComment = useCallback((selectedText: string, comment: string) => {
-    // Store highlight comments as action annotations
     ann.addActionAnnotation(`comment: ${comment}`, selectedText)
   }, [ann])
+
+  const handleDiffComment = useCallback((comment: DiffComment) => {
+    ann.addActionAnnotation(
+      `diff-comment: ${comment.comment}`,
+      `${comment.file}:${comment.lineNum} ${comment.content.slice(0, 100)}`,
+    )
+    // Also write to session file for agent consumption
+    if (mcp && isConnected) {
+      mcp.callTool('write_session_file', {
+        path: 'diff-comments.json',
+        content: JSON.stringify(comment, null, 2),
+      }).catch(() => {})
+    }
+  }, [ann, mcp, isConnected])
 
   const handleUploadFiles = useCallback((fileList: FileList) => {
     for (let i = 0; i < fileList.length; i++) uploadMutation.mutate(fileList[i])
@@ -218,46 +232,15 @@ function SessionPage() {
 
           {/* Center content */}
           <div className="flex-1 flex flex-col min-w-0 min-h-0">
-            {/* Tab bar — always visible, manages ALL open files */}
-            <div className="flex items-center border-b border-border bg-card/20 px-1 h-9 shrink-0 overflow-x-auto">
-              {openTabs.map((tab) => {
-                const isActive = viewMode === 'file' && tab.path === activeTabPath
-                const unsaved = drafts.unsavedPaths.has(tab.path)
-                return (
-                  <button
-                    key={tab.path}
-                    onClick={() => selectTab(tab.path)}
-                    className={`group flex items-center gap-1.5 px-3 py-1.5 text-xs whitespace-nowrap border-b-2 transition-colors ${
-                      isActive
-                        ? 'border-primary text-foreground font-medium'
-                        : 'border-transparent text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {unsaved && <span className="size-1.5 rounded-full bg-primary shrink-0" title="Unsaved" />}
-                    <span className="truncate max-w-[140px]">{tab.name}</span>
-                    <span
-                      onClick={(e) => { e.stopPropagation(); closeTab(tab.path) }}
-                      className="size-4 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive transition"
-                    >
-                      <X className="size-3" />
-                    </span>
-                  </button>
-                )
-              })}
-
-              {/* Diff pseudo-tab */}
-              {showDiff && (
-                <button
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs whitespace-nowrap border-b-2 border-primary text-foreground font-medium"
-                >
-                  {selectedCommitHash ? `Diff ${selectedCommitHash.slice(0, 7)}` : 'Diff'}
-                </button>
-              )}
-
-              {openTabs.length === 0 && !showDiff && (
-                <span className="px-3 py-1.5 text-xs text-muted-foreground/40">No files open</span>
-              )}
-            </div>
+            <SessionTabBar
+              openTabs={openTabs}
+              activeTabPath={activeTabPath}
+              viewMode={viewMode}
+              unsavedPaths={drafts.unsavedPaths}
+              selectedCommitHash={selectedCommitHash}
+              onSelectTab={selectTab}
+              onCloseTab={closeTab}
+            />
 
             {/* Content area */}
             <div className="flex-1 flex flex-col min-h-0 min-w-0">
@@ -296,7 +279,7 @@ function SessionPage() {
               )}
               {showDiff && (
                 activeDiffText ? (
-                  <DiffViewer diffText={activeDiffText} />
+                  <DiffViewer diffText={activeDiffText} onComment={handleDiffComment} />
                 ) : (
                   <div className="flex items-center justify-center h-full text-muted-foreground">
                     <div className="text-center">

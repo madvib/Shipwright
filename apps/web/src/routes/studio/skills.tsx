@@ -1,13 +1,25 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useState, useCallback, useRef } from 'react'
+import type { FrontmatterEntry } from '@ship/primitives'
+import { composeFrontmatterDocument, splitFrontmatterDocument } from '@ship/primitives'
 import { Zap, WifiOff } from 'lucide-react'
 import { useSkillsIDE } from '#/features/studio/skills-ide/useSkillsIDE'
 import { SkillsFileExplorer } from '#/features/studio/skills-ide/SkillsFileExplorer'
 import { SkillsEditor } from '#/features/studio/skills-ide/SkillsEditor'
 import { SkillsPreviewPanel } from '#/features/studio/skills-ide/SkillsPreviewPanel'
 import { CreateSkillDialog } from '#/features/studio/skills-ide/CreateSkillDialog'
+import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
 
 import { SkillsIdeSkeleton } from '#/features/studio/StudioSkeleton'
+
+interface SkillFeedbackEntry {
+  skillName: string
+  tabId: string
+  selectedText: string
+  comment: string
+  timestamp: string
+}
+
 
 export const Route = createFileRoute('/studio/skills')({
   component: SkillsIDEPage,
@@ -17,6 +29,51 @@ export const Route = createFileRoute('/studio/skills')({
 function SkillsIDEPage() {
   const ide = useSkillsIDE()
   const [createOpen, setCreateOpen] = useState(false)
+  const mcp = useLocalMcpContext()
+  const feedbackRef = useRef<SkillFeedbackEntry[]>([])
+
+  // Frontmatter state — shared between editor and preview panel
+  const [fmEntries, setFmEntries] = useState<FrontmatterEntry[]>([])
+  const [fmRaw, setFmRaw] = useState<string | null>(null)
+
+  const handleFrontmatterParsed = useCallback((entries: FrontmatterEntry[], raw: string | null) => {
+    setFmEntries(entries)
+    setFmRaw(raw)
+  }, [])
+
+  const handleFrontmatterUpdate = useCallback((newRaw: string) => {
+    // Recompose the document with updated frontmatter
+    if (!ide.state.activeTabId) return
+    const currentContent = ide.activeContent
+    const doc = splitFrontmatterDocument(currentContent)
+    const updated = composeFrontmatterDocument(newRaw, doc.body, doc.delimiter ?? '---')
+    ide.updateContent(ide.state.activeTabId, updated)
+  }, [ide])
+
+  const handleComment = useCallback(
+    (selectedText: string, comment: string, skillName: string, tabId: string) => {
+      const entry: SkillFeedbackEntry = {
+        skillName,
+        tabId,
+        selectedText: selectedText.slice(0, 500),
+        comment,
+        timestamp: new Date().toISOString(),
+      }
+      feedbackRef.current = [...feedbackRef.current, entry]
+
+      if (mcp?.status === 'connected') {
+        mcp
+          .callTool('write_session_file', {
+            path: 'skill-feedback.json',
+            content: JSON.stringify(feedbackRef.current, null, 2),
+          })
+          .catch(() => {
+            // MCP write failed; feedback is still retained in memory
+          })
+      }
+    },
+    [mcp],
+  )
 
   return (
     <>
@@ -75,6 +132,8 @@ function SkillsIDEPage() {
             onSave={ide.saveSkill}
             onTogglePreview={() => ide.setPreviewOpen(!ide.state.previewOpen)}
             onCreateSkill={() => setCreateOpen(true)}
+            onComment={handleComment}
+            onFrontmatterParsed={handleFrontmatterParsed}
           />
 
           {ide.state.previewOpen && (
@@ -84,6 +143,9 @@ function SkillsIDEPage() {
               onTabChange={ide.setPreviewTab}
               onClose={() => ide.setPreviewOpen(false)}
               onAddFile={ide.addFile}
+              frontmatterEntries={fmEntries}
+              frontmatterRaw={fmRaw}
+              onFrontmatterUpdate={handleFrontmatterUpdate}
             />
           )}
         </div>

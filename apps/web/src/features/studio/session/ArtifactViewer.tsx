@@ -1,8 +1,9 @@
-// Viewer for non-HTML artifacts: markdown (milkdown editor),
+// Viewer for non-HTML artifacts: markdown (tiptap editor),
 // images (click-to-zoom), JSON, and text files.
 
 import { useMemo, useState, lazy, Suspense } from 'react'
-import { FileText, Image as ImageIcon, File, ZoomIn, ZoomOut, Save, Maximize } from 'lucide-react'
+import { FileText, Image as ImageIcon, File, ZoomIn, ZoomOut, Save, Maximize, ChevronDown, ChevronRight } from 'lucide-react'
+import type { FrontmatterEntry } from '@ship/primitives'
 import { MarkdownPreview } from '#/features/studio/skills-ide/MarkdownPreview'
 
 const MarkdownEditor = lazy(() =>
@@ -76,7 +77,36 @@ function ImageViewer({ file, content }: { file: SessionFile; content: string }) 
   )
 }
 
-// ── Markdown Editor (milkdown with draft support) ──
+// ── Frontmatter Bar ──
+
+function FrontmatterBar({ entries }: { entries: FrontmatterEntry[] }) {
+  const [expanded, setExpanded] = useState(false)
+  if (entries.length === 0) return null
+  return (
+    <div className="border-b border-border/60 bg-muted/30 shrink-0">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1.5 px-4 py-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors w-full text-left"
+      >
+        {expanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+        <span className="font-medium">Frontmatter</span>
+        <span className="text-muted-foreground/60">({entries.length} {entries.length === 1 ? 'field' : 'fields'})</span>
+      </button>
+      {expanded && (
+        <div className="px-4 pb-2 space-y-0.5">
+          {entries.map((entry) => (
+            <div key={entry.key} className="flex gap-2 text-[11px]">
+              <span className="text-muted-foreground font-mono shrink-0">{entry.key}:</span>
+              <span className="text-foreground/80 truncate">{entry.value}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Markdown Editor (tiptap with draft support) ──
 
 function MarkdownFileEditor({
   file, content, draftContent, isDirty, onContentChange, onSave, onComment,
@@ -91,6 +121,7 @@ function MarkdownFileEditor({
 }) {
   const editable = onContentChange != null
   const displayContent = draftContent ?? content
+  const [fmEntries, setFmEntries] = useState<FrontmatterEntry[]>([])
 
   if (!editable) {
     // Read-only fallback
@@ -131,6 +162,7 @@ function MarkdownFileEditor({
           <Maximize className="size-3" />
         </button>
       </div>
+      <FrontmatterBar entries={fmEntries} />
       <div className="flex-1 overflow-hidden">
         <Suspense fallback={<div className="p-4 text-xs text-muted-foreground">Loading editor...</div>}>
           <MarkdownEditor
@@ -139,6 +171,7 @@ function MarkdownFileEditor({
             fillHeight
             hideChrome
             onComment={onComment}
+            onFrontmatterParsed={(entries) => setFmEntries(entries)}
           />
         </Suspense>
       </div>
