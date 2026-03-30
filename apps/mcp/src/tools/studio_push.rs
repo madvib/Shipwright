@@ -179,7 +179,8 @@ fn write_agent(ship_dir: &Path, agent: &AgentBundle) -> Result<(), String> {
 
 fn write_skill(ship_dir: &Path, skill_id: &str, skill: &SkillBundle) -> Result<(), String> {
     // Write to the first configured skill_path (default: "skills/")
-    let write_base = runtime::read_skill_paths(ship_dir)
+    let project_root = ship_dir.parent().unwrap_or(ship_dir);
+    let write_base = runtime::read_skill_paths(ship_dir, project_root)
         .into_iter()
         .next()
         .unwrap_or_else(|| ship_dir.join("skills"));
