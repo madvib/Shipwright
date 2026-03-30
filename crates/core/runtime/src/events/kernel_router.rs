@@ -158,7 +158,8 @@ impl KernelRouter {
         Ok(())
     }
 
-    /// Tear down an actor: drop its mailbox sender and remove its subscriptions.
+    /// Tear down an actor: flush its event store, drop its mailbox, and remove
+    /// its subscriptions.
     ///
     /// Errors if the actor does not exist.
     pub fn stop_actor(&mut self, actor_id: &str) -> Result<()> {
@@ -167,6 +168,11 @@ impl KernelRouter {
         }
         for actor_ids in self.subscriptions.values_mut() {
             actor_ids.retain(|id| id != actor_id);
+        }
+        // Flush WAL to ensure all writes are checkpointed before teardown.
+        let db_path = self.actor_db_path(actor_id);
+        if db_path.exists() {
+            flush_wal(&db_path)?;
         }
         Ok(())
     }
@@ -180,4 +186,24 @@ impl KernelRouter {
     pub fn kernel_store_path(&self) -> &Path {
         &self.kernel_store_path
     }
+
+    /// Resolved DB path for an actor.
+    fn actor_db_path(&self, actor_id: &str) -> PathBuf {
+        self.base_dir
+            .join("actors")
+            .join(actor_id)
+            .join("events.db")
+    }
+}
+
+/// Checkpoint WAL to main database file.
+fn flush_wal(db_path: &Path) -> Result<()> {
+    use crate::db::open_db_at;
+    let mut conn = open_db_at(db_path)?;
+    crate::db::block_on(async {
+        sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+            .execute(&mut conn)
+            .await
+    })?;
+    Ok(())
 }
