@@ -56,7 +56,7 @@ pub fn list_project_skills(project_dir: &Path, req: ListProjectSkillsRequest) ->
     } else {
         project_dir.to_path_buf()
     };
-    let skill_dirs = runtime::read_skill_paths(&ship_dir);
+    let skill_dirs = runtime::read_skill_paths(&ship_dir, project_dir);
     tracing::info!(
         "list_project_skills: ship_dir={}, skill_dirs={:?}",
         ship_dir.display(),
@@ -220,7 +220,8 @@ fn resolve_skill_file_path(
         return Err("file_path must not contain '..' (path traversal).".into());
     }
     // Write to the first configured skill_path (default: "skills/")
-    let write_base = runtime::read_skill_paths(ship_dir)
+    let project_root = ship_dir.parent().unwrap_or(ship_dir);
+    let write_base = runtime::read_skill_paths(ship_dir, project_root)
         .into_iter()
         .next()
         .unwrap_or_else(|| ship_dir.join("skills"));

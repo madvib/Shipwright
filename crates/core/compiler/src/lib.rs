@@ -1,6 +1,7 @@
 pub mod agent_parser;
 pub mod compile;
 pub mod decompile;
+pub mod events;
 pub mod jsonc;
 pub mod lockfile;
 pub mod manifest;

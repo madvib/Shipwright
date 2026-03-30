@@ -228,7 +228,8 @@ fn pull_agents_from_dir(
 }
 
 fn resolve_skills(ship_dir: &Path, refs: &[String]) -> Vec<PullSkill> {
-    let skill_dirs = runtime::read_skill_paths(ship_dir);
+    let project_root = ship_dir.parent().unwrap_or(ship_dir);
+    let skill_dirs = runtime::read_skill_paths(ship_dir, project_root);
     refs.iter()
         .filter_map(|r| {
             let id = r.rsplit('/').next().unwrap_or(r);
@@ -482,8 +483,8 @@ mod tests {
         assert!(ids.is_empty());
     }
 
-    fn write_skill_at(ship_dir: &Path, rel_dir: &str, id: &str, body: &str) {
-        let skill_dir = ship_dir.join(rel_dir).join(id);
+    fn write_skill_at(base_dir: &Path, rel_dir: &str, id: &str, body: &str) {
+        let skill_dir = base_dir.join(rel_dir).join(id);
         std::fs::create_dir_all(&skill_dir).unwrap();
         let content = format!("---\nname: {id}\n---\n{body}");
         std::fs::write(skill_dir.join("SKILL.md"), content).unwrap();
@@ -501,12 +502,15 @@ mod tests {
     #[test]
     fn resolve_skills_finds_across_paths() {
         let tmp = tempfile::tempdir().unwrap();
-        let ship_dir = tmp.path().join(".ship");
+        let project_root = tmp.path();
+        let ship_dir = project_root.join(".ship");
         std::fs::create_dir_all(&ship_dir).unwrap();
-        write_manifest_skill_paths(&ship_dir, &["skills/", "docs/"]);
+        write_manifest_skill_paths(&ship_dir, &["docs/"]);
 
+        // skills/ is built-in, anchored to ship_dir
         write_skill_at(&ship_dir, "skills", "tdd", "Write tests first.");
-        write_skill_at(&ship_dir, "docs", "tutorial", "A tutorial skill.");
+        // docs/ is custom, anchored to project_root
+        write_skill_at(project_root, "docs", "tutorial", "A tutorial skill.");
 
         let skills = resolve_skills(&ship_dir, &["tdd".to_string(), "tutorial".to_string()]);
         assert_eq!(skills.len(), 2);
@@ -518,12 +522,14 @@ mod tests {
     #[test]
     fn resolve_skills_first_path_wins() {
         let tmp = tempfile::tempdir().unwrap();
-        let ship_dir = tmp.path().join(".ship");
+        let project_root = tmp.path();
+        let ship_dir = project_root.join(".ship");
         std::fs::create_dir_all(&ship_dir).unwrap();
         write_manifest_skill_paths(&ship_dir, &["first/", "second/"]);
 
-        write_skill_at(&ship_dir, "first", "dup", "First version.");
-        write_skill_at(&ship_dir, "second", "dup", "Second version.");
+        // Custom paths resolve relative to project_root
+        write_skill_at(project_root, "first", "dup", "First version.");
+        write_skill_at(project_root, "second", "dup", "Second version.");
 
         let skills = resolve_skills(&ship_dir, &["dup".to_string()]);
         assert_eq!(skills.len(), 1);
