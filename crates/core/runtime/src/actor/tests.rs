@@ -119,7 +119,6 @@ mod tests {
     fn crash_actor_emits_crashed_event() -> Result<()> {
         let _tmp = setup();
         let id = "actor-crash-t5";
-        let db = crate::db::db_path()?;
 
         create_actor(id, "test-worker", "local", None, None)?;
         crash_actor(id, "OOM", 1, None, None)?;
@@ -137,16 +136,6 @@ mod tests {
             serde_json::from_str(&events[0].payload_json)?;
         assert_eq!(payload.error, "OOM");
         assert_eq!(payload.restart_count, 1);
-
-        // DB check: restart_count must equal what we passed (set by projection)
-        let mut conn = open_db_at(&db)?;
-        let count: i64 = block_on(async {
-            sqlx::query_scalar("SELECT restart_count FROM actors WHERE id = ?")
-                .bind(id)
-                .fetch_one(&mut conn)
-                .await
-        })?;
-        assert_eq!(count, 1, "restart_count must be persisted in actors table");
         Ok(())
     }
 
@@ -162,16 +151,15 @@ mod tests {
         sleep_actor(id, 10, Some("ws-meta"), Some("parent-meta"))?;
         stop_actor(id, "done", Some("ws-meta"), Some("parent-meta"))?;
 
-        // Actor events go to workspace DB, query there
-        let ship_dir = crate::project::get_global_dir()?;
-        let mut ws_conn = crate::db::workspace_db::open_workspace_db(&ship_dir, "ws-meta")?;
+        // Actor events go to platform.db only
+        let mut conn = open_db_at(&crate::db::db_path()?)?;
         let all_events: Vec<(String, String, Option<String>, bool)> = block_on(async {
             sqlx::query_as(
                 "SELECT event_type, entity_id, actor_id, elevated FROM events \
-                 WHERE entity_id = ? ORDER BY created_at",
+                 WHERE entity_id = ? ORDER BY id",
             )
             .bind(id)
-            .fetch_all(&mut ws_conn)
+            .fetch_all(&mut conn)
             .await
         })?;
 

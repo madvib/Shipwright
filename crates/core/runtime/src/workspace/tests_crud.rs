@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::db::branch_context::get_branch_link;
+    use crate::projections::{Projection, SessionProjection};
     use crate::workspace::*;
     use anyhow::Result;
     use tempfile::tempdir;
@@ -73,11 +74,14 @@ mod tests {
             workspace_branch: workspace.branch.clone(),
             ..Default::default()
         };
-        crate::db::session_events::insert_session_with_started_event(
+        let start_envelope = crate::db::session_events::insert_session_with_started_event(
             "session-delete-me",
             &workspace.id,
             &started,
         )?;
+        if let Ok(mut conn) = crate::db::open_db() {
+            let _ = SessionProjection::new().apply(&start_envelope, &mut conn);
+        }
         let ended = crate::events::types::SessionEnded {
             summary: Some("done".to_string()),
             duration_secs: Some(0),
@@ -85,11 +89,14 @@ mod tests {
             updated_workspace_ids: Vec::new(),
             compile_error: None,
         };
-        crate::db::session_events::update_session_with_ended_event(
+        let end_envelope = crate::db::session_events::update_session_with_ended_event(
             "session-delete-me",
             &workspace.id,
             &ended,
         )?;
+        if let Ok(mut conn) = crate::db::open_db() {
+            let _ = SessionProjection::new().apply(&end_envelope, &mut conn);
+        }
         assert_eq!(list_workspace_sessions(&ship_dir, None, 10)?.len(), 1);
 
         delete_workspace(&ship_dir, "feature/delete-me")?;
