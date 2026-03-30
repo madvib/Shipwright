@@ -1,51 +1,27 @@
 //! Event-sourced workspace state writes.
 //!
-//! Each public function inserts a typed event into the `events` table inside a
-//! BEGIN/COMMIT block, then dispatches the event through the global EventBus so
-//! projections (e.g. WorkspaceProjection) maintain derived state.
+//! Each public function builds an EventEnvelope and emits it through the global
+//! EventRouter (validate → persist → broadcast), then dispatches synchronously
+//! to WorkspaceProjection so derived state is available immediately.
 //!
 //! ADR GHihs2tn: all workspace lifecycle transitions must emit typed events.
 
-use std::sync::OnceLock;
-
 use anyhow::Result;
 
-use crate::db::{block_on, open_db};
+use crate::db::{block_on_anyhow, open_db};
+use crate::events::global_router::router;
 use crate::events::types::event_types;
 use crate::events::types::{
     WorkspaceActivated, WorkspaceAgentChanged, WorkspaceArchived, WorkspaceCompileFailed,
     WorkspaceCompiled, WorkspaceCreated, WorkspaceDeleted, WorkspaceStatusChanged,
 };
+use crate::events::validator::{CallerKind, EmitContext};
 use crate::events::EventEnvelope;
-use crate::projections::{EventBus, WorkspaceProjection};
+use crate::projections::{Projection, WorkspaceProjection};
 
-// ── SQL constants ─────────────────────────────────────────────────────────────
+// ── core emit ────────────────────────────────────────────────────────────────
 
-const EVENT_INSERT: &str =
-    "INSERT INTO events \
-     (id, event_type, entity_id, actor, payload_json, version, \
-      correlation_id, causation_id, workspace_id, session_id, \
-      actor_id, parent_actor_id, elevated, created_at) \
-     VALUES (?, ?, ?, 'ship', ?, 1, NULL, NULL, ?, NULL, ?, NULL, 1, ?)";
-
-// ── global event bus ──────────────────────────────────────────────────────────
-
-static EVENT_BUS: OnceLock<EventBus> = OnceLock::new();
-
-fn global_bus() -> &'static EventBus {
-    EVENT_BUS.get_or_init(|| {
-        let mut bus = EventBus::new();
-        bus.register(Box::new(WorkspaceProjection::new()));
-        bus
-    })
-}
-
-// ── core transactional write ──────────────────────────────────────────────────
-
-/// Insert event in a BEGIN/COMMIT block, then dispatch to projections.
-///
-/// The projection handler maintains the workspace table — there is no direct
-/// workspace UPSERT in this path.
+/// Build envelope, emit via router, then dispatch to workspace projection.
 fn run_tx<P: serde::Serialize>(
     branch: &str,
     event_type: &'static str,
@@ -56,34 +32,25 @@ fn run_tx<P: serde::Serialize>(
         .with_actor_id(branch)
         .elevate();
 
-    let event_ts = envelope.created_at.to_rfc3339();
+    let ctx = EmitContext {
+        caller_kind: CallerKind::Runtime,
+        skill_id: None,
+        workspace_id: Some(branch.to_string()),
+        session_id: None,
+    };
 
-    let mut conn = open_db()?;
-    block_on(async {
-        sqlx::query("BEGIN IMMEDIATE").execute(&mut conn).await?;
+    // Router: validate → persist → broadcast
+    block_on_anyhow(router().emit(envelope.clone(), &ctx))?;
 
-        let ev_result = sqlx::query(EVENT_INSERT)
-            .bind(&envelope.id)
-            .bind(&envelope.event_type)
-            .bind(&envelope.entity_id)
-            .bind(&envelope.payload_json)
-            .bind(&envelope.workspace_id)
-            .bind(&envelope.actor_id)
-            .bind(&event_ts)
-            .execute(&mut conn)
-            .await;
-
-        if let Err(e) = ev_result {
-            let _ = sqlx::query("ROLLBACK").execute(&mut conn).await;
-            return Err(e);
+    // Synchronous projection: update workspace table immediately so callers
+    // can read the state right after emit returns.
+    let proj = WorkspaceProjection::new();
+    if proj.event_types().contains(&event_type) {
+        let mut conn = open_db()?;
+        if let Err(e) = proj.apply(&envelope, &mut conn) {
+            eprintln!("[workspace-events] projection error for {event_type}: {e}");
         }
-
-        sqlx::query("COMMIT").execute(&mut conn).await?;
-        Ok(())
-    })?;
-
-    // Dispatch to projections after successful commit.
-    global_bus().dispatch(&envelope, &mut conn);
+    }
 
     Ok(())
 }
