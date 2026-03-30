@@ -29,8 +29,6 @@ export interface LibrarySkill extends Skill {
   referenceDocs: Record<string, string>
   /** Raw evals.json content, null if no evals */
   evals: JsonValue | null
-  /** Raw assets/events.json content, null if no events */
-  eventsSchema?: JsonValue | null
 }
 
 export interface UseSkillsLibraryReturn {
@@ -66,7 +64,6 @@ function pullToLibrarySkill(
     files: ps.files ?? [],
     referenceDocs: (ps.reference_docs ?? {}) as Record<string, string>,
     evals: ps.evals ?? null,
-    eventsSchema: (ps as { events_schema?: JsonValue | null }).events_schema ?? null,
   }
 }
 
