@@ -29,6 +29,8 @@ impl ShipServer {
         "start_session",
         "end_session",
         "log_progress",
+        "get_session",
+        "list_sessions",
         "list_skills",
         "list_events",
         // Studio-only tools (pull_agents, push_bundle, list_local_agents,
