@@ -1,5 +1,8 @@
+pub mod actor_store;
 pub mod envelope;
 pub mod filter;
+pub mod kernel_router;
+pub mod mailbox;
 pub mod router;
 pub mod store;
 pub mod types;
@@ -15,9 +18,14 @@ mod tests_actor;
 mod router_tests;
 #[cfg(test)]
 mod integration_tests;
+#[cfg(test)]
+mod kernel_router_tests;
 
+pub use actor_store::ActorStore;
 pub use envelope::EventEnvelope;
 pub use filter::EventFilter;
+pub use kernel_router::{ActorConfig, KernelRouter};
+pub use mailbox::Mailbox;
 pub use router::EventRouter;
 pub use store::{EventStore, SqliteEventStore};
 pub use validator::{CallerKind, EmitContext, EventValidator, ValidationError};
