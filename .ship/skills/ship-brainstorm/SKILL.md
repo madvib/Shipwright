@@ -1,12 +1,12 @@
 ---
-name: visual-brainstorm
-stable-id: visual-brainstorm
+name: ship-brainstorm
+stable-id: ship-brainstorm
 description: Use to generate and iterate on HTML mockups for UI design. Writes to .ship-session/ for live preview in Ship Studio's Session page with visual annotation support.
 tags: [design, ui, mockups, prototyping]
 authors: [ship]
 ---
 
-# Visual Brainstorm
+# Ship Brainstorm
 
 Generate production-quality HTML mockups. Real typography, spacing, color — not wireframes. Iterate with visual feedback via Ship Studio's Session page.
 

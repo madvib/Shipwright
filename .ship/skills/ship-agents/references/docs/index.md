@@ -120,7 +120,7 @@ Here is the `web-lane.jsonc` agent, which configures an autonomous frontend spec
       "github.com/better-auth/skills/better-auth",
       "ship-coordination",
       "studio-mcp-bridge",
-      "visual-brainstorm",
+      "ship-brainstorm",
       "visual-spec"
     ]
   },

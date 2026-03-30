@@ -5,8 +5,9 @@ import { FrontmatterEditor } from './FrontmatterEditor'
 import type { LibrarySkill } from './useSkillsLibrary'
 import type { FrontmatterEntry } from '@ship/primitives'
 import { VarsTab } from './preview-vars-tab'
+import { SkillEventsTab } from './SkillEventsTab'
 
-type PreviewTab = 'vars' | 'metadata' | 'used-by'
+type PreviewTab = 'vars' | 'metadata' | 'used-by' | 'events'
 
 interface Props {
   skill: LibrarySkill | null
@@ -21,10 +22,11 @@ interface Props {
   onFrontmatterUpdate?: (newRaw: string) => void
 }
 
-const TABS: { id: PreviewTab; label: string }[] = [
+const BASE_TABS: { id: PreviewTab; label: string }[] = [
   { id: 'vars', label: 'Variables' },
   { id: 'metadata', label: 'Metadata' },
   { id: 'used-by', label: 'Used by' },
+  { id: 'events', label: 'Events' },
 ]
 
 // ── Metadata Tab ──
@@ -141,10 +143,13 @@ export function SkillsPreviewPanel({
 }: Props) {
   if (!skill) return null
 
-  const tab: PreviewTab = (activeTab === 'vars' || activeTab === 'metadata' || activeTab === 'used-by')
+  const tab: PreviewTab = (activeTab === 'vars' || activeTab === 'metadata' || activeTab === 'used-by' || activeTab === 'events')
     ? activeTab
     // Migrate old 'info' tab to 'metadata'
     : activeTab === 'info' ? 'metadata' : 'vars'
+
+  const hasEvents = skill.eventsSchema != null || skill.files.includes('assets/events.json')
+  const tabs = BASE_TABS.filter((t) => t.id !== 'events' || hasEvents)
 
   return (
     <div className="flex w-80 shrink-0 flex-col border-l border-border bg-card/10">
@@ -156,7 +161,7 @@ export function SkillsPreviewPanel({
       </div>
 
       <div className="flex border-b border-border shrink-0">
-        {TABS.map((t) => {
+        {tabs.map((t) => {
           const hasVars = t.id === 'vars' && skill.varsSchema != null
           return (
             <button
@@ -200,6 +205,9 @@ export function SkillsPreviewPanel({
           <div className="p-3">
             <UsedByTab skill={skill} />
           </div>
+        )}
+        {tab === 'events' && (
+          <SkillEventsTab skill={skill} />
         )}
       </div>
     </div>

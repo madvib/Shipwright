@@ -10,7 +10,7 @@ authors: [ship]
 
 From idea to shipped UI in one session. Brainstorm → preview → spec → implement → verify.
 
-## Phase 1: Brainstorm (visual-brainstorm)
+## Phase 1: Brainstorm (ship-brainstorm)
 
 Generate a self-contained HTML mockup at `.ship-session/mockup.html`:
 - Tailwind via CDN, no build step

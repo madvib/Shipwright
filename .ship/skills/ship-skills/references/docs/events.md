@@ -58,7 +58,7 @@ Full schemas for each built-in event are published at `https://getship.dev/schem
 
 Custom events live in the skill's namespace. The `id` field becomes `{stable-id}.{id}` at runtime.
 
-A skill with `stable-id: visual-brainstorm` that declares a custom event `page_created` produces events of type `visual-brainstorm.page_created`.
+A skill with `stable-id: ship-brainstorm` that declares a custom event `page_created` produces events of type `ship-brainstorm.page_created`.
 
 ### Event fields
 
@@ -86,7 +86,7 @@ The runtime enforces direction. An agent cannot emit an `in`-only event. A human
 
 Skills define events. Agents use skills. The runtime routes events to agents based on their active skills.
 
-1. Agent activates with skills `[visual-brainstorm, code-review]`.
+1. Agent activates with skills `[ship-brainstorm, code-review]`.
 2. Runtime reads `events.json` from each skill.
 3. `in` and `both` events from all active skills become the agent's `allowed_events`.
 4. When an event arrives on the workspace bus, the EventRelay checks each connected agent's `allowed_events`.
