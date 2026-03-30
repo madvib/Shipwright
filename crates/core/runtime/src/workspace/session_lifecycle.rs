@@ -6,6 +6,7 @@ use crate::db::session_events::{
     insert_session_with_started_event, update_session_with_ended_event,
 };
 use crate::events::types::{SessionEnded, SessionStarted};
+use crate::projections::{Projection, SessionProjection};
 use anyhow::{Result, anyhow};
 use chrono::Utc;
 use std::path::Path;
@@ -143,7 +144,11 @@ pub fn start_workspace_session(
         config_generation_at_start: Some(workspace.config_generation),
         compiled_at: workspace.compiled_at.as_ref().map(|ts| ts.to_rfc3339()),
     };
-    insert_session_with_started_event(&session_id, &workspace.id, &started_payload)?;
+    let start_envelope = insert_session_with_started_event(&session_id, &workspace.id, &started_payload)?;
+    // Apply session projection synchronously so get_workspace_session_db finds the row.
+    if let Ok(mut conn) = crate::db::open_db() {
+        let _ = SessionProjection::new().apply(&start_envelope, &mut conn);
+    }
     let created = get_workspace_session_db(&session_id)?
         .ok_or_else(|| anyhow::anyhow!("Failed to load created workspace session"))?;
     let started = hydrate_workspace_session(created);
@@ -191,7 +196,11 @@ pub fn end_workspace_session(
         updated_workspace_ids: active.updated_workspace_ids.clone(),
         compile_error: active.compile_error.clone(),
     };
-    update_session_with_ended_event(&active.id, &active.workspace_id, &ended_payload)?;
+    let end_envelope = update_session_with_ended_event(&active.id, &active.workspace_id, &ended_payload)?;
+    // Apply session projection synchronously so get_workspace_session_db finds the updated row.
+    if let Ok(mut conn) = crate::db::open_db() {
+        let _ = SessionProjection::new().apply(&end_envelope, &mut conn);
+    }
 
     let ended = get_workspace_session_db(&active.id)?
         .ok_or_else(|| anyhow::anyhow!("Failed to load ended workspace session"))?;

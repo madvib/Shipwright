@@ -6,7 +6,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::db::{block_on, db_path, ensure_db, open_db_at};
+    use crate::db::{block_on, db_path, ensure_db};
     use crate::workspace::*;
     use anyhow::Result;
     use tempfile::tempdir;

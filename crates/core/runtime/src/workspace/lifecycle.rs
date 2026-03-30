@@ -10,11 +10,9 @@ use super::event_upserts::{
     upsert_workspace_on_status_changed,
 };
 use super::helpers::*;
+use super::lifecycle_actors::ensure_actor_for_workspace;
 use super::types::*;
 use super::types_session::*;
-
-use crate::db::actor_events::{emit_actor_created, emit_actor_stopped};
-use crate::events::types::ActorCreated;
 
 /// Create or update a workspace record without requiring a git checkout.
 /// This is the runtime-native entrypoint for workspace lifecycle management.
@@ -197,79 +195,6 @@ pub fn get_active_workspace_type(ship_dir: &Path) -> Result<Option<ShipWorkspace
         .iter()
         .find(|w| w.status == WorkspaceStatus::Active)
         .map(|w| w.workspace_type))
-}
-
-// ── Actor auto-creation ──────────────────────────────────────────────────────
-
-/// Derive the actor ID for a workspace: `{workspace_id}/{agent_id}`.
-fn actor_id_for_workspace(workspace: &Workspace) -> String {
-    let agent = workspace
-        .active_agent
-        .as_deref()
-        .unwrap_or("default");
-    format!("{}/{}", workspace.id, agent)
-}
-
-/// Query the current actor for this workspace from the workspace DB.
-/// Returns `(actor_id, kind)` if an active (non-stopped) actor exists.
-fn current_actor_in_workspace(workspace: &Workspace) -> Result<Option<String>> {
-    let mut conn = crate::db::workspace_db::open_workspace_db_for_id(&workspace.id)?;
-    let rows: Vec<(String,)> = crate::db::block_on(async {
-        sqlx::query_as(
-            "SELECT id FROM actors WHERE workspace_id = ? AND status != 'stopped' \
-             ORDER BY created_at DESC LIMIT 1",
-        )
-        .bind(&workspace.id)
-        .fetch_all(&mut conn)
-        .await
-    })?;
-    Ok(rows.first().map(|r| r.0.clone()))
-}
-
-/// Ensure an actor exists for the workspace's current agent.
-/// If the agent changed, stop the old actor and create a new one.
-fn ensure_actor_for_workspace(workspace: &Workspace) -> Result<()> {
-    let desired_id = actor_id_for_workspace(workspace);
-    let ws_id = Some(workspace.id.as_str());
-
-    match current_actor_in_workspace(workspace)? {
-        Some(existing_id) if existing_id == desired_id => {
-            // Actor already exists for this agent — nothing to do.
-        }
-        Some(existing_id) => {
-            // Agent changed — stop old actor, create new one.
-            emit_actor_stopped(&existing_id, "agent changed", ws_id, None)?;
-            emit_actor_created(
-                &desired_id,
-                &ActorCreated {
-                    kind: "workspace".to_string(),
-                    environment_type: "local".to_string(),
-                    workspace_id: ws_id.map(str::to_string),
-                    parent_actor_id: None,
-                    restart_count: 0,
-                },
-                ws_id,
-                None,
-            )?;
-        }
-        None => {
-            // No actor yet — create one.
-            emit_actor_created(
-                &desired_id,
-                &ActorCreated {
-                    kind: "workspace".to_string(),
-                    environment_type: "local".to_string(),
-                    workspace_id: ws_id.map(str::to_string),
-                    parent_actor_id: None,
-                    restart_count: 0,
-                },
-                ws_id,
-                None,
-            )?;
-        }
-    }
-
-    Ok(())
 }
 
 /// Create the default service workspace ("ship") if it doesn't already exist.

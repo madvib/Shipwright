@@ -15,14 +15,21 @@ mod tests_supervision {
         tmp
     }
 
-    fn actor_status(id: &str) -> String {
+    /// Returns the event_type of the most recent actor lifecycle event for `id`.
+    /// Queries platform.db events table — immediately consistent after emit.
+    fn actor_last_event_type(id: &str) -> String {
         let db = db_path().unwrap();
         let mut conn = open_db_at(&db).unwrap();
         block_on(async {
-            sqlx::query_scalar::<_, String>("SELECT status FROM actors WHERE id = ?")
-                .bind(id)
-                .fetch_one(&mut conn)
-                .await
+            sqlx::query_scalar::<_, String>(
+                "SELECT event_type FROM events \
+                 WHERE actor_id = ? \
+                 AND event_type IN ('actor.created','actor.woke','actor.slept','actor.stopped','actor.crashed') \
+                 ORDER BY id DESC LIMIT 1",
+            )
+            .bind(id)
+            .fetch_one(&mut conn)
+            .await
         })
         .unwrap()
     }
@@ -131,11 +138,11 @@ mod tests_supervision {
         });
         assert!(has_restart, "expected Restart action for child actor, got {:?}", actions);
 
-        // wake_actor sets status to 'active'
+        // wake_actor emits actor.woke — verify via events table
         assert_eq!(
-            actor_status(child_id),
-            "active",
-            "child actor status must be 'active' after restart"
+            actor_last_event_type(child_id),
+            "actor.woke",
+            "child actor's last event must be actor.woke after restart"
         );
         Ok(())
     }
@@ -162,11 +169,11 @@ mod tests_supervision {
         });
         assert!(has_stop, "expected Stop action for child actor, got {:?}", actions);
 
-        // stop_actor sets status to 'stopped'
+        // stop_actor emits actor.stopped — verify via events table
         assert_eq!(
-            actor_status(child_id),
-            "stopped",
-            "child actor status must be 'stopped' after max_restarts exceeded"
+            actor_last_event_type(child_id),
+            "actor.stopped",
+            "child actor's last event must be actor.stopped after max_restarts exceeded"
         );
         Ok(())
     }

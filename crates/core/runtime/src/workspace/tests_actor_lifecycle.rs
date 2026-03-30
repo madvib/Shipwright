@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::db::{block_on, ensure_db};
+    use crate::db::{block_on, ensure_db, open_db};
     use crate::workspace::*;
     use anyhow::Result;
     use tempfile::tempdir;
@@ -16,15 +16,18 @@ mod tests {
         (tmp, ship_dir)
     }
 
-    fn query_actors(
-        ship_dir: &std::path::Path,
-        ws_id: &str,
-    ) -> Vec<(String, String, String)> {
-        let mut conn = open_workspace_db(ship_dir, ws_id).unwrap();
+    /// Query actor lifecycle events from platform.db for a workspace.
+    /// Returns (actor_id, event_type) pairs ordered by event id.
+    fn query_actor_events(ws_id: &str) -> Vec<(String, String)> {
+        let mut conn = open_db().unwrap();
         block_on(async {
-            sqlx::query_as::<_, (String, String, String)>(
-                "SELECT id, kind, status FROM actors ORDER BY created_at",
+            sqlx::query_as::<_, (String, String)>(
+                "SELECT actor_id, event_type FROM events \
+                 WHERE workspace_id = ? AND actor_id IS NOT NULL \
+                 AND event_type IN ('actor.created', 'actor.stopped') \
+                 ORDER BY id",
             )
+            .bind(ws_id)
             .fetch_all(&mut conn)
             .await
         })
@@ -34,23 +37,22 @@ mod tests {
     // ── test 1: activate workspace creates actor ─────────────────────────────
 
     #[test]
-    fn activate_workspace_creates_actor_in_workspace_db() -> Result<()> {
+    fn activate_workspace_creates_actor_event_in_platform_db() -> Result<()> {
         let (_tmp, ship_dir) = setup();
         let branch = "feature/actor-auto-1";
 
         activate_workspace(&ship_dir, branch)?;
 
         let ws_id = crate::workspace::helpers::workspace_id_from_branch(branch);
-        let actors = query_actors(&ship_dir, &ws_id);
+        let events = query_actor_events(&ws_id);
 
-        assert_eq!(actors.len(), 1, "expected exactly 1 actor, got {}", actors.len());
-        let (id, kind, status) = &actors[0];
+        assert_eq!(events.len(), 1, "expected exactly 1 actor event, got {}", events.len());
+        let (actor_id, event_type) = &events[0];
         assert!(
-            id.ends_with("/default"),
-            "actor id must end with /default when no agent set, got: {id}"
+            actor_id.ends_with("/default"),
+            "actor id must end with /default when no agent set, got: {actor_id}"
         );
-        assert_eq!(kind, "workspace");
-        assert_eq!(status, "created");
+        assert_eq!(event_type, "actor.created");
         Ok(())
     }
 
@@ -65,13 +67,14 @@ mod tests {
         activate_workspace(&ship_dir, branch)?;
 
         let ws_id = crate::workspace::helpers::workspace_id_from_branch(branch);
-        let actors = query_actors(&ship_dir, &ws_id);
+        let events = query_actor_events(&ws_id);
+        let created_count = events.iter().filter(|(_, et)| et == "actor.created").count();
 
         assert_eq!(
-            actors.len(),
+            created_count,
             1,
-            "second activation must not create duplicate actor, got {} actors",
-            actors.len()
+            "second activation must not create duplicate actor.created event, got {}",
+            created_count
         );
         Ok(())
     }
@@ -107,29 +110,31 @@ mod tests {
         activate_workspace(&ship_dir, branch)?;
 
         let ws_id = crate::workspace::helpers::workspace_id_from_branch(branch);
-        let actors_before = query_actors(&ship_dir, &ws_id);
-        assert_eq!(actors_before.len(), 1);
+        let events_before = query_actor_events(&ws_id);
+        assert_eq!(events_before.len(), 1);
 
         // Change agent and reactivate
         set_workspace_active_agent(&ship_dir, branch, Some("test-agent"))?;
         activate_workspace(&ship_dir, branch)?;
 
-        let actors_after = query_actors(&ship_dir, &ws_id);
+        let events_after = query_actor_events(&ws_id);
 
-        // Old actor should be stopped, new actor should be created
-        let stopped_count = actors_after.iter().filter(|(_, _, s)| s == "stopped").count();
-        let created_count = actors_after.iter().filter(|(_, _, s)| s == "created").count();
+        let stopped_count = events_after.iter().filter(|(_, et)| et == "actor.stopped").count();
+        let created_count = events_after.iter().filter(|(_, et)| et == "actor.created").count();
 
         assert_eq!(stopped_count, 1, "old actor must be stopped");
-        assert_eq!(created_count, 1, "new actor must be created");
-        assert_eq!(actors_after.len(), 2, "expected 2 actors total (old stopped + new created)");
+        assert_eq!(created_count, 2, "expected 2 actor.created events (initial + new agent)");
 
-        // Verify the new actor has the correct agent in its ID
-        let new_actor = actors_after.iter().find(|(_, _, s)| s == "created").unwrap();
+        // Verify the latest created actor has the correct agent in its ID
+        let new_actor_id = events_after
+            .iter()
+            .filter(|(_, et)| et == "actor.created")
+            .last()
+            .map(|(id, _)| id)
+            .unwrap();
         assert!(
-            new_actor.0.ends_with("/test-agent"),
-            "new actor id must end with /test-agent, got: {}",
-            new_actor.0
+            new_actor_id.ends_with("/test-agent"),
+            "new actor id must end with /test-agent, got: {new_actor_id}"
         );
 
         Ok(())

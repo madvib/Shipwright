@@ -1,7 +1,9 @@
 //! Lifecycle-event-aware workspace functions.
 //!
-//! Each function builds a typed event payload and emits it through the event
-//! bus. The WorkspaceProjection handler maintains the workspace table.
+//! Each function emits a typed workspace event via the EventRouter, then
+//! applies WorkspaceProjection synchronously so the workspace table reflects
+//! the change immediately. The async projection task provides eventual
+//! consistency for any events that arrive via broadcast only.
 //!
 //! ADR GHihs2tn: all workspace lifecycle transitions must emit typed events.
 
@@ -14,24 +16,47 @@ use crate::events::types::{
     WorkspaceActivated, WorkspaceAgentChanged, WorkspaceArchived, WorkspaceCompileFailed,
     WorkspaceCompiled, WorkspaceCreated, WorkspaceStatusChanged,
 };
+use crate::events::EventEnvelope;
+use crate::projections::{Projection, WorkspaceProjection};
 use anyhow::Result;
 use std::path::Path;
 
 use super::helpers::workspace_id_from_branch;
 use super::types::Workspace;
 
+// ── helper ────────────────────────────────────────────────────────────────────
+
+/// Apply WorkspaceProjection to platform.db synchronously.
+/// Errors are logged but not propagated — the event is already persisted.
+fn sync_workspace_projection(envelope: &EventEnvelope) {
+    let proj = WorkspaceProjection::new();
+    match crate::db::open_db() {
+        Ok(mut conn) => {
+            if let Err(e) = proj.apply(envelope, &mut conn) {
+                eprintln!(
+                    "[workspace-upsert] projection error for {}: {}",
+                    envelope.event_type, e
+                );
+            }
+        }
+        Err(e) => {
+            eprintln!("[workspace-upsert] db open error: {e}");
+        }
+    }
+}
+
 // ── public event-emitting functions ──────────────────────────────────────────
 
-/// Emit `workspace.activated` event.
 pub fn upsert_workspace_on_activate(_ship_dir: &Path, workspace: &Workspace) -> Result<()> {
     let payload = WorkspaceActivated {
         agent_id: workspace.active_agent.clone(),
         providers: workspace.providers.clone(),
     };
-    emit_workspace_activated(&workspace.branch, &payload)
+    let envelope = emit_workspace_activated(&workspace.branch, &payload)?;
+    sync_workspace_projection(&envelope);
+    Ok(())
 }
 
-/// Emit `workspace.compiled` event.
 pub fn upsert_workspace_on_compiled(
     _ship_dir: &Path,
     workspace: &Workspace,
@@ -41,28 +66,29 @@ pub fn upsert_workspace_on_compiled(
         config_generation: workspace.config_generation as u32,
         duration_ms,
     };
-    emit_workspace_compiled(&workspace.branch, &payload)
+    let envelope = emit_workspace_compiled(&workspace.branch, &payload)?;
+    sync_workspace_projection(&envelope);
+    Ok(())
 }
 
-/// Emit `workspace.compile_failed` event.
 pub fn upsert_workspace_on_compile_failed(
     _ship_dir: &Path,
     workspace: &Workspace,
     error: &str,
 ) -> Result<()> {
-    let payload = WorkspaceCompileFailed {
-        error: error.to_string(),
-    };
-    emit_workspace_compile_failed(&workspace.branch, &payload)
+    let payload = WorkspaceCompileFailed { error: error.to_string() };
+    let envelope = emit_workspace_compile_failed(&workspace.branch, &payload)?;
+    sync_workspace_projection(&envelope);
+    Ok(())
 }
 
-/// Emit `workspace.archived` event.
 pub fn upsert_workspace_on_archived(_ship_dir: &Path, workspace: &Workspace) -> Result<()> {
     let payload = WorkspaceArchived {};
-    emit_workspace_archived(&workspace.branch, &payload)
+    let envelope = emit_workspace_archived(&workspace.branch, &payload)?;
+    sync_workspace_projection(&envelope);
+    Ok(())
 }
 
-/// Emit `workspace.created` event with full workspace state in payload.
 pub fn upsert_workspace_on_created(_ship_dir: &Path, workspace: &Workspace) -> Result<()> {
     let workspace_type = workspace.workspace_type.to_string();
     let status = workspace.status.to_string();
@@ -82,15 +108,17 @@ pub fn upsert_workspace_on_created(_ship_dir: &Path, workspace: &Workspace) -> R
         is_worktree: workspace.is_worktree,
         worktree_path: workspace.worktree_path.clone(),
     };
-    emit_workspace_created(&workspace.branch, &payload)
+    let envelope = emit_workspace_created(&workspace.branch, &payload)?;
+    sync_workspace_projection(&envelope);
+    Ok(())
 }
 
-/// Emit `workspace.deleted` event.
 pub fn upsert_workspace_on_deleted(_ship_dir: &Path, branch: &str) -> Result<()> {
-    emit_workspace_deleted(branch)
+    let envelope = emit_workspace_deleted(branch)?;
+    sync_workspace_projection(&envelope);
+    Ok(())
 }
 
-/// Emit `workspace.status_changed` event.
 pub fn upsert_workspace_on_status_changed(
     _ship_dir: &Path,
     workspace: &Workspace,
@@ -101,31 +129,32 @@ pub fn upsert_workspace_on_status_changed(
         old_status: old_status.to_string(),
         new_status: new_status.to_string(),
     };
-    emit_workspace_status_changed(&workspace.branch, &payload)
+    let envelope = emit_workspace_status_changed(&workspace.branch, &payload)?;
+    sync_workspace_projection(&envelope);
+    Ok(())
 }
 
-/// Emit `workspace.archived` event for a bulk-demoted workspace (no upsert).
 pub fn emit_workspace_archived_event(_ship_dir: &Path, branch: &str) -> Result<()> {
     let payload = WorkspaceArchived {};
-    emit_workspace_archived(branch, &payload)
+    let envelope = emit_workspace_archived(branch, &payload)?;
+    sync_workspace_projection(&envelope);
+    Ok(())
 }
 
-/// Emit `workspace.agent_changed` event.
 pub fn emit_workspace_agent_changed_event(
     _ship_dir: &Path,
     branch: &str,
     agent_id: Option<&str>,
 ) -> Result<()> {
-    let payload = WorkspaceAgentChanged {
-        agent_id: agent_id.map(str::to_string),
-    };
-    emit_workspace_agent_changed(branch, &payload)
+    let payload = WorkspaceAgentChanged { agent_id: agent_id.map(str::to_string) };
+    let envelope = emit_workspace_agent_changed(branch, &payload)?;
+    sync_workspace_projection(&envelope);
+    Ok(())
 }
 
-/// Emit `workspace.agent_changed` event with full workspace state.
 pub fn upsert_workspace_on_agent_changed(_ship_dir: &Path, workspace: &Workspace) -> Result<()> {
-    let payload = WorkspaceAgentChanged {
-        agent_id: workspace.active_agent.clone(),
-    };
-    emit_workspace_agent_changed(&workspace.branch, &payload)
+    let payload = WorkspaceAgentChanged { agent_id: workspace.active_agent.clone() };
+    let envelope = emit_workspace_agent_changed(&workspace.branch, &payload)?;
+    sync_workspace_projection(&envelope);
+    Ok(())
 }

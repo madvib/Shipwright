@@ -1,7 +1,7 @@
-//! Routing tests for per-workspace SQLite databases.
+//! Routing tests for event persistence architecture.
 //!
-//! Verifies that actor/session events route to workspace DBs, workspace.* events
-//! stay in platform.db, and two workspaces have isolated DBs.
+//! Verifies that all events (actor, session, workspace.*) go to platform.db
+//! only, with workspace isolation enforced by the workspace_id field.
 
 #[cfg(test)]
 mod tests {
@@ -23,30 +23,16 @@ mod tests {
         (tmp, ship_dir)
     }
 
-    // ── test 6: actor events route to both workspace DB and platform.db ────────
+    // ── test 6: actor events route to platform.db only ────────────────────────
 
     #[test]
-    fn actor_event_writes_to_both_platform_and_workspace_db() -> Result<()> {
-        let (_tmp, ship_dir) = setup();
+    fn actor_event_writes_to_platform_db_only() -> Result<()> {
+        let (_tmp, _ship_dir) = setup();
         let ws_id = "ws-test-actor";
         let actor_id = "actor-1";
 
         create_actor(actor_id, "test-worker", "local", Some(ws_id), None)?;
 
-        // Must appear in workspace DB
-        let mut ws_conn = open_workspace_db(&ship_dir, ws_id)?;
-        let ws_count: i64 = block_on(async {
-            sqlx::query_scalar(
-                "SELECT COUNT(*) FROM events WHERE event_type = ? AND entity_id = ?",
-            )
-            .bind(event_types::ACTOR_CREATED)
-            .bind(actor_id)
-            .fetch_one(&mut ws_conn)
-            .await
-        })?;
-        assert_eq!(ws_count, 1, "actor.created must be in workspace DB");
-
-        // Must ALSO appear in platform.db (elevated, routed via EventRouter)
         let mut platform_conn = open_db_at(&db_path()?)?;
         let platform_count: i64 = block_on(async {
             sqlx::query_scalar(
@@ -62,11 +48,11 @@ mod tests {
         Ok(())
     }
 
-    // ── test 7: session events route to workspace DB, not platform.db ─────────
+    // ── test 7: session events route to platform.db only ─────────────────────
 
     #[test]
-    fn session_event_writes_to_both_platform_and_workspace_db() -> Result<()> {
-        let (_tmp, ship_dir) = setup();
+    fn session_event_writes_to_platform_db_only() -> Result<()> {
+        let (_tmp, _ship_dir) = setup();
         let ws_id = "ws-test-session";
         let session_id = "sess-ws-routing-test";
 
@@ -78,20 +64,6 @@ mod tests {
         };
         insert_session_with_started_event(session_id, ws_id, &payload)?;
 
-        // Must appear in workspace DB
-        let mut ws_conn = open_workspace_db(&ship_dir, ws_id)?;
-        let ws_count: i64 = block_on(async {
-            sqlx::query_scalar(
-                "SELECT COUNT(*) FROM events WHERE event_type = ? AND entity_id = ?",
-            )
-            .bind(event_types::SESSION_STARTED)
-            .bind(session_id)
-            .fetch_one(&mut ws_conn)
-            .await
-        })?;
-        assert_eq!(ws_count, 1, "session.started must be in workspace DB");
-
-        // Must ALSO appear in platform.db (elevated for SessionProjection)
         let mut platform_conn = open_db_at(&db_path()?)?;
         let platform_count: i64 = block_on(async {
             sqlx::query_scalar(
@@ -107,53 +79,62 @@ mod tests {
         Ok(())
     }
 
-    // ── test 8: two workspaces have isolated DBs ───────────────────────────────
+    // ── test 8: workspace isolation enforced by workspace_id field ────────────
 
     #[test]
-    fn two_workspaces_have_isolated_dbs() -> Result<()> {
-        let (_tmp, ship_dir) = setup();
+    fn two_workspaces_isolated_by_workspace_id_in_platform_db() -> Result<()> {
+        let (_tmp, _ship_dir) = setup();
         let ws_alpha = "ws-alpha";
         let ws_beta = "ws-beta";
 
         create_actor("actor-alpha", "worker", "local", Some(ws_alpha), None)?;
         create_actor("actor-beta", "worker", "local", Some(ws_beta), None)?;
 
-        // ws-alpha DB: own event present, ws-beta event absent
-        let mut alpha_conn = open_workspace_db(&ship_dir, ws_alpha)?;
+        let mut conn = open_db_at(&db_path()?)?;
+
+        // ws-alpha: own event present when filtered by workspace_id
         let alpha_own: i64 = block_on(async {
-            sqlx::query_scalar("SELECT COUNT(*) FROM events WHERE entity_id = 'actor-alpha'")
-                .fetch_one(&mut alpha_conn)
-                .await
+            sqlx::query_scalar(
+                "SELECT COUNT(*) FROM events WHERE entity_id = 'actor-alpha' AND workspace_id = ?",
+            )
+            .bind(ws_alpha)
+            .fetch_one(&mut conn)
+            .await
         })?;
-        assert_eq!(alpha_own, 1, "ws-alpha db must contain actor-alpha event");
+        assert_eq!(alpha_own, 1, "actor-alpha event must have workspace_id = ws-alpha");
 
+        // ws-alpha workspace_id must not contain ws-beta's actors
         let alpha_leak: i64 = block_on(async {
-            sqlx::query_scalar("SELECT COUNT(*) FROM events WHERE entity_id = 'actor-beta'")
-                .fetch_one(&mut alpha_conn)
-                .await
+            sqlx::query_scalar(
+                "SELECT COUNT(*) FROM events WHERE entity_id = 'actor-beta' AND workspace_id = ?",
+            )
+            .bind(ws_alpha)
+            .fetch_one(&mut conn)
+            .await
         })?;
-        assert_eq!(alpha_leak, 0, "ws-alpha db must not contain actor-beta event");
+        assert_eq!(alpha_leak, 0, "actor-beta must not appear under workspace ws-alpha");
 
-        // ws-beta DB: own event present, ws-alpha event absent
-        let mut beta_conn = open_workspace_db(&ship_dir, ws_beta)?;
+        // ws-beta: own event present when filtered by workspace_id
         let beta_own: i64 = block_on(async {
-            sqlx::query_scalar("SELECT COUNT(*) FROM events WHERE entity_id = 'actor-beta'")
-                .fetch_one(&mut beta_conn)
-                .await
+            sqlx::query_scalar(
+                "SELECT COUNT(*) FROM events WHERE entity_id = 'actor-beta' AND workspace_id = ?",
+            )
+            .bind(ws_beta)
+            .fetch_one(&mut conn)
+            .await
         })?;
-        assert_eq!(beta_own, 1, "ws-beta db must contain actor-beta event");
+        assert_eq!(beta_own, 1, "actor-beta event must have workspace_id = ws-beta");
 
+        // ws-beta workspace_id must not contain ws-alpha's actors
         let beta_leak: i64 = block_on(async {
-            sqlx::query_scalar("SELECT COUNT(*) FROM events WHERE entity_id = 'actor-alpha'")
-                .fetch_one(&mut beta_conn)
-                .await
+            sqlx::query_scalar(
+                "SELECT COUNT(*) FROM events WHERE entity_id = 'actor-alpha' AND workspace_id = ?",
+            )
+            .bind(ws_beta)
+            .fetch_one(&mut conn)
+            .await
         })?;
-        assert_eq!(beta_leak, 0, "ws-beta db must not contain actor-alpha event");
-
-        // The two DB paths must be different files
-        let alpha_path = workspace_db_path(&ship_dir, ws_alpha);
-        let beta_path = workspace_db_path(&ship_dir, ws_beta);
-        assert_ne!(alpha_path, beta_path, "ws-alpha and ws-beta must have different DB paths");
+        assert_eq!(beta_leak, 0, "actor-alpha must not appear under workspace ws-beta");
 
         Ok(())
     }

@@ -8,6 +8,7 @@
 use anyhow::Result;
 use sqlx::SqliteConnection;
 
+use super::async_projection::AsyncProjection;
 use super::registry::Projection;
 use crate::db::block_on;
 use crate::events::types::event_types;
@@ -51,6 +52,21 @@ impl Projection for SessionProjection {
                 .await?;
             Ok(())
         })
+    }
+}
+
+impl AsyncProjection for SessionProjection {
+    fn name(&self) -> &str {
+        Projection::name(self)
+    }
+    fn event_types(&self) -> &[&str] {
+        Projection::event_types(self)
+    }
+    fn apply(&self, event: &EventEnvelope, conn: &mut sqlx::SqliteConnection) -> anyhow::Result<()> {
+        Projection::apply(self, event, conn)
+    }
+    fn truncate(&self, conn: &mut sqlx::SqliteConnection) -> anyhow::Result<()> {
+        Projection::truncate(self, conn)
     }
 }
 

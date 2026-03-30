@@ -1,14 +1,18 @@
 //! Event-sourced workspace state writes.
 //!
-//! Each public function builds an EventEnvelope and emits it through the global
-//! EventRouter (validate → persist → broadcast), then dispatches synchronously
-//! to WorkspaceProjection so derived state is available immediately.
+//! Each function builds an EventEnvelope and emits through the global
+//! EventRouter (validate → persist to platform.db → broadcast). That is
+//! the only write — no inline projection.
+//!
+//! Each function returns the emitted EventEnvelope so callers (e.g.
+//! event_upserts.rs) can apply WorkspaceProjection synchronously for
+//! immediate read-back consistency.
 //!
 //! ADR GHihs2tn: all workspace lifecycle transitions must emit typed events.
 
 use anyhow::Result;
 
-use crate::db::{block_on_anyhow, open_db};
+use crate::db::block_on_anyhow;
 use crate::events::global_router::router;
 use crate::events::types::event_types;
 use crate::events::types::{
@@ -17,16 +21,12 @@ use crate::events::types::{
 };
 use crate::events::validator::{CallerKind, EmitContext};
 use crate::events::EventEnvelope;
-use crate::projections::{Projection, WorkspaceProjection};
 
-// ── core emit ────────────────────────────────────────────────────────────────
-
-/// Build envelope, emit via router, then dispatch to workspace projection.
 fn run_tx<P: serde::Serialize>(
     branch: &str,
     event_type: &'static str,
     payload: &P,
-) -> Result<()> {
+) -> Result<EventEnvelope> {
     let envelope = EventEnvelope::new(event_type, branch, payload)?
         .with_context(Some(branch), None)
         .with_actor_id(branch)
@@ -39,69 +39,47 @@ fn run_tx<P: serde::Serialize>(
         session_id: None,
     };
 
-    // Router: validate → persist → broadcast
     block_on_anyhow(router().emit(envelope.clone(), &ctx))?;
-
-    // Synchronous projection: update workspace table immediately so callers
-    // can read the state right after emit returns.
-    let proj = WorkspaceProjection::new();
-    if proj.event_types().contains(&event_type) {
-        let mut conn = open_db()?;
-        if let Err(e) = proj.apply(&envelope, &mut conn) {
-            eprintln!("[workspace-events] projection error for {event_type}: {e}");
-        }
-    }
-
-    Ok(())
+    Ok(envelope)
 }
 
 // ── public API ────────────────────────────────────────────────────────────────
 
-/// Emit `workspace.activated` and let the projection update workspace state.
-pub fn emit_workspace_activated(branch: &str, payload: &WorkspaceActivated) -> Result<()> {
+pub fn emit_workspace_activated(branch: &str, payload: &WorkspaceActivated) -> Result<EventEnvelope> {
     run_tx(branch, event_types::WORKSPACE_ACTIVATED, payload)
 }
 
-/// Emit `workspace.compiled` and let the projection update workspace state.
-pub fn emit_workspace_compiled(branch: &str, payload: &WorkspaceCompiled) -> Result<()> {
+pub fn emit_workspace_compiled(branch: &str, payload: &WorkspaceCompiled) -> Result<EventEnvelope> {
     run_tx(branch, event_types::WORKSPACE_COMPILED, payload)
 }
 
-/// Emit `workspace.compile_failed` and let the projection update workspace state.
 pub fn emit_workspace_compile_failed(
     branch: &str,
     payload: &WorkspaceCompileFailed,
-) -> Result<()> {
+) -> Result<EventEnvelope> {
     run_tx(branch, event_types::WORKSPACE_COMPILE_FAILED, payload)
 }
 
-/// Emit `workspace.archived` and let the projection update workspace state.
-pub fn emit_workspace_archived(branch: &str, payload: &WorkspaceArchived) -> Result<()> {
+pub fn emit_workspace_archived(branch: &str, payload: &WorkspaceArchived) -> Result<EventEnvelope> {
     run_tx(branch, event_types::WORKSPACE_ARCHIVED, payload)
 }
 
-/// Emit `workspace.created` and let the projection insert workspace state.
-pub fn emit_workspace_created(branch: &str, payload: &WorkspaceCreated) -> Result<()> {
+pub fn emit_workspace_created(branch: &str, payload: &WorkspaceCreated) -> Result<EventEnvelope> {
     run_tx(branch, event_types::WORKSPACE_CREATED, payload)
 }
 
-/// Emit `workspace.status_changed` and let the projection update workspace state.
 pub fn emit_workspace_status_changed(
     branch: &str,
     payload: &WorkspaceStatusChanged,
-) -> Result<()> {
+) -> Result<EventEnvelope> {
     run_tx(branch, event_types::WORKSPACE_STATUS_CHANGED, payload)
 }
 
-/// Emit `workspace.deleted` for a branch that is about to be (or was) deleted.
-pub fn emit_workspace_deleted(branch: &str) -> Result<()> {
-    let payload = WorkspaceDeleted {
-        branch: branch.to_string(),
-    };
+pub fn emit_workspace_deleted(branch: &str) -> Result<EventEnvelope> {
+    let payload = WorkspaceDeleted { branch: branch.to_string() };
     run_tx(branch, event_types::WORKSPACE_DELETED, &payload)
 }
 
-/// Emit `workspace.agent_changed` and let the projection update workspace state.
-pub fn emit_workspace_agent_changed(branch: &str, payload: &WorkspaceAgentChanged) -> Result<()> {
+pub fn emit_workspace_agent_changed(branch: &str, payload: &WorkspaceAgentChanged) -> Result<EventEnvelope> {
     run_tx(branch, event_types::WORKSPACE_AGENT_CHANGED, payload)
 }

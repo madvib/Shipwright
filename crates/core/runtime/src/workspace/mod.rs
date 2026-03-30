@@ -4,6 +4,7 @@ mod crud;
 pub(crate) mod event_upserts;
 pub(crate) mod helpers;
 mod lifecycle;
+mod lifecycle_actors;
 mod session;
 mod session_lifecycle;
 pub(crate) mod types;

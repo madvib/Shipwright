@@ -8,6 +8,7 @@
 //! and rebuilt from the event log at any time via [`rebuild`].
 
 pub mod async_projection;
+pub mod spawn;
 mod actor;
 mod registry;
 mod session;
@@ -18,10 +19,13 @@ mod tests;
 #[cfg(test)]
 mod tests_actor;
 #[cfg(test)]
+mod tests_async;
+#[cfg(test)]
 mod tests_session;
 
 pub use actor::ActorProjection;
 pub use async_projection::{AsyncProjection, spawn_projection};
 pub use registry::{EventBus, Projection};
 pub use session::SessionProjection;
+pub use spawn::{ProjectionHandle, spawn_all_projections, spawn_with_failure_counter};
 pub use workspace::WorkspaceProjection;
