@@ -19,11 +19,19 @@ use skills::{
 
 // ---- Server struct ----
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct StudioServer {
     tool_router: ToolRouter<Self>,
     pub active_project: std::sync::Arc<tokio::sync::Mutex<Option<PathBuf>>>,
     pub notification_peer: std::sync::Arc<tokio::sync::Mutex<Option<Peer<RoleServer>>>>,
+    /// Actor-scoped event store for the studio actor.
+    pub actor_store: std::sync::Arc<tokio::sync::Mutex<Option<runtime::events::ActorStore>>>,
+}
+
+impl std::fmt::Debug for StudioServer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StudioServer").finish_non_exhaustive()
+    }
 }
 
 // ---- Studio tool registration ----
@@ -52,6 +60,7 @@ impl StudioServer {
             tool_router: Self::tool_router(),
             active_project: std::sync::Arc::new(tokio::sync::Mutex::new(project_dir)),
             notification_peer: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+            actor_store: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
 
@@ -61,6 +70,44 @@ impl StudioServer {
 
     pub async fn store_peer(&self, peer: Peer<RoleServer>) {
         *self.notification_peer.lock().await = Some(peer);
+    }
+
+    /// Spawn the studio actor via the global KernelRouter.
+    ///
+    /// Called from `on_initialized`. The studio actor writes `studio.*` events
+    /// and subscribes to `studio.*` and `agent.*` for cross-actor delivery.
+    pub async fn spawn_studio_actor(&self) {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+
+        let ship_dir = project_dir.join(".ship");
+        let kr = match runtime::events::init_kernel_router(ship_dir) {
+            Ok(kr) => kr,
+            Err(e) => {
+                tracing::warn!("studio: failed to initialize KernelRouter: {e}");
+                return;
+            }
+        };
+
+        let config = runtime::events::ActorConfig {
+            namespace: "studio".to_string(),
+            write_namespaces: vec!["studio.".to_string()],
+            read_namespaces: vec!["studio.".to_string()],
+            subscribe_namespaces: vec!["studio.".to_string(), "agent.".to_string()],
+        };
+
+        match kr.lock().await.spawn_actor("studio", config) {
+            Ok((store, _mailbox)) => {
+                // Mailbox not used for Studio SSE in this phase —
+                // Studio pushes events, agents pull via their own mailboxes.
+                *self.actor_store.lock().await = Some(store);
+            }
+            Err(e) => {
+                tracing::warn!("studio: failed to spawn actor: {e}");
+            }
+        }
     }
 
     async fn notify_resources_changed(&self) {
@@ -329,19 +376,33 @@ impl StudioServer {
         let envelope = envelope
             .with_actor_id("studio")
             .with_context(Some(&workspace_id), None);
+
+        // Persist to Studio's actor-scoped store.
+        {
+            let store_guard = self.actor_store.lock().await;
+            let Some(ref store) = *store_guard else {
+                return "Error: studio actor not initialized — ensure on_initialized completed"
+                    .to_string();
+            };
+            if let Err(e) = store.append(&envelope) {
+                return format!("Error persisting studio event: {}", e);
+            }
+        }
+
+        // Route via KernelRouter — delivers to agent mailboxes that subscribe to "studio."
         let ctx = runtime::events::EmitContext {
             caller_kind: runtime::events::CallerKind::Mcp,
             skill_id: None,
             workspace_id: Some(workspace_id),
             session_id: None,
         };
-        let router = match std::panic::catch_unwind(runtime::events::router) {
-            Ok(r) => r,
-            Err(_) => return "Error: EventRouter not initialized".to_string(),
+        let Some(kr) = runtime::events::kernel_router() else {
+            return "Error: KernelRouter not initialized".to_string();
         };
-        if let Err(e) = router.emit(envelope.clone(), &ctx).await {
-            return format!("Error emitting event: {}", e);
+        if let Err(e) = kr.lock().await.route(envelope.clone(), &ctx).await {
+            return format!("Error routing studio event: {}", e);
         }
+
         format!("{{\"id\":\"{}\"}}", envelope.id)
     }
 }
@@ -383,6 +444,7 @@ impl ServerHandler for StudioServer {
 
     async fn on_initialized(&self, context: NotificationContext<RoleServer>) {
         self.store_peer(context.peer).await;
+        self.spawn_studio_actor().await;
     }
 
     /// Studio server has no tool gate -- all registered tools are always callable.

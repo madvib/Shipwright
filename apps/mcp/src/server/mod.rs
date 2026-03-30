@@ -46,8 +46,12 @@ pub struct ShipServer {
     pub notification_peer: std::sync::Arc<tokio::sync::Mutex<Option<Peer<RoleServer>>>>,
     /// URIs the client has subscribed to via resources/subscribe
     pub subscriptions: std::sync::Arc<tokio::sync::Mutex<std::collections::HashSet<String>>>,
-    /// Event relay state — initialized lazily on first workspace activation.
+    /// Event relay state — initialized on connection init.
     relay: std::sync::Arc<tokio::sync::Mutex<RelayState>>,
+    /// Actor-scoped event store for this connection.
+    pub actor_store: std::sync::Arc<tokio::sync::Mutex<Option<runtime::events::ActorStore>>>,
+    /// Mailbox for this connection's actor. Taken once by start_event_relay.
+    pub actor_mailbox: std::sync::Arc<tokio::sync::Mutex<Option<runtime::events::Mailbox>>>,
 }
 
 impl std::fmt::Debug for ShipServer {
@@ -90,6 +94,8 @@ impl ShipServer {
                 peers: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
                 handle: None,
             })),
+            actor_store: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+            actor_mailbox: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
 
@@ -101,9 +107,64 @@ impl ShipServer {
         *self.notification_peer.lock().await = Some(peer);
     }
 
-    /// Wire the EventRelay for a workspace. Subscribes to the workspace bus
-    /// and spawns the relay task. Call once per MCP connection lifecycle.
-    pub async fn start_event_relay(&self, workspace_id: &str) {
+    /// Spawn an actor for this connection using the global KernelRouter.
+    ///
+    /// Called from `on_initialized`. Derives the actor_id from the active agent
+    /// profile, falling back to `"agent.mcp"`.
+    pub async fn spawn_agent_actor(&self) {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+
+        // Initialize KernelRouter with the project's .ship/ dir as base.
+        let ship_dir = project_dir.join(".ship");
+        let kr = match runtime::events::init_kernel_router(ship_dir) {
+            Ok(kr) => kr,
+            Err(e) => {
+                tracing::warn!("failed to initialize KernelRouter: {e}");
+                return;
+            }
+        };
+
+        let actor_id = runtime::get_active_agent(Some(project_dir))
+            .ok()
+            .flatten()
+            .map(|a| format!("agent.{}", a.id))
+            .unwrap_or_else(|| "agent.mcp".to_string());
+
+        let config = runtime::events::ActorConfig {
+            namespace: actor_id.clone(),
+            // Allow writing any non-system namespace (enforced by the event tool).
+            write_namespaces: vec!["".to_string()],
+            read_namespaces: vec!["agent.".to_string()],
+            subscribe_namespaces: vec![
+                "studio.".to_string(),
+                "workspace.".to_string(),
+                "session.".to_string(),
+                "actor.".to_string(),
+                "config.".to_string(),
+                "runtime.".to_string(),
+                "sync.".to_string(),
+                "project.".to_string(),
+                "gate.".to_string(),
+            ],
+        };
+
+        match kr.lock().await.spawn_actor(&actor_id, config) {
+            Ok((store, mailbox)) => {
+                *self.actor_store.lock().await = Some(store);
+                *self.actor_mailbox.lock().await = Some(mailbox);
+            }
+            Err(e) => {
+                tracing::warn!("failed to spawn agent actor '{actor_id}': {e}");
+            }
+        }
+    }
+
+    /// Wire the EventRelay for this connection. Takes the mailbox from the
+    /// spawned actor and starts the relay task. Call once per MCP connection.
+    pub async fn start_event_relay(&self) {
         let mut relay_state = self.relay.lock().await;
 
         // Only start once
@@ -111,11 +172,11 @@ impl ShipServer {
             return;
         }
 
-        let Ok(event_router) = std::panic::catch_unwind(runtime::events::router) else {
-            return; // Router not initialized
+        let mailbox = self.actor_mailbox.lock().await.take();
+        let Some(mailbox) = mailbox else {
+            return; // Actor not yet spawned
         };
 
-        let rx = event_router.subscribe_workspace(workspace_id).await;
         let relay = notification_relay::EventRelay::new();
 
         // Share the peers Arc so we can add/remove peers later
@@ -125,7 +186,7 @@ impl ShipServer {
         if let Some(peer) = self.notification_peer.lock().await.clone() {
             let sink = event_sink::McpEventSink::new(peer);
             let peer_handle = notification_relay::PeerHandle {
-                id: format!("mcp-{workspace_id}"),
+                id: "mcp-agent".to_string(),
                 actor_id: "mcp".to_string(),
                 sink: Box::new(sink),
                 allowed_events: std::collections::HashSet::new(), // system peer
@@ -133,7 +194,7 @@ impl ShipServer {
             relay.add_peer(peer_handle).await;
         }
 
-        relay_state.handle = Some(relay.spawn(rx));
+        relay_state.handle = Some(relay.spawn(mailbox));
     }
 
     async fn notify_resources_changed(&self) {
@@ -461,11 +522,12 @@ impl ShipServer {
         let actor_id = runtime::get_active_agent(Some(project_dir.clone()))
             .ok()
             .flatten()
-            .map(|a| a.id)
-            .unwrap_or_else(|| "mcp".to_string());
+            .map(|a| format!("agent.{}", a.id))
+            .unwrap_or_else(|| "agent.mcp".to_string());
         let workspace_id =
             tool_gate::current_branch(project_dir.parent().unwrap_or(&project_dir))
                 .unwrap_or_else(|_| "unknown".to_string());
+
         let envelope = match event::handle_ship_event(
             &actor_id,
             &workspace_id,
@@ -476,19 +538,32 @@ impl ShipServer {
             Ok(e) => e,
             Err(e) => return format!("Error: {}", e),
         };
+
+        // Persist to actor-scoped store.
+        {
+            let store_guard = self.actor_store.lock().await;
+            let Some(ref store) = *store_guard else {
+                return "Error: actor not initialized — ensure on_initialized completed".to_string();
+            };
+            if let Err(e) = store.append(&envelope) {
+                return format!("Error persisting event: {}", e);
+            }
+        }
+
+        // Route via KernelRouter for mailbox delivery.
         let ctx = runtime::events::EmitContext {
             caller_kind: runtime::events::CallerKind::Mcp,
             skill_id: None,
             workspace_id: Some(workspace_id),
             session_id: None,
         };
-        let router = match std::panic::catch_unwind(runtime::events::router) {
-            Ok(r) => r,
-            Err(_) => return "Error: EventRouter not initialized".to_string(),
+        let Some(kr) = runtime::events::kernel_router() else {
+            return "Error: KernelRouter not initialized".to_string();
         };
-        if let Err(e) = router.emit(envelope.clone(), &ctx).await {
-            return format!("Error emitting event: {}", e);
+        if let Err(e) = kr.lock().await.route(envelope.clone(), &ctx).await {
+            return format!("Error routing event: {}", e);
         }
+
         match serde_json::to_string(&envelope) {
             Ok(json) => json,
             Err(_) => format!("Event emitted: {}", envelope.id),

@@ -3,33 +3,29 @@ pub mod envelope;
 pub mod filter;
 pub mod kernel_router;
 pub mod mailbox;
-pub mod router;
 pub mod store;
 pub mod types;
 pub mod validator;
 
-pub mod global_router;
+pub mod global_kernel_router;
 
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod tests_actor;
 #[cfg(test)]
-mod router_tests;
-#[cfg(test)]
-mod integration_tests;
-#[cfg(test)]
 mod kernel_router_tests;
+#[cfg(test)]
+mod cross_actor_tests;
 
 pub use actor_store::ActorStore;
 pub use envelope::EventEnvelope;
 pub use filter::EventFilter;
 pub use kernel_router::{ActorConfig, KernelRouter};
 pub use mailbox::Mailbox;
-pub use router::EventRouter;
 pub use store::{EventStore, SqliteEventStore};
 pub use validator::{CallerKind, EmitContext, EventValidator, ValidationError};
-pub use global_router::{init_router, router};
+pub use global_kernel_router::{init_kernel_router, kernel_router};
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};

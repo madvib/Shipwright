@@ -1,25 +1,22 @@
 //! Typed session event emission.
 //!
-//! Each function builds an EventEnvelope and emits through the global
-//! EventRouter (validate → persist to platform.db → broadcast). That is
-//! the only write — no workspace DB writes, no inline projection.
+//! Each function builds an EventEnvelope, persists it to platform.db via
+//! SqliteEventStore, and routes it through KernelRouter (when initialized)
+//! for delivery to actor mailboxes.
 //!
-//! Callers that need immediate read-back (e.g. session_lifecycle.rs) are
-//! responsible for applying SessionProjection synchronously after the emit.
-//!
-//! session.progress is non-elevated so it goes to the workspace broadcast
-//! channel only, but IS persisted to platform.db by the router.
+//! session.progress is non-elevated so it goes to kernel routing only;
+//! it is still persisted to platform.db by SqliteEventStore.
 //!
 //! ADR GHihs2tn: all session lifecycle transitions must emit typed events.
 
 use anyhow::{Context, Result};
 
 use crate::db::block_on_anyhow;
-use crate::events::global_router::router;
+use crate::events::store::EventStore;
 use crate::events::types::event_types;
 use crate::events::types::{SessionEnded, SessionProgress, SessionStarted};
 use crate::events::validator::{CallerKind, EmitContext};
-use crate::events::EventEnvelope;
+use crate::events::{EventEnvelope, SqliteEventStore};
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -37,19 +34,26 @@ fn session_envelope<P: serde::Serialize>(
 }
 
 fn emit_session(envelope: EventEnvelope, workspace_id: &str) -> Result<EventEnvelope> {
+    // Persist to platform.db for the reading path (CLI, sync, projections).
+    SqliteEventStore::new()?.append(&envelope)?;
+
+    // Route to actor mailboxes if the kernel router is running.
     let ctx = EmitContext {
         caller_kind: CallerKind::Runtime,
         skill_id: None,
         workspace_id: Some(workspace_id.to_string()),
         session_id: envelope.session_id.clone(),
     };
-    block_on_anyhow(router().emit(envelope.clone(), &ctx))?;
+    if let Some(kr) = crate::events::kernel_router() {
+        let _ = block_on_anyhow(async { kr.lock().await.route(envelope.clone(), &ctx).await });
+    }
+
     Ok(envelope)
 }
 
 // ── public API ────────────────────────────────────────────────────────────────
 
-/// Emit `session.started` to platform.db via the router.
+/// Emit `session.started` to platform.db via the store.
 /// Returns the envelope so callers can apply SessionProjection for
 /// immediate read-back consistency.
 pub fn insert_session_with_started_event(
@@ -66,24 +70,25 @@ pub fn insert_session_with_started_event(
     emit_session(envelope, workspace_id)
 }
 
-/// Emit `session.progress` to platform.db via the router (non-elevated).
+/// Emit `session.progress` to platform.db via the store (non-elevated).
 ///
-/// Progress events are not elevated — they go to the workspace broadcast
-/// channel only, not the platform channel. They ARE persisted to platform.db.
+/// Progress events are not elevated — they are still persisted to platform.db
+/// but do not appear on the platform broadcast.
 pub fn insert_session_progress_event(
     session_id: &str,
     workspace_id: &str,
     payload: &SessionProgress,
 ) -> Result<()> {
-    let payload_json = serde_json::to_string(payload)
+    let _ = serde_json::to_string(payload)
         .context("failed to serialise SessionProgress payload")?;
 
-    let envelope = EventEnvelope::new(event_types::SESSION_PROGRESS, session_id, &payload)?
+    let envelope = EventEnvelope::new(event_types::SESSION_PROGRESS, session_id, payload)?
         .with_context(Some(workspace_id), Some(session_id))
         .with_actor_id(session_id)
         .with_parent_actor_id(workspace_id);
-    // Note: NOT elevated — session.progress stays on workspace channel
-    let _ = payload_json; // payload serialised inside EventEnvelope::new above
+    // Note: NOT elevated — session.progress is workspace-scoped only.
+
+    SqliteEventStore::new()?.append(&envelope)?;
 
     let ctx = EmitContext {
         caller_kind: CallerKind::Runtime,
@@ -91,10 +96,14 @@ pub fn insert_session_progress_event(
         workspace_id: Some(workspace_id.to_string()),
         session_id: Some(session_id.to_string()),
     };
-    block_on_anyhow(router().emit(envelope, &ctx))
+    if let Some(kr) = crate::events::kernel_router() {
+        let _ = block_on_anyhow(async { kr.lock().await.route(envelope, &ctx).await });
+    }
+
+    Ok(())
 }
 
-/// Emit `session.ended` to platform.db via the router.
+/// Emit `session.ended` to platform.db via the store.
 /// Returns the envelope so callers can apply SessionProjection for
 /// immediate read-back consistency.
 pub fn update_session_with_ended_event(

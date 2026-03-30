@@ -45,11 +45,14 @@ fn skill_peer(id: &str, sink: MockSink, events: Vec<&str>) -> PeerHandle {
     }
 }
 
+/// Run a relay with a one-shot mailbox: send `events`, close the sender,
+/// wait for the relay task to finish.
 async fn run_relay(relay: EventRelay, events: Vec<EventEnvelope>) {
-    let (tx, rx) = broadcast::channel(16);
-    let handle = relay.spawn(rx);
+    let (tx, rx) = tokio::sync::mpsc::channel(64);
+    let mailbox = runtime::events::Mailbox::new_for_test(rx);
+    let handle = relay.spawn(mailbox);
     for e in events {
-        tx.send(e).unwrap();
+        tx.send(e).await.unwrap();
     }
     drop(tx);
     handle.await.unwrap();
@@ -173,29 +176,15 @@ async fn remove_peer_stops_delivery() {
 // ── Channel lifecycle tests ──────────────────────────────────
 
 #[tokio::test]
-async fn relay_handles_lagged() {
-    let (tx, rx) = broadcast::channel(2);
-    let (sink, log) = MockSink::new();
-    let relay = EventRelay::new();
-    for _ in 0..4 {
-        let _ = tx.send(envelope("session.started"));
-    }
-    relay.add_peer(system_peer("p", sink)).await;
-    let handle = relay.spawn(rx);
-    tx.send(envelope("session.started")).unwrap();
-    drop(tx);
-    handle.await.unwrap();
-    assert!(!log.lock().await.is_empty());
-}
-
-#[tokio::test]
-async fn relay_stops_on_channel_close() {
-    let (tx, rx) = broadcast::channel::<EventEnvelope>(16);
-    let handle = EventRelay::new().spawn(rx);
+async fn relay_stops_on_mailbox_close() {
+    use tokio::sync::mpsc;
+    let (tx, rx) = mpsc::channel::<EventEnvelope>(16);
+    let mailbox = runtime::events::Mailbox::new_for_test(rx);
+    let handle = EventRelay::new().spawn(mailbox);
     drop(tx);
     tokio::time::timeout(std::time::Duration::from_secs(1), handle)
         .await
-        .expect("relay should stop")
+        .expect("relay should stop when mailbox closes")
         .unwrap();
 }
 
@@ -216,7 +205,6 @@ async fn system_event_detection() {
 
 #[tokio::test]
 async fn studio_events_delivered_to_skill_peers_without_declaration() {
-    // studio.* events pass through to all peers — no events.json declaration needed
     let (sink, log) = MockSink::new();
     let relay = EventRelay::new();
     relay

@@ -1,9 +1,8 @@
 use async_trait::async_trait;
-use runtime::events::EventEnvelope;
+use runtime::events::{EventEnvelope, Mailbox};
 use std::collections::HashSet;
 use std::sync::Arc;
-use tokio::sync::{broadcast, RwLock};
-use tracing::warn;
+use tokio::sync::RwLock;
 
 /// Abstraction over the MCP peer to enable testing.
 /// Sends `ship/event` custom notifications with the full event payload.
@@ -23,7 +22,7 @@ pub struct PeerHandle {
     pub allowed_events: HashSet<String>,
 }
 
-/// Routes events from a workspace broadcast channel to connected agent peers.
+/// Routes events from an actor's `Mailbox` to connected agent peers.
 ///
 /// Filtering happens HERE, not at the receiver. Each peer only receives
 /// events that match its agent's active skill declarations. This enforces
@@ -55,16 +54,13 @@ impl EventRelay {
         self.peers.write().await.retain(|p| p.id != peer_id);
     }
 
-    pub fn spawn(self, mut rx: broadcast::Receiver<EventEnvelope>) -> tokio::task::JoinHandle<()> {
+    /// Spawn the relay loop consuming from a `Mailbox`.
+    ///
+    /// Returns `None` when the mailbox closes (all senders dropped).
+    pub fn spawn(self, mut mailbox: Mailbox) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
-            loop {
-                match rx.recv().await {
-                    Ok(env) => self.handle_event(&env).await,
-                    Err(broadcast::error::RecvError::Lagged(n)) => {
-                        warn!("event relay lagged, skipped {n} events");
-                    }
-                    Err(broadcast::error::RecvError::Closed) => break,
-                }
+            while let Some(env) = mailbox.recv().await {
+                self.handle_event(&env).await;
             }
         })
     }
@@ -112,7 +108,7 @@ const SYSTEM_PREFIXES: &[&str] = &[
     "studio.",
 ];
 
-fn is_system_event(event_type: &str) -> bool {
+pub(crate) fn is_system_event(event_type: &str) -> bool {
     SYSTEM_PREFIXES.iter().any(|p| event_type.starts_with(p))
 }
 

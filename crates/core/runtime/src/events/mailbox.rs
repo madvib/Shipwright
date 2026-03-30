@@ -17,6 +17,13 @@ impl Mailbox {
         Self { rx }
     }
 
+    /// Construct a `Mailbox` from a raw receiver for use in tests.
+    ///
+    /// Prefer obtaining mailboxes via `KernelRouter::spawn_actor` in production.
+    pub fn new_for_test(rx: mpsc::Receiver<EventEnvelope>) -> Self {
+        Self { rx }
+    }
+
     /// Receive the next event. Returns `None` if all senders have been dropped.
     pub async fn recv(&mut self) -> Option<EventEnvelope> {
         self.rx.recv().await

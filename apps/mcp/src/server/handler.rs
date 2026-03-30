@@ -58,15 +58,10 @@ impl ServerHandler for ShipServer {
 
     async fn on_initialized(&self, context: NotificationContext<RoleServer>) {
         self.store_peer(context.peer).await;
-
-        // Start event relay if we can detect the workspace from CWD
-        if let Ok(project_dir) = self.get_effective_project_dir().await {
-            if let Ok(branch) =
-                super::tool_gate::current_branch(project_dir.parent().unwrap_or(&project_dir))
-            {
-                self.start_event_relay(&branch).await;
-            }
-        }
+        // Spawn actor and start relay. spawn_agent_actor initializes KernelRouter
+        // if needed and places the ActorStore + Mailbox on the server.
+        self.spawn_agent_actor().await;
+        self.start_event_relay().await;
     }
 
     async fn call_tool(

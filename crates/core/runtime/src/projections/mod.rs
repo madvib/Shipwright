@@ -27,5 +27,5 @@ pub use actor::ActorProjection;
 pub use async_projection::{AsyncProjection, spawn_projection};
 pub use registry::{EventBus, Projection};
 pub use session::SessionProjection;
-pub use spawn::{ProjectionHandle, spawn_all_projections, spawn_with_failure_counter};
+pub use spawn::{ProjectionHandle, spawn_with_failure_counter};
 pub use workspace::WorkspaceProjection;
