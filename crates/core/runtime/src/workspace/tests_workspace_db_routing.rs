@@ -23,10 +23,10 @@ mod tests {
         (tmp, ship_dir)
     }
 
-    // ── test 6: actor events route to workspace DB, not platform.db ───────────
+    // ── test 6: actor events route to both workspace DB and platform.db ────────
 
     #[test]
-    fn actor_event_writes_to_workspace_db_not_platform() -> Result<()> {
+    fn actor_event_writes_to_both_platform_and_workspace_db() -> Result<()> {
         let (_tmp, ship_dir) = setup();
         let ws_id = "ws-test-actor";
         let actor_id = "actor-1";
@@ -46,7 +46,7 @@ mod tests {
         })?;
         assert_eq!(ws_count, 1, "actor.created must be in workspace DB");
 
-        // Must NOT appear in platform.db
+        // Must ALSO appear in platform.db (elevated, routed via EventRouter)
         let mut platform_conn = open_db_at(&db_path()?)?;
         let platform_count: i64 = block_on(async {
             sqlx::query_scalar(
@@ -57,7 +57,7 @@ mod tests {
             .fetch_one(&mut platform_conn)
             .await
         })?;
-        assert_eq!(platform_count, 0, "actor.created must NOT be in platform.db");
+        assert_eq!(platform_count, 1, "actor.created must be in platform.db");
 
         Ok(())
     }

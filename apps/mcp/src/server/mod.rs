@@ -1,3 +1,4 @@
+pub mod event_sink;
 mod handler;
 pub mod notification_relay;
 mod tool_gate;
@@ -30,13 +31,29 @@ use target::{
 
 // ---- Server struct ----
 
-#[derive(Debug, Clone)]
+/// Holds event relay state. Not Debug/Clone — stored behind Arc.
+struct RelayState {
+    /// Shared peer list for the event relay (add/remove peers after spawn).
+    peers: std::sync::Arc<tokio::sync::RwLock<Vec<notification_relay::PeerHandle>>>,
+    /// Handle to the spawned relay task (kept alive for the server lifetime).
+    handle: Option<tokio::task::JoinHandle<()>>,
+}
+
+#[derive(Clone)]
 pub struct ShipServer {
     tool_router: ToolRouter<Self>,
     pub active_project: std::sync::Arc<tokio::sync::Mutex<Option<PathBuf>>>,
     pub notification_peer: std::sync::Arc<tokio::sync::Mutex<Option<Peer<RoleServer>>>>,
     /// URIs the client has subscribed to via resources/subscribe
     pub subscriptions: std::sync::Arc<tokio::sync::Mutex<std::collections::HashSet<String>>>,
+    /// Event relay state — initialized lazily on first workspace activation.
+    relay: std::sync::Arc<tokio::sync::Mutex<RelayState>>,
+}
+
+impl std::fmt::Debug for ShipServer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ShipServer").finish_non_exhaustive()
+    }
 }
 
 // ---- Stable tool registration ----
@@ -69,6 +86,10 @@ impl ShipServer {
             subscriptions: std::sync::Arc::new(tokio::sync::Mutex::new(
                 std::collections::HashSet::new(),
             )),
+            relay: std::sync::Arc::new(tokio::sync::Mutex::new(RelayState {
+                peers: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
+                handle: None,
+            })),
         }
     }
 
@@ -78,6 +99,41 @@ impl ShipServer {
 
     pub async fn store_peer(&self, peer: Peer<RoleServer>) {
         *self.notification_peer.lock().await = Some(peer);
+    }
+
+    /// Wire the EventRelay for a workspace. Subscribes to the workspace bus
+    /// and spawns the relay task. Call once per MCP connection lifecycle.
+    pub async fn start_event_relay(&self, workspace_id: &str) {
+        let mut relay_state = self.relay.lock().await;
+
+        // Only start once
+        if relay_state.handle.is_some() {
+            return;
+        }
+
+        let Ok(event_router) = std::panic::catch_unwind(runtime::events::router) else {
+            return; // Router not initialized
+        };
+
+        let rx = event_router.subscribe_workspace(workspace_id).await;
+        let relay = notification_relay::EventRelay::new();
+
+        // Share the peers Arc so we can add/remove peers later
+        relay_state.peers = relay.peers();
+
+        // Register the MCP peer as a sink if available
+        if let Some(peer) = self.notification_peer.lock().await.clone() {
+            let sink = event_sink::McpEventSink::new(peer);
+            let peer_handle = notification_relay::PeerHandle {
+                id: format!("mcp-{workspace_id}"),
+                actor_id: "mcp".to_string(),
+                sink: Box::new(sink),
+                allowed_events: std::collections::HashSet::new(), // system peer
+            };
+            relay.add_peer(peer_handle).await;
+        }
+
+        relay_state.handle = Some(relay.spawn(rx));
     }
 
     async fn notify_resources_changed(&self) {
@@ -420,12 +476,18 @@ impl ShipServer {
             Ok(e) => e,
             Err(e) => return format!("Error: {}", e),
         };
-        let store = match runtime::events::SqliteEventStore::new() {
-            Ok(s) => s,
-            Err(e) => return format!("Error initializing event store: {}", e),
+        let ctx = runtime::events::EmitContext {
+            caller_kind: runtime::events::CallerKind::Mcp,
+            skill_id: None,
+            workspace_id: Some(workspace_id),
+            session_id: None,
         };
-        if let Err(e) = runtime::events::EventStore::append(&store, &envelope) {
-            return format!("Error persisting event: {}", e);
+        let router = match std::panic::catch_unwind(runtime::events::router) {
+            Ok(r) => r,
+            Err(_) => return "Error: EventRouter not initialized".to_string(),
+        };
+        if let Err(e) = router.emit(envelope.clone(), &ctx).await {
+            return format!("Error emitting event: {}", e);
         }
         match serde_json::to_string(&envelope) {
             Ok(json) => json,

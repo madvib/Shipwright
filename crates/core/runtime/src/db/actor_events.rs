@@ -1,23 +1,22 @@
 //! Event-sourced actor state writes.
 //!
-//! Each public function inserts a typed event into the `events` table inside a
-//! BEGIN/COMMIT block on the per-workspace DB, then dispatches the event through
-//! the workspace EventBus so projections (e.g. ActorProjection) maintain derived
-//! state.
+//! Each public function builds an EventEnvelope, emits through the global
+//! EventRouter (validate → persist to platform.db → broadcast), writes to the
+//! per-workspace DB for local queries, then dispatches synchronously to
+//! ActorProjection.
 //!
-//! ADR GHihs2tn: write path is BEGIN IMMEDIATE → INSERT INTO events → COMMIT →
-//! dispatch. All actor lifecycle events are elevated=1.
-
-use std::sync::OnceLock;
+//! ADR GHihs2tn: all actor lifecycle events are elevated=1.
 
 use anyhow::Result;
 
 use crate::db::workspace_db::open_workspace_db_for_id;
-use crate::db::{block_on, open_db};
+use crate::db::{block_on, block_on_anyhow};
+use crate::events::global_router::router;
 use crate::events::types::event_types;
 use crate::events::types::{ActorCrashed, ActorCreated, ActorSlept, ActorStopped, ActorWoke};
+use crate::events::validator::{CallerKind, EmitContext};
 use crate::events::EventEnvelope;
-use crate::projections::{ActorProjection, EventBus};
+use crate::projections::{ActorProjection, Projection};
 
 // ── SQL constants ─────────────────────────────────────────────────────────────
 
@@ -28,24 +27,10 @@ const EVENT_INSERT: &str =
       actor_id, parent_actor_id, elevated, created_at) \
      VALUES (?, ?, ?, 'ship', ?, 1, NULL, NULL, ?, NULL, ?, ?, 1, ?)";
 
-// ── workspace event bus ──────────────────────────────────────────────────────
+// ── core emit ───────────────────────────────────────────────────────────────
 
-static WORKSPACE_BUS: OnceLock<EventBus> = OnceLock::new();
-
-fn workspace_bus() -> &'static EventBus {
-    WORKSPACE_BUS.get_or_init(|| {
-        let mut bus = EventBus::new();
-        bus.register(Box::new(ActorProjection::new()));
-        bus
-    })
-}
-
-// ── core transactional write ─────────────────────────────────────────────────
-
-/// Insert event in a BEGIN/COMMIT block on the workspace DB, then dispatch.
-///
-/// The projection handler maintains the actors table — there is no direct
-/// actors UPSERT in this path.
+/// Build envelope, emit via router (validate → persist → broadcast),
+/// write to workspace DB, then dispatch to actor projection.
 fn run_tx<P: serde::Serialize>(
     actor_id: &str,
     workspace_id: Option<&str>,
@@ -61,38 +46,52 @@ fn run_tx<P: serde::Serialize>(
         envelope = envelope.with_parent_actor_id(parent);
     }
 
-    let event_ts = envelope.created_at.to_rfc3339();
-
-    let mut conn = match workspace_id {
-        Some(ws_id) => open_workspace_db_for_id(ws_id)?,
-        None => open_db()?,
+    // Router: validate → persist to platform.db → broadcast
+    let ctx = EmitContext {
+        caller_kind: CallerKind::Runtime,
+        skill_id: None,
+        workspace_id: workspace_id.map(|s| s.to_string()),
+        session_id: None,
     };
-    block_on(async {
-        sqlx::query("BEGIN IMMEDIATE").execute(&mut conn).await?;
+    block_on_anyhow(router().emit(envelope.clone(), &ctx))?;
 
-        let ev_result = sqlx::query(EVENT_INSERT)
-            .bind(&envelope.id)
-            .bind(&envelope.event_type)
-            .bind(&envelope.entity_id)
-            .bind(&envelope.payload_json)
-            .bind(&envelope.workspace_id)
-            .bind(&envelope.actor_id)
-            .bind(&envelope.parent_actor_id)
-            .bind(&event_ts)
-            .execute(&mut conn)
-            .await;
+    // Write to workspace DB for local queries. When no workspace, the router
+    // already persisted to platform.db so no additional write is needed.
+    let mut conn = if let Some(ws_id) = workspace_id {
+        let event_ts = envelope.created_at.to_rfc3339();
+        let mut ws_conn = open_workspace_db_for_id(ws_id)?;
+        block_on(async {
+            sqlx::query("BEGIN IMMEDIATE").execute(&mut ws_conn).await?;
+            let ev_result = sqlx::query(EVENT_INSERT)
+                .bind(&envelope.id)
+                .bind(&envelope.event_type)
+                .bind(&envelope.entity_id)
+                .bind(&envelope.payload_json)
+                .bind(&envelope.workspace_id)
+                .bind(&envelope.actor_id)
+                .bind(&envelope.parent_actor_id)
+                .bind(&event_ts)
+                .execute(&mut ws_conn)
+                .await;
+            if let Err(e) = ev_result {
+                let _ = sqlx::query("ROLLBACK").execute(&mut ws_conn).await;
+                return Err(e);
+            }
+            sqlx::query("COMMIT").execute(&mut ws_conn).await?;
+            Ok(())
+        })?;
+        ws_conn
+    } else {
+        crate::db::open_db()?
+    };
 
-        if let Err(e) = ev_result {
-            let _ = sqlx::query("ROLLBACK").execute(&mut conn).await;
-            return Err(e);
+    // Synchronous projection: update actors table immediately.
+    let proj = ActorProjection::new();
+    if proj.event_types().contains(&event_type) {
+        if let Err(e) = proj.apply(&envelope, &mut conn) {
+            eprintln!("[actor-events] projection error for {event_type}: {e}");
         }
-
-        sqlx::query("COMMIT").execute(&mut conn).await?;
-        Ok(())
-    })?;
-
-    // Dispatch to projections after successful commit.
-    workspace_bus().dispatch(&envelope, &mut conn);
+    }
 
     Ok(())
 }

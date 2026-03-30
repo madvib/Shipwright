@@ -122,6 +122,26 @@ where
         .map_err(|e| anyhow!("SQLite operation failed: {e}"))
 }
 
+/// Like `block_on` but for `anyhow::Result<T>` futures (e.g. EventRouter::emit).
+///
+/// Uses multi-threaded runtime when creating a new one, because the future may
+/// internally call `block_in_place` (e.g. SqliteEventStore::append uses `block_on`
+/// which calls `block_in_place` when a handle is present).
+pub fn block_on_anyhow<F, T>(future: F) -> Result<T>
+where
+    F: std::future::Future<Output = Result<T>>,
+{
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        return tokio::task::block_in_place(|| handle.block_on(future));
+    }
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_time()
+        .worker_threads(1)
+        .build()
+        .map_err(|e| anyhow!("Failed to create runtime: {e}"))?;
+    rt.block_on(future)
+}
+
 /// Like `block_on` but for sqlx::migrate::MigrateError instead of sqlx::Error.
 fn block_on_migrate<F>(future: F) -> Result<()>
 where
