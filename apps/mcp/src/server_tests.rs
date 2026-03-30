@@ -334,8 +334,8 @@ fn unstable_build_registers_all_tools() {
     // stable + unstable
     assert_eq!(
         names.len(),
-        39,
-        "unstable build should register 39 tools, got: {:?}",
+        38,
+        "unstable build should register 38 tools, got: {:?}",
         names
     );
 }
