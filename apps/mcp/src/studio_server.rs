@@ -26,6 +26,8 @@ pub struct StudioServer {
     pub notification_peer: std::sync::Arc<tokio::sync::Mutex<Option<Peer<RoleServer>>>>,
     /// Actor-scoped event store for the studio actor.
     pub actor_store: std::sync::Arc<tokio::sync::Mutex<Option<runtime::events::ActorStore>>>,
+    /// Mailbox for receiving cross-actor events (e.g. agent → studio).
+    pub actor_mailbox: std::sync::Arc<tokio::sync::Mutex<Option<runtime::events::Mailbox>>>,
 }
 
 impl std::fmt::Debug for StudioServer {
@@ -61,6 +63,7 @@ impl StudioServer {
             active_project: std::sync::Arc::new(tokio::sync::Mutex::new(project_dir)),
             notification_peer: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
             actor_store: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+            actor_mailbox: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
 
@@ -99,15 +102,36 @@ impl StudioServer {
         };
 
         match kr.lock().await.spawn_actor("studio", config) {
-            Ok((store, _mailbox)) => {
-                // Mailbox not used for Studio SSE in this phase —
-                // Studio pushes events, agents pull via their own mailboxes.
+            Ok((store, mailbox)) => {
                 *self.actor_store.lock().await = Some(store);
+                *self.actor_mailbox.lock().await = Some(mailbox);
             }
             Err(e) => {
                 tracing::warn!("studio: failed to spawn actor: {e}");
             }
         }
+    }
+
+    /// Start a relay task that forwards cross-actor events (from the studio
+    /// mailbox) to the connected Studio SSE peer. Call once after
+    /// `spawn_studio_actor` and `store_peer`.
+    pub async fn start_event_relay(&self) {
+        let mailbox = self.actor_mailbox.lock().await.take();
+        let Some(mailbox) = mailbox else { return };
+
+        let peer = self.notification_peer.lock().await.clone();
+        let Some(peer) = peer else { return };
+
+        let sink = crate::server::event_sink::McpEventSink::new(peer);
+        let relay = crate::server::notification_relay::EventRelay::new();
+        let peer_handle = crate::server::notification_relay::PeerHandle {
+            id: "studio-relay".to_string(),
+            actor_id: "studio".to_string(),
+            sink: Box::new(sink),
+            allowed_events: std::collections::HashSet::new(), // receive all
+        };
+        relay.add_peer(peer_handle).await;
+        let _handle = relay.spawn(mailbox);
     }
 
     async fn notify_resources_changed(&self) {
@@ -445,6 +469,7 @@ impl ServerHandler for StudioServer {
     async fn on_initialized(&self, context: NotificationContext<RoleServer>) {
         self.store_peer(context.peer).await;
         self.spawn_studio_actor().await;
+        self.start_event_relay().await;
     }
 
     /// Studio server has no tool gate -- all registered tools are always callable.

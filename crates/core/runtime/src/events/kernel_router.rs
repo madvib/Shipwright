@@ -1,8 +1,8 @@
 //! KernelRouter — per-actor mailboxes and isolated event stores.
 //!
-//! Additive: `EventRouter` / `global_router` are unchanged and continue to
-//! function. `KernelRouter` is the foundation for actor isolation; MCP
-//! migration happens in Phase 3.
+//! This is the primary event routing infrastructure. Each actor gets its own
+//! SQLite event store and mailbox. The kernel routes events between actors
+//! based on namespace subscriptions.
 //!
 //! Directory layout managed by this module:
 //! ```text
