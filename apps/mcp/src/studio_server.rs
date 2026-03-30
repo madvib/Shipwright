@@ -19,11 +19,21 @@ use skills::{
 
 // ---- Server struct ----
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct StudioServer {
     tool_router: ToolRouter<Self>,
     pub active_project: std::sync::Arc<tokio::sync::Mutex<Option<PathBuf>>>,
     pub notification_peer: std::sync::Arc<tokio::sync::Mutex<Option<Peer<RoleServer>>>>,
+    /// Actor-scoped event store for the studio actor.
+    pub actor_store: std::sync::Arc<tokio::sync::Mutex<Option<runtime::events::ActorStore>>>,
+    /// Mailbox for receiving cross-actor events (e.g. agent → studio).
+    pub actor_mailbox: std::sync::Arc<tokio::sync::Mutex<Option<runtime::events::Mailbox>>>,
+}
+
+impl std::fmt::Debug for StudioServer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StudioServer").finish_non_exhaustive()
+    }
 }
 
 // ---- Studio tool registration ----
@@ -52,6 +62,8 @@ impl StudioServer {
             tool_router: Self::tool_router(),
             active_project: std::sync::Arc::new(tokio::sync::Mutex::new(project_dir)),
             notification_peer: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+            actor_store: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+            actor_mailbox: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
 
@@ -61,6 +73,65 @@ impl StudioServer {
 
     pub async fn store_peer(&self, peer: Peer<RoleServer>) {
         *self.notification_peer.lock().await = Some(peer);
+    }
+
+    /// Spawn the studio actor via the global KernelRouter.
+    ///
+    /// Called from `on_initialized`. The studio actor writes `studio.*` events
+    /// and subscribes to `studio.*` and `agent.*` for cross-actor delivery.
+    pub async fn spawn_studio_actor(&self) {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+
+        let ship_dir = project_dir.join(".ship");
+        let kr = match runtime::events::init_kernel_router(ship_dir) {
+            Ok(kr) => kr,
+            Err(e) => {
+                tracing::warn!("studio: failed to initialize KernelRouter: {e}");
+                return;
+            }
+        };
+
+        let config = runtime::events::ActorConfig {
+            namespace: "studio".to_string(),
+            write_namespaces: vec!["studio.".to_string()],
+            read_namespaces: vec!["studio.".to_string()],
+            subscribe_namespaces: vec!["studio.".to_string(), "agent.".to_string()],
+        };
+
+        match kr.lock().await.spawn_actor("studio", config) {
+            Ok((store, mailbox)) => {
+                *self.actor_store.lock().await = Some(store);
+                *self.actor_mailbox.lock().await = Some(mailbox);
+            }
+            Err(e) => {
+                tracing::warn!("studio: failed to spawn actor: {e}");
+            }
+        }
+    }
+
+    /// Start a relay task that forwards cross-actor events (from the studio
+    /// mailbox) to the connected Studio SSE peer. Call once after
+    /// `spawn_studio_actor` and `store_peer`.
+    pub async fn start_event_relay(&self) {
+        let mailbox = self.actor_mailbox.lock().await.take();
+        let Some(mailbox) = mailbox else { return };
+
+        let peer = self.notification_peer.lock().await.clone();
+        let Some(peer) = peer else { return };
+
+        let sink = crate::server::event_sink::McpEventSink::new(peer);
+        let relay = crate::server::notification_relay::EventRelay::new();
+        let peer_handle = crate::server::notification_relay::PeerHandle {
+            id: "studio-relay".to_string(),
+            actor_id: "studio".to_string(),
+            sink: Box::new(sink),
+            allowed_events: std::collections::HashSet::new(), // receive all
+        };
+        relay.add_peer(peer_handle).await;
+        let _handle = relay.spawn(mailbox);
     }
 
     async fn notify_resources_changed(&self) {
@@ -329,19 +400,33 @@ impl StudioServer {
         let envelope = envelope
             .with_actor_id("studio")
             .with_context(Some(&workspace_id), None);
+
+        // Persist to Studio's actor-scoped store.
+        {
+            let store_guard = self.actor_store.lock().await;
+            let Some(ref store) = *store_guard else {
+                return "Error: studio actor not initialized — ensure on_initialized completed"
+                    .to_string();
+            };
+            if let Err(e) = store.append(&envelope) {
+                return format!("Error persisting studio event: {}", e);
+            }
+        }
+
+        // Route via KernelRouter — delivers to agent mailboxes that subscribe to "studio."
         let ctx = runtime::events::EmitContext {
             caller_kind: runtime::events::CallerKind::Mcp,
             skill_id: None,
             workspace_id: Some(workspace_id),
             session_id: None,
         };
-        let router = match std::panic::catch_unwind(runtime::events::router) {
-            Ok(r) => r,
-            Err(_) => return "Error: EventRouter not initialized".to_string(),
+        let Some(kr) = runtime::events::kernel_router() else {
+            return "Error: KernelRouter not initialized".to_string();
         };
-        if let Err(e) = router.emit(envelope.clone(), &ctx).await {
-            return format!("Error emitting event: {}", e);
+        if let Err(e) = kr.lock().await.route(envelope.clone(), &ctx).await {
+            return format!("Error routing studio event: {}", e);
         }
+
         format!("{{\"id\":\"{}\"}}", envelope.id)
     }
 }
@@ -383,6 +468,8 @@ impl ServerHandler for StudioServer {
 
     async fn on_initialized(&self, context: NotificationContext<RoleServer>) {
         self.store_peer(context.peer).await;
+        self.spawn_studio_actor().await;
+        self.start_event_relay().await;
     }
 
     /// Studio server has no tool gate -- all registered tools are always callable.

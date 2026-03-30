@@ -1,23 +1,19 @@
 //! Event-sourced actor state writes.
 //!
-//! Each public function builds an EventEnvelope and emits it through the
-//! global EventRouter (validate → persist to platform.db → broadcast).
-//! That is the only write. No workspace DB writes, no inline projection.
-//!
-//! ActorProjection runs as an async consumer of the platform broadcast and
-//! maintains the actors table eventually. For immediate consistency on reads,
-//! query the events table directly (see workspace/lifecycle.rs).
+//! Each public function builds an EventEnvelope, persists it to platform.db
+//! via SqliteEventStore, and routes it through KernelRouter (when initialized)
+//! for delivery to actor mailboxes.
 //!
 //! ADR GHihs2tn: all actor lifecycle events are elevated=1.
 
 use anyhow::Result;
 
 use crate::db::block_on_anyhow;
-use crate::events::global_router::router;
+use crate::events::store::EventStore;
 use crate::events::types::event_types;
 use crate::events::types::{ActorCrashed, ActorCreated, ActorSlept, ActorStopped, ActorWoke};
 use crate::events::validator::{CallerKind, EmitContext};
-use crate::events::EventEnvelope;
+use crate::events::{EventEnvelope, SqliteEventStore};
 
 fn run_tx<P: serde::Serialize>(
     actor_id: &str,
@@ -34,13 +30,21 @@ fn run_tx<P: serde::Serialize>(
         envelope = envelope.with_parent_actor_id(parent);
     }
 
+    // Persist to platform.db for the reading path (CLI, sync, projections).
+    SqliteEventStore::new()?.append(&envelope)?;
+
+    // Route to actor mailboxes if the kernel router is running.
     let ctx = EmitContext {
         caller_kind: CallerKind::Runtime,
         skill_id: None,
         workspace_id: workspace_id.map(|s| s.to_string()),
         session_id: None,
     };
-    block_on_anyhow(router().emit(envelope, &ctx))
+    if let Some(kr) = crate::events::kernel_router() {
+        let _ = block_on_anyhow(async { kr.lock().await.route(envelope, &ctx).await });
+    }
+
+    Ok(())
 }
 
 // ── public API ────────────────────────────────────────────────────────────────

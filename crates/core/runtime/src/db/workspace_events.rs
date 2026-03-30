@@ -1,26 +1,22 @@
 //! Event-sourced workspace state writes.
 //!
-//! Each function builds an EventEnvelope and emits through the global
-//! EventRouter (validate → persist to platform.db → broadcast). That is
-//! the only write — no inline projection.
-//!
-//! Each function returns the emitted EventEnvelope so callers (e.g.
-//! event_upserts.rs) can apply WorkspaceProjection synchronously for
-//! immediate read-back consistency.
+//! Each function builds an EventEnvelope, persists it to platform.db via
+//! SqliteEventStore, and routes it through KernelRouter (when initialized)
+//! for delivery to actor mailboxes.
 //!
 //! ADR GHihs2tn: all workspace lifecycle transitions must emit typed events.
 
 use anyhow::Result;
 
 use crate::db::block_on_anyhow;
-use crate::events::global_router::router;
+use crate::events::store::EventStore;
 use crate::events::types::event_types;
 use crate::events::types::{
     WorkspaceActivated, WorkspaceAgentChanged, WorkspaceArchived, WorkspaceCompileFailed,
     WorkspaceCompiled, WorkspaceCreated, WorkspaceDeleted, WorkspaceStatusChanged,
 };
 use crate::events::validator::{CallerKind, EmitContext};
-use crate::events::EventEnvelope;
+use crate::events::{EventEnvelope, SqliteEventStore};
 
 fn run_tx<P: serde::Serialize>(
     branch: &str,
@@ -32,14 +28,20 @@ fn run_tx<P: serde::Serialize>(
         .with_actor_id(branch)
         .elevate();
 
+    // Persist to platform.db for the reading path (CLI, sync, projections).
+    SqliteEventStore::new()?.append(&envelope)?;
+
+    // Route to actor mailboxes if the kernel router is running.
     let ctx = EmitContext {
         caller_kind: CallerKind::Runtime,
         skill_id: None,
         workspace_id: Some(branch.to_string()),
         session_id: None,
     };
+    if let Some(kr) = crate::events::kernel_router() {
+        let _ = block_on_anyhow(async { kr.lock().await.route(envelope.clone(), &ctx).await });
+    }
 
-    block_on_anyhow(router().emit(envelope.clone(), &ctx))?;
     Ok(envelope)
 }
 
