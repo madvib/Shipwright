@@ -67,18 +67,25 @@ pub trait EventValidator: Send + Sync {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-const SYSTEM_NAMESPACES: &[&str] = &[
-    "workspace.",
-    "session.",
+/// Namespaces reserved by the platform. Agents cannot emit events with these
+/// prefixes. This is the single source of truth — MCP tools and validators
+/// both reference this list.
+pub const RESERVED_NAMESPACES: &[&str] = &[
     "actor.",
-    "gate.",
     "config.",
+    "gate.",
+    "job.",
+    "project.",
     "runtime.",
+    "session.",
+    "skill.",
+    "studio.",
     "sync.",
+    "workspace.",
 ];
 
 fn is_system_event(event_type: &str) -> bool {
-    SYSTEM_NAMESPACES
+    RESERVED_NAMESPACES
         .iter()
         .any(|ns| event_type.starts_with(ns))
 }

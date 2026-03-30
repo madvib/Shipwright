@@ -1,6 +1,7 @@
 use serde_json::json;
 
-use super::{handle_ship_event, RESERVED_PREFIXES};
+use super::handle_ship_event;
+use runtime::events::RESERVED_NAMESPACES;
 
 #[test]
 fn ship_event_accepts_valid_domain_event() {
@@ -131,14 +132,14 @@ fn ship_event_rejects_studio_namespace() {
 #[test]
 fn reserved_type_list_is_complete() {
     let required = [
-        "actor.", "session.", "skill.", "workspace.",
-        "gate.", "job.", "config.", "project.",
-        "studio.",
+        "actor.", "config.", "gate.", "job.", "project.",
+        "runtime.", "session.", "skill.", "studio.",
+        "sync.", "workspace.",
     ];
     for prefix in required {
         assert!(
-            RESERVED_PREFIXES.contains(&prefix),
-            "RESERVED_PREFIXES must contain '{prefix}'",
+            RESERVED_NAMESPACES.contains(&prefix),
+            "RESERVED_NAMESPACES must contain '{prefix}'",
         );
     }
 }

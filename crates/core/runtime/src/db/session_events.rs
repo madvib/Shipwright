@@ -75,15 +75,10 @@ pub fn insert_session_progress_event(
     workspace_id: &str,
     payload: &SessionProgress,
 ) -> Result<()> {
-    let payload_json = serde_json::to_string(payload)
-        .context("failed to serialise SessionProgress payload")?;
-
     let envelope = EventEnvelope::new(event_types::SESSION_PROGRESS, session_id, &payload)?
         .with_context(Some(workspace_id), Some(session_id))
         .with_actor_id(session_id)
         .with_parent_actor_id(workspace_id);
-    // Note: NOT elevated — session.progress stays on workspace channel
-    let _ = payload_json; // payload serialised inside EventEnvelope::new above
 
     let ctx = EmitContext {
         caller_kind: CallerKind::Runtime,

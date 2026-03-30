@@ -28,7 +28,7 @@ pub use kernel_router::{ActorConfig, KernelRouter};
 pub use mailbox::Mailbox;
 pub use router::EventRouter;
 pub use store::{EventStore, SqliteEventStore};
-pub use validator::{CallerKind, EmitContext, EventValidator, ValidationError};
+pub use validator::{CallerKind, EmitContext, EventValidator, ValidationError, RESERVED_NAMESPACES};
 pub use global_router::{init_router, router};
 
 use anyhow::Result;

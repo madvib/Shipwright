@@ -1,11 +1,5 @@
 use anyhow::anyhow;
-use runtime::events::EventEnvelope;
-
-pub const RESERVED_PREFIXES: &[&str] = &[
-    "actor.", "session.", "skill.", "workspace.",
-    "gate.", "job.", "config.", "project.",
-    "studio.", // Studio app namespace — only StudioServer may emit
-];
+use runtime::events::{EventEnvelope, RESERVED_NAMESPACES};
 
 /// Build and validate an agent-emitted domain event.
 ///
@@ -27,7 +21,7 @@ pub fn handle_ship_event(
             event_type
         ));
     }
-    for prefix in RESERVED_PREFIXES {
+    for prefix in RESERVED_NAMESPACES {
         if event_type.starts_with(prefix) {
             return Err(anyhow!(
                 "event_type '{}' is reserved: '{}' prefix is platform-controlled",
