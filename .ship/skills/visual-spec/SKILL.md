@@ -14,7 +14,7 @@ Converts a chosen design into a structured implementation brief. Combines screen
 
 ## When to use
 
-- After `visual-brainstorm`: HTML mockup → spec → implement
+- After `ship-brainstorm`: HTML mockup → spec → implement
 - Existing UI iteration: screenshot current state → describe delta → spec target state → implement delta
 
 ## Input

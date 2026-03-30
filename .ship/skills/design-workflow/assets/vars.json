@@ -5,6 +5,6 @@
     "default": "8765",
     "storage-hint": "global",
     "label": "Preview server port",
-    "description": "Port for the local HTTP preview server. Must match visual-brainstorm server_port if used together."
+    "description": "Port for the local HTTP preview server. Must match ship-brainstorm server_port if used together."
   }
 }

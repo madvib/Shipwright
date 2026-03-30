@@ -8,6 +8,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { McpClient, McpClientError } from '#/lib/mcp-client'
 import type { McpTool } from '#/lib/mcp-client'
 import { mcpKeys } from '#/lib/query-keys'
+import type { EventEnvelope } from '#/features/studio/events/useEventStream'
 
 export type McpConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
@@ -122,6 +123,11 @@ export function useLocalMcp(): UseLocalMcpReturn {
       setHasEverConnected(true)
       localStorage.setItem(EVER_CONNECTED_KEY, 'true')
 
+      // Seed the events cache so it exists before any events arrive
+      if (!queryClient.getQueryData(mcpKeys.events())) {
+        queryClient.setQueryData(mcpKeys.events(), [])
+      }
+
       // Start the SSE notification listener for reactive cache invalidation.
       // Runs in the background -- stream drop triggers a single refetch as fallback.
       startNotificationListener(client)
@@ -161,9 +167,15 @@ export function useLocalMcp(): UseLocalMcpReturn {
       const RECONNECT_DELAY_MS = 3_000
       while (listenerActiveRef.current && clientRef.current === client) {
         try {
-          await client.startNotificationListener((method) => {
+          await client.startNotificationListener((method, params) => {
             if (method === 'notifications/resources/list_changed') {
               void queryClient.invalidateQueries({ queryKey: mcpKeys.all })
+            } else if (method === 'ship/event' && params != null) {
+              const envelope = params as EventEnvelope
+              queryClient.setQueryData(mcpKeys.events(), (prev: EventEnvelope[] | undefined) => {
+                const existing = prev ?? []
+                return [envelope, ...existing].slice(0, 200)
+              })
             }
           })
           // Stream closed normally (server shut down or session ended).
