@@ -7,6 +7,7 @@
 //! Projections are the ONLY mutable state in the system. They can be truncated
 //! and rebuilt from the event log at any time via [`rebuild`].
 
+pub mod async_projection;
 mod actor;
 mod registry;
 mod session;
@@ -20,6 +21,7 @@ mod tests_actor;
 mod tests_session;
 
 pub use actor::ActorProjection;
+pub use async_projection::{AsyncProjection, spawn_projection};
 pub use registry::{EventBus, Projection};
 pub use session::SessionProjection;
 pub use workspace::WorkspaceProjection;

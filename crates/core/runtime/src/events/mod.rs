@@ -1,16 +1,22 @@
 pub mod envelope;
 pub mod filter;
+pub mod router;
 pub mod store;
 pub mod types;
+pub mod validator;
 
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod tests_actor;
+#[cfg(test)]
+mod router_tests;
 
 pub use envelope::EventEnvelope;
 pub use filter::EventFilter;
+pub use router::EventRouter;
 pub use store::{EventStore, SqliteEventStore};
+pub use validator::{CallerKind, EmitContext, EventValidator, ValidationError};
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
