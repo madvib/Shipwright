@@ -4,51 +4,29 @@
   "id": "bzwmeMdT",
   "module": {
     "name": "github.com/madvib/ship",
-    "version": "0.1.0",
-    "description": "Package manager and runtime for AI agents",
+    "version": "0.2.0",
+    "description": "Compiler and runtime for AI agent configuration",
     "license": "MIT",
+  },
+  "project": {
+    "skill_paths": ["docs/", "skills/"],
   },
   "dependencies": {
     "github.com/garrytan/gstack": "main",
     "github.com/better-auth/skills": "main",
   },
   "exports": {
-    // Public skills
-    "skills": [
-      "skills/no-slop",
-      "skills/browse",
-      "skills/mission-control",
-      "skills/spawn-agent",
-      "skills/setup-workspace",
-      "skills/tdd",
-      "skills/code-review",
-      "skills/qa-testing",
-      "skills/design-workflow",
-      "skills/ship-brainstorm",
-      "skills/visual-spec",
-      "skills/configure-agent",
-      "skills/ship-permissions",
-      "skills/ship-skills",
-      "skills/ship-help",
-      "skills/ship-publishing",
-      "skills/ship-tutorial",
-      "skills/ship-cli-reference",
-      "skills/ship-schema-reference",
-    ],
+    // Publish-ready skills — added one by one after testing in Studio
+    "skills": [],
     // Public agents — reviewed, publish-ready
     "agents": [
-      "agents/mission-control.jsonc",
-      "agents/red-green.jsonc",
-      "agents/test-writer.jsonc",
-      "agents/skeptic.jsonc",
       "agents/gatekeeper.jsonc",
-      "agents/shipper.jsonc",
       "agents/pixel.jsonc",
-      "agents/watchdog.jsonc",
-      "agents/react-dev.jsonc",
-      "agents/fullstack.jsonc",
+      "agents/test-writer.jsonc",
+      "agents/reviewer.jsonc",
     ],
     // Private: commander, cli-lane, cloudflare, default, gstack,
-    // react-architect, react-designer, reviewer, rust-*, server-lane, web-lane, better-auth
+    // react-architect, react-designer, rust-*, server-lane, web-lane, better-auth
+    // Cut: fullstack, shipper, skeptic, watchdog, red-green, react-dev, mission-control
   },
 }

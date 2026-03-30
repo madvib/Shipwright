@@ -1,9 +1,10 @@
 ---
 name: ship-brainstorm
 stable-id: ship-brainstorm
-description: Use to generate and iterate on HTML mockups for UI design. Writes to .ship-session/ for live preview in Ship Studio's Session page with visual annotation support.
+description: Use to generate and iterate on HTML mockups for UI design. Creates versioned page artifacts in .ship-session/ for live preview in Ship Studio.
 tags: [design, ui, mockups, prototyping]
 authors: [ship]
+artifacts: [html]
 ---
 
 # Ship Brainstorm
@@ -22,9 +23,11 @@ Generate production-quality HTML mockups. Real typography, spacing, color — no
 
 Ask at most 1–2 focused questions. Make reasonable assumptions and note them.
 
-### 2. Generate the mockup
+### 2. Generate the page
 
-Write a self-contained HTML file to `.ship-session/canvas.html`. Use Tailwind via CDN, Ship's design tokens, and realistic data. No lorem ipsum.
+Write a self-contained HTML file to `.ship-session/brainstorm-{slug}-v1.html`. Each page is a separate artifact — never overwrite, always create a new version.
+
+Use Tailwind via CDN and realistic data. No lorem ipsum.
 
 Include Ship's brand styles:
 - Font: DM Sans (body), Syne (headings) via Google Fonts
@@ -34,27 +37,25 @@ Include Ship's brand styles:
 
 ### 3. Preview
 
-The mockup renders live in Ship Studio's Session page at `/studio/session`. No server needed.
+Pages render live in Ship Studio's Session page. No server needed.
 
 Fallback if Studio is not available:
 ```bash
 python3 -m http.server {{ server_port }} --directory .ship-session &
 ```
 
-### 4. Read annotations
+### 4. Read feedback
 
-Before each revision, check `.ship-session/annotations.json` for structured user feedback. Each annotation has a `type` (click or box), a `selector` pointing to the DOM element, and a `note` with the user's feedback. Address each one.
+Before each revision, check for annotation and feedback events. Each annotation has a selector pointing to the DOM element and a note with the user's feedback. Address each one.
 
 ### 5. Iterate
 
-Overwrite `.ship-session/canvas.html` with the revision. Copy the previous version to `.ship-session/canvas-v{N}.html` to preserve history.
+Create a new version: `brainstorm-{slug}-v2.html`. Keep previous versions — they are the iteration history. Delete rejected versions when the user confirms.
 
 ### 6. On approval
 
 Output the final HTML path and a one-paragraph intent description covering layout decisions, color rationale, and interaction model.
 
-Proceed to `visual-spec` for implementation handoff if requested.
-
 ## Quality standard
 
-Every mockup should look shippable. Production aesthetics — proper spacing, contrast, accessibility. Senior designer who codes, not a wireframe.
+Every page should look shippable. Production aesthetics — proper spacing, contrast, accessibility. Senior designer who codes, not a wireframe.

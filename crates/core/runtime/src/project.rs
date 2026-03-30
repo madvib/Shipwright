@@ -480,10 +480,8 @@ fn resolve_project_dir_from_start(
     start_dir: &Path,
     migrate_legacy: bool,
 ) -> Result<Option<PathBuf>> {
-    if let Some(ship_path) = ship_dir_from_git_worktree_pointer(start_dir) {
-        return Ok(Some(ship_path));
-    }
-
+    // 1. Walk up from CWD looking for .ship/ — this finds the current
+    //    worktree's own .ship/ before reaching any parent.
     let mut current_dir = start_dir.to_path_buf();
     loop {
         let ship_path = current_dir.join(SHIP_DIR_NAME);
@@ -505,6 +503,12 @@ fn resolve_project_dir_from_start(
         } else {
             break;
         }
+    }
+
+    // 2. Fallback: if no .ship/ found in ancestors, try resolving via git
+    //    worktree pointer to the main checkout's .ship/.
+    if let Some(ship_path) = ship_dir_from_git_worktree_pointer(start_dir) {
+        return Ok(Some(ship_path));
     }
 
     Ok(ship_dir_from_git_worktree(start_dir))
