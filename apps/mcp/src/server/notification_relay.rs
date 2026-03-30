@@ -1,93 +1,46 @@
 use async_trait::async_trait;
 use runtime::events::EventEnvelope;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
 use tracing::warn;
 
 /// Abstraction over the MCP peer to enable testing.
+/// Sends `ship/event` custom notifications with the full event payload.
 #[async_trait]
-pub trait NotificationSink: Send + Sync + 'static {
-    async fn notify_resource_updated(&self, uri: String);
+pub trait EventSink: Send + Sync + 'static {
+    async fn send_event(&self, event: &EventEnvelope);
 }
 
-/// URI template with variable substitution from event envelope.
-#[derive(Debug, Clone)]
-pub enum UriTemplate {
-    /// Static URI — always the same.
-    Static(String),
-    /// Dynamic URI — substitutes `{workspace_id}`, `{session_id}`,
-    /// `{entity_id}`, `{event_type}` from the envelope.
-    Dynamic(String),
-}
-
-impl UriTemplate {
-    fn resolve(&self, env: &EventEnvelope) -> String {
-        match self {
-            Self::Static(uri) => uri.clone(),
-            Self::Dynamic(tpl) => {
-                let mut out = tpl.clone();
-                out = out.replace("{workspace_id}", env.workspace_id.as_deref().unwrap_or(""));
-                out = out.replace("{session_id}", env.session_id.as_deref().unwrap_or(""));
-                out = out.replace("{entity_id}", &env.entity_id);
-                out = out.replace("{event_type}", &env.event_type);
-                out
-            }
-        }
-    }
-}
-
-/// Handle to a connected peer.
+/// A connected agent peer with its allowed event types.
 pub struct PeerHandle {
     pub id: String,
-    pub sink: Box<dyn NotificationSink>,
-    /// Only notify for events matching these URIs. Empty = notify all.
-    pub subscribed_uris: HashSet<String>,
+    pub actor_id: String,
+    pub sink: Box<dyn EventSink>,
+    /// Event types this agent is allowed to receive, derived from
+    /// the agent's active skills' declared `in` events.
+    /// Empty = system peer, receives all (e.g. internal projections).
+    pub allowed_events: HashSet<String>,
 }
 
-/// Maps event types to MCP resource URIs for notification.
-pub struct McpNotificationRelay {
-    event_uri_map: HashMap<String, UriTemplate>,
-    wildcard: Option<UriTemplate>,
+/// Routes events from a workspace broadcast channel to connected agent peers.
+///
+/// Filtering happens HERE, not at the receiver. Each peer only receives
+/// events that match its agent's active skill declarations. This enforces
+/// least privilege — an agent without `visual-brainstorm` never sees
+/// `visual-brainstorm.annotation_created`.
+///
+/// Events are sent as `ship/event` custom MCP notifications with the full
+/// EventEnvelope payload, not as `notify_resource_updated` nudges.
+pub struct EventRelay {
     peers: Arc<RwLock<Vec<PeerHandle>>>,
 }
 
-impl McpNotificationRelay {
+impl EventRelay {
     pub fn new() -> Self {
         Self {
-            event_uri_map: HashMap::new(),
-            wildcard: None,
             peers: Arc::new(RwLock::new(Vec::new())),
         }
-    }
-
-    pub fn with_mapping(mut self, event_type: &str, template: UriTemplate) -> Self {
-        self.event_uri_map.insert(event_type.to_string(), template);
-        self
-    }
-
-    pub fn with_wildcard_mapping(mut self, _pattern: &str, template: UriTemplate) -> Self {
-        self.wildcard = Some(template);
-        self
-    }
-
-    pub fn with_default_mappings(self) -> Self {
-        self.with_mapping(
-            "session.started",
-            UriTemplate::Dynamic("ship://session/{workspace_id}".into()),
-        )
-        .with_mapping(
-            "session.ended",
-            UriTemplate::Dynamic("ship://session/{workspace_id}".into()),
-        )
-        .with_mapping(
-            "session.progress",
-            UriTemplate::Dynamic("ship://session/{workspace_id}/progress".into()),
-        )
-        .with_wildcard_mapping(
-            "*.*",
-            UriTemplate::Dynamic("ship://workspace/{workspace_id}/events".into()),
-        )
     }
 
     pub fn peers(&self) -> Arc<RwLock<Vec<PeerHandle>>> {
@@ -108,7 +61,7 @@ impl McpNotificationRelay {
                 match rx.recv().await {
                     Ok(env) => self.handle_event(&env).await,
                     Err(broadcast::error::RecvError::Lagged(n)) => {
-                        warn!("notification relay lagged, skipped {n} events");
+                        warn!("event relay lagged, skipped {n} events");
                     }
                     Err(broadcast::error::RecvError::Closed) => break,
                 }
@@ -116,44 +69,72 @@ impl McpNotificationRelay {
         })
     }
 
-    async fn handle_event(&self, env: &EventEnvelope) {
-        let template = self
-            .event_uri_map
-            .get(&env.event_type)
-            .or(self.wildcard.as_ref());
-        let Some(template) = template else { return };
-        let uri = template.resolve(env);
-
+    async fn handle_event(&self, event: &EventEnvelope) {
         let peers = self.peers.read().await;
         for peer in peers.iter() {
-            if peer.subscribed_uris.is_empty() || peer.subscribed_uris.contains(&uri) {
-                peer.sink.notify_resource_updated(uri.clone()).await;
+            if self.peer_should_receive(peer, event) {
+                peer.sink.send_event(event).await;
             }
         }
     }
+
+    /// Filter at the relay, not at the receiver.
+    ///
+    /// System events (workspace.*, session.*, actor.*, config.*, gate.*)
+    /// are delivered to all peers — they're runtime lifecycle, not skill-scoped.
+    ///
+    /// Skill-namespaced events (e.g. visual-brainstorm.annotation_created)
+    /// are only delivered if the peer's allowed_events contains that type.
+    ///
+    /// If allowed_events is empty, the peer is a system peer (receives all).
+    fn peer_should_receive(&self, peer: &PeerHandle, event: &EventEnvelope) -> bool {
+        // System peers receive everything
+        if peer.allowed_events.is_empty() {
+            return true;
+        }
+
+        // System namespace events go to all peers
+        if is_system_event(&event.event_type) {
+            return true;
+        }
+
+        // Skill-namespaced events: check if peer's skills declared this as `in`
+        peer.allowed_events.contains(&event.event_type)
+    }
+}
+
+/// System namespaces that all agents receive regardless of skill set.
+const SYSTEM_PREFIXES: &[&str] = &[
+    "workspace.", "session.", "actor.", "config.",
+    "gate.", "runtime.", "sync.", "project.",
+];
+
+fn is_system_event(event_type: &str) -> bool {
+    SYSTEM_PREFIXES.iter().any(|p| event_type.starts_with(p))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use tokio::sync::Mutex;
 
-    type Log = Arc<Mutex<Vec<String>>>;
+    type Log = Arc<Mutex<Vec<EventEnvelope>>>;
 
-    struct MockSink { notifications: Log }
+    struct MockSink {
+        events: Log,
+    }
 
     impl MockSink {
         fn new() -> (Self, Log) {
-            let n: Log = Arc::new(Mutex::new(Vec::new()));
-            (Self { notifications: n.clone() }, n)
+            let log: Log = Arc::new(Mutex::new(Vec::new()));
+            (Self { events: log.clone() }, log)
         }
     }
 
     #[async_trait]
-    impl NotificationSink for MockSink {
-        async fn notify_resource_updated(&self, uri: String) {
-            self.notifications.lock().await.push(uri);
+    impl EventSink for MockSink {
+        async fn send_event(&self, event: &EventEnvelope) {
+            self.events.lock().await.push(event.clone());
         }
     }
 
@@ -163,126 +144,188 @@ mod tests {
             .with_context(Some("feature/auth"), Some("sess-1"))
     }
 
-    fn peer(id: &str, sink: MockSink, uris: HashSet<String>) -> PeerHandle {
-        PeerHandle { id: id.into(), sink: Box::new(sink), subscribed_uris: uris }
+    fn system_peer(id: &str, sink: MockSink) -> PeerHandle {
+        PeerHandle {
+            id: id.into(),
+            actor_id: format!("actor-{id}"),
+            sink: Box::new(sink),
+            allowed_events: HashSet::new(),
+        }
     }
 
-    async fn run_relay(
-        relay: McpNotificationRelay,
-        events: Vec<EventEnvelope>,
-    ) {
+    fn skill_peer(id: &str, sink: MockSink, events: Vec<&str>) -> PeerHandle {
+        PeerHandle {
+            id: id.into(),
+            actor_id: format!("actor-{id}"),
+            sink: Box::new(sink),
+            allowed_events: events.into_iter().map(String::from).collect(),
+        }
+    }
+
+    async fn run_relay(relay: EventRelay, events: Vec<EventEnvelope>) {
         let (tx, rx) = broadcast::channel(16);
         let handle = relay.spawn(rx);
-        for e in events { tx.send(e).unwrap(); }
+        for e in events {
+            tx.send(e).unwrap();
+        }
         drop(tx);
         handle.await.unwrap();
     }
 
+    // ── Delivery tests ───────────────────────────────────────────
+
     #[tokio::test]
-    async fn test_relay_notifies_on_matching_event() {
+    async fn system_peer_receives_all_events() {
         let (sink, log) = MockSink::new();
-        let relay = McpNotificationRelay::new()
-            .with_mapping("session.started", UriTemplate::Static("ship://s".into()));
-        relay.add_peer(peer("p1", sink, HashSet::new())).await;
-        run_relay(relay, vec![envelope("session.started")]).await;
-        assert_eq!(log.lock().await.as_slice(), &["ship://s"]);
+        let relay = EventRelay::new();
+        relay.add_peer(system_peer("p1", sink)).await;
+        run_relay(
+            relay,
+            vec![
+                envelope("session.started"),
+                envelope("visual-brainstorm.annotation_created"),
+            ],
+        )
+        .await;
+        assert_eq!(log.lock().await.len(), 2);
     }
 
     #[tokio::test]
-    async fn test_relay_ignores_non_matching_event() {
+    async fn skill_peer_receives_matching_skill_events() {
         let (sink, log) = MockSink::new();
-        let relay = McpNotificationRelay::new()
-            .with_mapping("session.started", UriTemplate::Static("ship://s".into()));
-        relay.add_peer(peer("p1", sink, HashSet::new())).await;
-        run_relay(relay, vec![envelope("actor.created")]).await;
+        let relay = EventRelay::new();
+        relay
+            .add_peer(skill_peer(
+                "p1",
+                sink,
+                vec!["visual-brainstorm.annotation_created"],
+            ))
+            .await;
+        run_relay(
+            relay,
+            vec![envelope("visual-brainstorm.annotation_created")],
+        )
+        .await;
+        assert_eq!(log.lock().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn skill_peer_blocked_from_unmatched_skill_events() {
+        let (sink, log) = MockSink::new();
+        let relay = EventRelay::new();
+        relay
+            .add_peer(skill_peer("p1", sink, vec!["mcp-setup.server_ready"]))
+            .await;
+        run_relay(
+            relay,
+            vec![envelope("visual-brainstorm.annotation_created")],
+        )
+        .await;
         assert!(log.lock().await.is_empty());
     }
 
     #[tokio::test]
-    async fn test_relay_notifies_multiple_peers() {
-        let relay = McpNotificationRelay::new()
-            .with_mapping("session.started", UriTemplate::Static("ship://s".into()));
-        let mut logs = Vec::new();
-        for i in 0..3 {
-            let (sink, log) = MockSink::new();
-            relay.add_peer(peer(&format!("p{i}"), sink, HashSet::new())).await;
-            logs.push(log);
-        }
+    async fn skill_peer_still_receives_system_events() {
+        let (sink, log) = MockSink::new();
+        let relay = EventRelay::new();
+        relay
+            .add_peer(skill_peer("p1", sink, vec!["mcp-setup.server_ready"]))
+            .await;
         run_relay(relay, vec![envelope("session.started")]).await;
-        for log in &logs { assert_eq!(log.lock().await.len(), 1); }
+        assert_eq!(log.lock().await.len(), 1);
     }
 
     #[tokio::test]
-    async fn test_relay_respects_peer_uri_subscription() {
+    async fn multiple_peers_filtered_independently() {
         let (sa, la) = MockSink::new();
         let (sb, lb) = MockSink::new();
-        let relay = McpNotificationRelay::new()
-            .with_mapping("session.started", UriTemplate::Static("ship://s".into()));
-        relay.add_peer(peer("a", sa, HashSet::from(["ship://s".into()]))).await;
-        relay.add_peer(peer("b", sb, HashSet::from(["ship://other".into()]))).await;
-        run_relay(relay, vec![envelope("session.started")]).await;
+        let relay = EventRelay::new();
+        relay
+            .add_peer(skill_peer(
+                "a",
+                sa,
+                vec!["visual-brainstorm.annotation_created"],
+            ))
+            .await;
+        relay
+            .add_peer(skill_peer("b", sb, vec!["mcp-setup.server_ready"]))
+            .await;
+        run_relay(
+            relay,
+            vec![envelope("visual-brainstorm.annotation_created")],
+        )
+        .await;
         assert_eq!(la.lock().await.len(), 1);
         assert!(lb.lock().await.is_empty());
     }
 
     #[tokio::test]
-    async fn test_uri_template_substitution() {
-        let tpl = UriTemplate::Dynamic("ship://session/{workspace_id}/progress".into());
-        assert_eq!(tpl.resolve(&envelope("session.progress")), "ship://session/feature/auth/progress");
+    async fn event_payload_delivered_intact() {
+        let (sink, log) = MockSink::new();
+        let relay = EventRelay::new();
+        relay.add_peer(system_peer("p1", sink)).await;
+        let evt = envelope("session.started");
+        let evt_id = evt.id.clone();
+        run_relay(relay, vec![evt]).await;
+        let received = log.lock().await;
+        assert_eq!(received[0].id, evt_id);
+        assert_eq!(received[0].event_type, "session.started");
     }
 
+    // ── Peer lifecycle tests ─────────────────────────────────────
+
     #[tokio::test]
-    async fn test_relay_handles_peer_disconnect() {
+    async fn remove_peer_stops_delivery() {
         let (sa, la) = MockSink::new();
         let (sb, lb) = MockSink::new();
-        let relay = McpNotificationRelay::new()
-            .with_mapping("session.started", UriTemplate::Static("ship://s".into()));
-        relay.add_peer(peer("a", sa, HashSet::new())).await;
-        relay.add_peer(peer("b", sb, HashSet::new())).await;
+        let relay = EventRelay::new();
+        relay.add_peer(system_peer("a", sa)).await;
+        relay.add_peer(system_peer("b", sb)).await;
         relay.remove_peer("a").await;
         run_relay(relay, vec![envelope("session.started")]).await;
         assert!(la.lock().await.is_empty());
         assert_eq!(lb.lock().await.len(), 1);
     }
 
+    // ── Channel lifecycle tests ──────────────────────────────────
+
     #[tokio::test]
-    async fn test_relay_handles_lagged() {
+    async fn relay_handles_lagged() {
         let (tx, rx) = broadcast::channel(2);
         let (sink, log) = MockSink::new();
-        let relay = McpNotificationRelay::new()
-            .with_mapping("x.y", UriTemplate::Static("ship://x".into()));
-        for _ in 0..4 { let _ = tx.send(envelope("x.y")); }
-        relay.add_peer(peer("p", sink, HashSet::new())).await;
+        let relay = EventRelay::new();
+        for _ in 0..4 {
+            let _ = tx.send(envelope("session.started"));
+        }
+        relay.add_peer(system_peer("p", sink)).await;
         let handle = relay.spawn(rx);
-        tx.send(envelope("x.y")).unwrap();
+        tx.send(envelope("session.started")).unwrap();
         drop(tx);
         handle.await.unwrap();
         assert!(!log.lock().await.is_empty());
     }
 
     #[tokio::test]
-    async fn test_relay_stops_on_channel_close() {
+    async fn relay_stops_on_channel_close() {
         let (tx, rx) = broadcast::channel::<EventEnvelope>(16);
-        let handle = McpNotificationRelay::new().spawn(rx);
+        let handle = EventRelay::new().spawn(rx);
         drop(tx);
         tokio::time::timeout(std::time::Duration::from_secs(1), handle)
-            .await.expect("relay should stop").unwrap();
+            .await
+            .expect("relay should stop")
+            .unwrap();
     }
 
-    #[tokio::test]
-    async fn test_wildcard_mapping() {
-        let (sink, log) = MockSink::new();
-        let relay = McpNotificationRelay::new().with_wildcard_mapping(
-            "*.*", UriTemplate::Dynamic("ship://workspace/{workspace_id}/events".into()),
-        );
-        relay.add_peer(peer("p", sink, HashSet::new())).await;
-        run_relay(relay, vec![envelope("skill.executed")]).await;
-        assert_eq!(log.lock().await.as_slice(), &["ship://workspace/feature/auth/events"]);
-    }
+    // ── System event classification ──────────────────────────────
 
     #[tokio::test]
-    async fn test_static_uri_template() {
-        let tpl = UriTemplate::Static("ship://static/resource".into());
-        assert_eq!(tpl.resolve(&envelope("any.event")), "ship://static/resource");
+    async fn system_event_detection() {
+        assert!(is_system_event("workspace.created"));
+        assert!(is_system_event("session.started"));
+        assert!(is_system_event("actor.woke"));
+        assert!(is_system_event("config.changed"));
+        assert!(is_system_event("gate.passed"));
+        assert!(!is_system_event("visual-brainstorm.annotation_created"));
+        assert!(!is_system_event("mcp-setup.server_ready"));
     }
 }
