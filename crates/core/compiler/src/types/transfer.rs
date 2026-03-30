@@ -159,9 +159,6 @@ pub struct PullSkill {
     /// Raw `assets/vars.json` content (unparsed JSON). `None` if absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vars_schema: Option<serde_json::Value>,
-    /// Resolved event definitions from `assets/events.json`. `None` if absent.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub events_schema: Option<serde_json::Value>,
     /// All files in the skill directory, relative paths (e.g. `["SKILL.md", "assets/vars.json"]`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub files: Vec<String>,

@@ -264,7 +264,6 @@ fn resolve_skills(ship_dir: &Path, refs: &[String]) -> Vec<PullSkill> {
                 tags: fm.tags,
                 authors: fm.authors,
                 vars_schema,
-                events_schema: None,
                 files,
                 reference_docs,
                 evals,

@@ -119,8 +119,6 @@ fn read_skill_from_dir(id: &str, skill_dir: &Path) -> Option<PullSkill> {
         .and_then(|s| serde_json::from_str(&s).ok());
     let reference_docs = collect_reference_docs(skill_dir);
 
-    let events_schema = read_events_schema(skill_dir, fm.stable_id.as_deref().unwrap_or(id));
-
     Some(PullSkill {
         id: id.to_string(),
         name: fm.name.unwrap_or_else(|| id.to_string()),
@@ -131,31 +129,10 @@ fn read_skill_from_dir(id: &str, skill_dir: &Path) -> Option<PullSkill> {
         tags: fm.tags,
         authors: fm.authors,
         vars_schema,
-        events_schema,
         files,
         reference_docs,
         evals,
     })
-}
-
-/// Read and expand `assets/events.json` for a skill. Returns `None` if absent.
-/// Logs a warning and returns `None` on parse or validation errors.
-fn read_events_schema(skill_dir: &Path, stable_id: &str) -> Option<serde_json::Value> {
-    let raw_str = std::fs::read_to_string(skill_dir.join("assets/events.json")).ok()?;
-    let raw: serde_json::Value = match serde_json::from_str(&raw_str) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("warn: {}/assets/events.json parse error: {e}", skill_dir.display());
-            return None;
-        }
-    };
-    match compiler::events::expand_events(stable_id, &raw) {
-        Ok(v) => Some(v),
-        Err(e) => {
-            eprintln!("warn: {}/assets/events.json: {e}", skill_dir.display());
-            None
-        }
-    }
 }
 
 /// `get_skill_vars` MCP tool — return merged variable state for a skill.
