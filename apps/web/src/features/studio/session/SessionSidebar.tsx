@@ -239,18 +239,6 @@ function FilesTab({ todo, groups, activeFile, stagedAnnotations, collapsedGroups
 
 // ── Helpers ──
 
-function SectionHeader({ label, count, open, onToggle }: {
-  label: string; count?: number; open: boolean; onToggle: () => void
-}) {
-  return (
-    <button onClick={onToggle} className="flex items-center gap-1 w-full">
-      {open ? <ChevronDown className="size-3 text-muted-foreground/40 shrink-0" /> : <ChevronRight className="size-3 text-muted-foreground/40 shrink-0" />}
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">{label}</span>
-      {count != null && <span className="text-[9px] text-muted-foreground/40 bg-muted/50 px-1.5 py-0.5 rounded">{count}</span>}
-    </button>
-  )
-}
-
 function FileEntry({ file, isActive, onClick, onContextMenu, isTodo }: {
   file: SessionFile; isActive: boolean; onClick: () => void
   onContextMenu: (e: React.MouseEvent) => void; isTodo?: boolean
