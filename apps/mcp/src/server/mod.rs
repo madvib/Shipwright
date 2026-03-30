@@ -1,4 +1,5 @@
 mod handler;
+pub mod notification_relay;
 mod tool_gate;
 
 use anyhow::{Result, anyhow};
