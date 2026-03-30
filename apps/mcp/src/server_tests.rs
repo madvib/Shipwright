@@ -328,11 +328,11 @@ fn unstable_build_registers_all_tools() {
             "{tool} missing from unstable router"
         );
     }
-    // 18 stable + 18 unstable
+    // stable + unstable
     assert_eq!(
         names.len(),
-        36,
-        "unstable build should register 36 tools, got: {:?}",
+        39,
+        "unstable build should register 39 tools, got: {:?}",
         names
     );
 }
