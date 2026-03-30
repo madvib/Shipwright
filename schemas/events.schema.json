@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://getship.dev/schemas/events.schema.json",
+  "title": "Skill Events Schema",
+  "description": "Declares event types for an interactive Ship skill. Events are namespaced to the skill's stable-id.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference."
+    },
+    "ship": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Ship built-in event types this skill uses. e.g. [\"annotation\", \"feedback\"]. See https://getship.dev/schemas/ship-events.json for the full list."
+    },
+    "custom": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/event" },
+      "description": "Custom event types in this skill's namespace. Each id becomes {stable-id}.{id} at runtime."
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "event": {
+      "type": "object",
+      "required": ["id", "direction"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Event identifier. Becomes {stable-id}.{id} at runtime. Lowercase, underscores, no hyphens."
+        },
+        "direction": {
+          "type": "string",
+          "enum": ["in", "out", "both"],
+          "description": "in = skill receives (human/external → agent). out = skill emits (agent → human/external). both = bidirectional."
+        },
+        "label": {
+          "type": "string",
+          "description": "Human-readable name shown in Studio and docs."
+        },
+        "description": {
+          "type": "string",
+          "description": "What this event means and when it fires."
+        },
+        "schema": {
+          "type": "object",
+          "description": "JSON Schema for the event payload. Validated at ingress by the runtime."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

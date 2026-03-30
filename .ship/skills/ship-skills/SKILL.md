@@ -1,21 +1,14 @@
 ---
 name: ship-skills
 stable-id: ship-skills
-description: Use when creating, configuring, or understanding Ship skills — directory structure, SKILL.md format, typed variables, MiniJinja templates, progressive disclosure docs, publishing, and the getship.dev specification.
+description: Use when creating, configuring, or understanding Ship skills — directory structure, SKILL.md format, typed variables, events, interactive skills, progressive disclosure docs, publishing, and the getship.dev specification.
 tags: [ship, skills, smart-skills, authoring, guide]
 authors: [ship]
 ---
 
 # Smart Skills
 
-A smart skill is a skill with typed configuration variables that resolve into content at compile time. Same skill, different output for every user and project.
-
-## How it works
-
-1. Declare variables in `assets/vars.json` with types, defaults, and storage scopes.
-2. Reference them in `SKILL.md` using `{{ var }}`, `{% if %}`, `{% for %}`.
-3. Users set values via `ship vars set`, the Studio Skills IDE, or by asking an agent.
-4. `ship use` merges state (defaults, global, local, project) and resolves the template.
+Ship's smart skill specification is a superset of plain agent skills. A smart skill can have typed variables, declared events, custom frontends, progressive documentation, and eval test cases. Same skill, different output for every user and project. Same events, reactive communication between agents and humans.
 
 ## Directory layout
 
@@ -24,34 +17,47 @@ A smart skill is a skill with typed configuration variables that resolve into co
   SKILL.md              <- agent instructions (MiniJinja template)
   assets/
     vars.json           <- variable schema and defaults
+    events.json         <- event declarations (interactive skills)
+  app/                  <- optional custom frontend
   scripts/              <- helper scripts referenced in SKILL.md
   references/
-    docs/               <- human + agent documentation (Markdown/Markdoc)
+    docs/               <- human + agent documentation
   evals/
-    evals.json          <- eval test cases (planned tooling)
+    evals.json          <- eval test cases
 ```
 
-## Variables
+## Variables (smart skills)
 
-Define each variable in `assets/vars.json` with a type (`string`, `bool`, `enum`, `array`, `object`), a `storage-hint` scope (`global`, `local`, `project`), and optional `default`, `label`, `description`.
+Define variables in `assets/vars.json` with a type (`string`, `bool`, `enum`, `array`, `object`), a `storage-hint` scope (`global`, `local`, `project`), and optional `default`, `label`, `description`.
 
 Merge order: defaults, then global, then local, then project. Last wins.
 
-Use `ship vars get <skill-id>` to read merged state. Use `ship vars set <skill-id> <key> <value>` to write. Enum values are validated on set.
+SKILL.md is a MiniJinja template. Use `{{ var }}` for substitution, `{% if var %}` for conditionals, `{% for item in list %}` for loops. Undefined variables render as empty string.
 
-## Templates
+## Events (interactive skills)
 
-SKILL.md is a MiniJinja template. Use `{{ var }}` for substitution, `{% if var %}` for conditionals, `{% for item in list %}` for loops. Undefined variables render as empty string. Template errors fall back to original content with a warning.
+Declare events in `assets/events.json`. Reference Ship built-in events and declare custom events in the skill's namespace.
+
+```json
+{
+  "$schema": "https://getship.dev/schemas/events.schema.json",
+  "ship": ["annotation", "feedback"],
+  "custom": [
+    { "id": "page_created", "direction": "out", "schema": {...} }
+  ]
+}
+```
+
+Ship built-in events: `annotation`, `feedback`, `selection`, `artifact_created`, `artifact_deleted`. Custom events become `{stable-id}.{id}` at runtime. Direction: `in` (human to agent), `out` (agent to human), `both`.
+
+Events route to agents that have the skill, not to the skill itself. Skills define, agents react.
 
 ## Reference docs
 
-Put detailed documentation in `references/docs/`. The `index.md` page is the landing page. Additional pages cover specific concerns. Each page has frontmatter with `group`, `title`, `section`, `order`, and optional `audience`. The `group` field sets the docs site sidebar collection.
-
-SKILL.md stays concise (under 100 lines). Reference docs are retrieved on demand when depth is needed.
+Put detailed documentation in `references/docs/`. SKILL.md stays concise (under 100 lines). Reference docs are retrieved on demand. Each page has frontmatter with `group`, `title`, `section`, `order`.
 
 ## MCP tools
 
-Agents read and write vars through these MCP tools:
 - `get_skill_vars` -- merged variable state for a skill
 - `set_skill_var` -- write a single variable value
 - `list_skill_vars` -- list all skills with configured variables
@@ -60,14 +66,10 @@ Agents read and write vars through these MCP tools:
 
 ## stable-id
 
-Add `stable-id` to SKILL.md frontmatter to preserve variable state across directory renames. Must match `[a-z0-9][a-z0-9\-]*`. All KV state is keyed by `stable-id`.
-
-## Content hashing
-
-Skill content (SKILL.md, assets/, references/, evals/) is hashed for publishing. User variable state in platform.db is never included in the hash. Changing your vars does not create a new version.
+Add `stable-id` to SKILL.md frontmatter to preserve state across directory renames. Must match `[a-z0-9][a-z0-9\-]*`. All KV and event state is keyed by `stable-id`.
 
 ## What is not yet stable
 
-Eval tooling (`ship skill eval`) is planned but not implemented. The `evals/evals.json` structure is defined but cannot be run automatically. Declarative var migrations, computed/dynamic vars, WASM audit sandbox, `min-runtime-version`, and structured `allowed-tools` are planned for future releases.
+Eval tooling, declarative var/event schema migrations, `app/` frontend serving, Ship SDK npm package, computed/dynamic vars, WASM audit sandbox.
 
 For full details, read `references/docs/` in this skill directory.

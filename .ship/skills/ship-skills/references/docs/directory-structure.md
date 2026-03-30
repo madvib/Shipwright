@@ -18,7 +18,9 @@ Every skill is a directory under `.ship/skills/`. The directory name is the skil
   SKILL.md
   assets/
     vars.json
+    events.json
     templates/
+  app/
   scripts/
   references/
     docs/
@@ -56,9 +58,21 @@ Bundled resources the skill depends on.
 
 Declares typed configuration variables with defaults and storage scopes. The presence of this file activates MiniJinja template resolution for SKILL.md. See the [Variables](variables.md) reference for the complete schema.
 
+### assets/events.json
+
+Declares event types for interactive skills. Skills reference Ship built-in events (annotation, feedback, etc.) and declare custom events in their own namespace. The presence of this file makes a skill interactive — the runtime populates allowed event types for agents using this skill. See the [Events](events.md) reference for the complete schema.
+
 ### assets/templates/
 
 Reusable config snippets or boilerplate files. Referenced from SKILL.md instructions. Not processed by the template engine -- these are files the agent copies or adapts during work.
+
+## app/
+
+Optional custom frontend served by the Ship runtime. Studio renders it in an iframe. Any framework works — the runtime serves static files. The only requirement is an `index.html` entry point.
+
+If the app wants to communicate with agents, it includes the Ship SDK (`<script src="/_ship/sdk.js"></script>`) and uses `ship.action()` to emit events and `ship.on()` to receive them. Without the SDK, the app still renders — it just cannot interact with the event bus.
+
+The skill author is responsible for building their app. Ship does not run build tools. Ship a `dist/` or pre-built output as `app/`. Same as deploying to any static host.
 
 ## scripts/
 

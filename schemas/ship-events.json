@@ -1,0 +1,128 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://getship.dev/schemas/ship-events.json",
+  "title": "Ship Built-in Event Types",
+  "description": "Well-known event types provided by Ship. Skills reference these by name in their events.json \"ship\" array instead of redeclaring common interaction patterns.",
+  "events": {
+    "annotation": {
+      "direction": "in",
+      "label": "Annotation",
+      "description": "User clicked and annotated an element on a rendered surface. Fired by the Ship SDK when annotation mode is active.",
+      "schema": {
+        "type": "object",
+        "required": ["note"],
+        "properties": {
+          "note": {
+            "type": "string",
+            "description": "The user's annotation text."
+          },
+          "x": {
+            "type": "number",
+            "description": "Horizontal position in pixels."
+          },
+          "y": {
+            "type": "number",
+            "description": "Vertical position in pixels."
+          },
+          "selector": {
+            "type": "string",
+            "description": "CSS selector of the annotated element."
+          },
+          "artifact": {
+            "type": "string",
+            "description": "Filename or identifier of the artifact being annotated."
+          }
+        }
+      }
+    },
+    "feedback": {
+      "direction": "in",
+      "label": "Feedback",
+      "description": "User approved, rejected, or commented on an artifact or agent action.",
+      "schema": {
+        "type": "object",
+        "required": ["action"],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["approve", "reject", "comment", "request_changes"],
+            "description": "The feedback action."
+          },
+          "comment": {
+            "type": "string",
+            "description": "Optional comment explaining the feedback."
+          },
+          "artifact": {
+            "type": "string",
+            "description": "Filename or identifier of the artifact being reviewed."
+          }
+        }
+      }
+    },
+    "selection": {
+      "direction": "in",
+      "label": "Selection",
+      "description": "User selected or highlighted content on a rendered surface.",
+      "schema": {
+        "type": "object",
+        "required": ["text"],
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The selected text content."
+          },
+          "selector": {
+            "type": "string",
+            "description": "CSS selector of the element containing the selection."
+          },
+          "artifact": {
+            "type": "string",
+            "description": "Filename or identifier of the artifact."
+          }
+        }
+      }
+    },
+    "artifact_created": {
+      "direction": "out",
+      "label": "Artifact Created",
+      "description": "Agent created a new artifact file in the skill's session namespace.",
+      "schema": {
+        "type": "object",
+        "required": ["filename"],
+        "properties": {
+          "filename": {
+            "type": "string",
+            "description": "Filename relative to .ship-session/{namespace}/."
+          },
+          "mime_type": {
+            "type": "string",
+            "description": "MIME type of the artifact. e.g. text/html, image/png, text/markdown."
+          },
+          "title": {
+            "type": "string",
+            "description": "Human-readable title for the artifact."
+          }
+        }
+      }
+    },
+    "artifact_deleted": {
+      "direction": "both",
+      "label": "Artifact Deleted",
+      "description": "An artifact was removed. Can be triggered by human (rejecting) or agent (cleanup).",
+      "schema": {
+        "type": "object",
+        "required": ["filename"],
+        "properties": {
+          "filename": {
+            "type": "string",
+            "description": "Filename of the deleted artifact."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why the artifact was deleted."
+          }
+        }
+      }
+    }
+  }
+}
