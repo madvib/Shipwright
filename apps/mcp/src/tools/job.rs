@@ -114,7 +114,7 @@ pub fn list_jobs(_project_dir: &Path, req: ListJobsRequest) -> String {
     }
 }
 
-pub fn append_job_log(project_dir: &Path, req: AppendJobLogRequest) -> String {
+pub fn append_job_log(_project_dir: &Path, req: AppendJobLogRequest) -> String {
     if let Some(path) = req.message.strip_prefix("touched: ") {
         let path = path.trim();
         if !path.is_empty()

@@ -84,6 +84,20 @@ pub struct LogProgressRequest {
 }
 
 #[derive(Deserialize, JsonSchema)]
+pub struct GetSessionRequest {
+    /// Workspace branch/id. If omitted, resolves from current git branch.
+    pub branch: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ListSessionsRequest {
+    /// Filter by branch. If omitted, returns sessions across all branches.
+    pub branch: Option<String>,
+    /// Maximum number of sessions to return. Default 20, max 100.
+    pub limit: Option<u32>,
+}
+
+#[derive(Deserialize, JsonSchema)]
 pub struct CreateJobRequest {
     /// Job kind (e.g. "review", "build", "deploy")
     pub kind: String,

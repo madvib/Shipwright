@@ -4,11 +4,15 @@ use runtime::workspace::{
     EndWorkspaceSessionRequest as RuntimeEndWorkspaceSessionRequest,
     end_workspace_session as runtime_end_workspace_session,
     get_active_workspace_session as runtime_get_active_workspace_session,
+    list_workspace_sessions as runtime_list_workspace_sessions,
     record_workspace_session_progress as runtime_record_workspace_session_progress,
     start_workspace_session as runtime_start_workspace_session,
 };
 
-use crate::requests::{EndSessionRequest, LogProgressRequest, StartSessionRequest};
+use crate::requests::{
+    EndSessionRequest, GetSessionRequest, ListSessionsRequest, LogProgressRequest,
+    StartSessionRequest,
+};
 
 pub fn start_session(project_dir: &Path, req: StartSessionRequest, branch: &str) -> String {
     match runtime_start_workspace_session(
@@ -54,5 +58,24 @@ pub fn log_progress(project_dir: &Path, req: LogProgressRequest, branch: &str) -
     match runtime_record_workspace_session_progress(project_dir, branch, &req.note) {
         Ok(()) => format!("Progress logged for session on '{}'.", branch),
         Err(e) => format!("Error logging progress: {}", e),
+    }
+}
+
+pub fn get_session(project_dir: &Path, _req: GetSessionRequest, branch: &str) -> String {
+    match runtime_get_active_workspace_session(project_dir, branch) {
+        Ok(Some(session)) => serde_json::to_string_pretty(&session)
+            .unwrap_or_else(|e| format!("Error serializing session: {}", e)),
+        Ok(None) => "No active session".to_string(),
+        Err(e) => format!("Error: {}", e),
+    }
+}
+
+pub fn list_sessions(project_dir: &Path, req: ListSessionsRequest) -> String {
+    let limit = req.limit.unwrap_or(20).min(100) as usize;
+    match runtime_list_workspace_sessions(project_dir, req.branch.as_deref(), limit) {
+        Ok(sessions) if sessions.is_empty() => "[]".to_string(),
+        Ok(sessions) => serde_json::to_string_pretty(&sessions)
+            .unwrap_or_else(|e| format!("Error serializing sessions: {}", e)),
+        Err(e) => format!("Error: {}", e),
     }
 }

@@ -254,6 +254,34 @@ impl ShipServer {
         session::log_progress(&project_dir, req, &branch)
     }
 
+    #[tool(
+        description = "Get the active session for a workspace branch. Returns session JSON or 'No active session'."
+    )]
+    async fn get_session(&self, Parameters(req): Parameters<GetSessionRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let branch =
+            match Self::resolve_workspace_branch_for_project(&project_dir, req.branch.as_deref()) {
+                Ok(b) => b,
+                Err(e) => return format!("Error: {}", e),
+            };
+        session::get_session(&project_dir, req, &branch)
+    }
+
+    #[tool(
+        description = "List session history for a branch. Returns all branches if branch is omitted. \
+        Default limit: 20, max: 100."
+    )]
+    async fn list_sessions(&self, Parameters(req): Parameters<ListSessionsRequest>) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        session::list_sessions(&project_dir, req)
+    }
+
     // ---- Skills ----
 
     #[tool(

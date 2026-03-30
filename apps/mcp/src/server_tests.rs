@@ -170,6 +170,8 @@ fn core_tools_are_recognized() {
         "start_session",
         "end_session",
         "log_progress",
+        "get_session",
+        "list_sessions",
         "list_skills",
     ];
     for tool in platform_tools {
@@ -269,6 +271,8 @@ fn stable_build_registers_only_platform_tools() {
         "start_session",
         "end_session",
         "log_progress",
+        "get_session",
+        "list_sessions",
         "list_skills",
         "get_skill_vars",
         "set_skill_var",
@@ -324,11 +328,11 @@ fn unstable_build_registers_all_tools() {
             "{tool} missing from unstable router"
         );
     }
-    // 16 stable + 18 unstable
+    // 18 stable + 18 unstable
     assert_eq!(
         names.len(),
-        34,
-        "unstable build should register 34 tools, got: {:?}",
+        36,
+        "unstable build should register 36 tools, got: {:?}",
         names
     );
 }
