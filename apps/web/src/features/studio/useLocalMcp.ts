@@ -8,7 +8,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { McpClient, McpClientError } from '#/lib/mcp-client'
 import type { McpTool } from '#/lib/mcp-client'
 import { mcpKeys } from '#/lib/query-keys'
-import type { EventEnvelope } from '#/features/studio/events/useEventStream'
+import { startNotificationListener } from './notification-listener'
 
 export type McpConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
@@ -34,6 +34,10 @@ function saveConfig(config: McpConfig): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(config))
 }
 
+export interface StudioEventResult {
+  id: string
+}
+
 export interface UseLocalMcpReturn {
   status: McpConnectionStatus
   error: string | null
@@ -47,6 +51,7 @@ export interface UseLocalMcpReturn {
   connect: () => Promise<void>
   disconnect: () => void
   callTool: (name: string, args?: Record<string, unknown>) => Promise<string>
+  postStudioEvent: (event_type: string, payload: unknown, staged: boolean) => Promise<StudioEventResult>
   refreshLocalAgents: () => Promise<void>
 }
 
@@ -130,7 +135,7 @@ export function useLocalMcp(): UseLocalMcpReturn {
 
       // Start the SSE notification listener for reactive cache invalidation.
       // Runs in the background -- stream drop triggers a single refetch as fallback.
-      startNotificationListener(client)
+      startNotificationListener(client, queryClient, { listenerActiveRef, clientRef })
 
       // Fetch which agents exist locally for sync badges
       try {
@@ -153,49 +158,6 @@ export function useLocalMcp(): UseLocalMcpReturn {
       setStatus('error')
     }
   }, [config.port, config.token, disconnect]) // eslint-disable-line react-hooks/exhaustive-deps -- startNotificationListener is stable via refs
-
-  /** Start a persistent SSE listener for server-pushed notifications.
-   *  When the server sends `notifications/resources/list_changed`, all MCP
-   *  query caches are invalidated so components re-fetch fresh data.
-   *  If the stream drops, a single cache invalidation is triggered as fallback,
-   *  and the listener reconnects after a short delay. */
-  function startNotificationListener(client: McpClient) {
-    if (listenerActiveRef.current) return
-    listenerActiveRef.current = true
-
-    void (async () => {
-      const RECONNECT_DELAY_MS = 3_000
-      while (listenerActiveRef.current && clientRef.current === client) {
-        try {
-          await client.startNotificationListener((method, params) => {
-            if (method === 'notifications/resources/list_changed') {
-              void queryClient.invalidateQueries({ queryKey: mcpKeys.all })
-            } else if (method === 'ship/event' && params != null) {
-              const envelope = params as EventEnvelope
-              queryClient.setQueryData(mcpKeys.events(), (prev: EventEnvelope[] | undefined) => {
-                const existing = prev ?? []
-                return [envelope, ...existing].slice(0, 200)
-              })
-            }
-          })
-          // Stream closed normally (server shut down or session ended).
-          // If we're still supposed to be connected, do a fallback invalidation.
-          if (listenerActiveRef.current && clientRef.current === client) {
-            void queryClient.invalidateQueries({ queryKey: mcpKeys.all })
-          }
-        } catch {
-          // Connection failed or errored -- fallback invalidation
-          if (listenerActiveRef.current && clientRef.current === client) {
-            void queryClient.invalidateQueries({ queryKey: mcpKeys.all })
-          }
-        }
-        // Wait before reconnecting to avoid tight loops
-        if (listenerActiveRef.current && clientRef.current === client) {
-          await new Promise((r) => setTimeout(r, RECONNECT_DELAY_MS))
-        }
-      }
-    })()
-  }
 
   // Track whether a reconnect is in-flight to prevent concurrent reconnects
   const reconnectingRef = useRef<Promise<void> | null>(null)
@@ -240,6 +202,27 @@ export function useLocalMcp(): UseLocalMcpReturn {
       }
     },
     [connect],
+  )
+
+  const postStudioEvent = useCallback(
+    async (event_type: string, payload: unknown, staged: boolean): Promise<StudioEventResult> => {
+      // Try the real endpoint. Falls back gracefully when Rust lane hasn't shipped yet.
+      if (clientRef.current) {
+        try {
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+          if (config.token) headers['Authorization'] = `Bearer ${config.token}`
+          const res = await fetch(`http://localhost:${config.port}/studio/event`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ event_type, payload, staged }),
+          })
+          if (res.ok) return res.json() as Promise<StudioEventResult>
+        } catch { /* endpoint not yet available — fall through */ }
+      }
+      // Mock: stable client-side ID
+      return { id: `evt-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}` }
+    },
+    [config.port, config.token],
   )
 
   const refreshLocalAgents = useCallback(async () => {
@@ -289,6 +272,7 @@ export function useLocalMcp(): UseLocalMcpReturn {
     connect,
     disconnect,
     callTool,
+    postStudioEvent,
     refreshLocalAgents,
   }
 }

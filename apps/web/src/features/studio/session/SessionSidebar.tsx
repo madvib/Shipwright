@@ -3,15 +3,15 @@
 
 import { useState, useRef, useCallback } from 'react'
 import {
-  FileText, CheckSquare, Image, ChevronDown, ChevronRight,
-  Plus, MapPin, Layers, FileCode,
+  FileText, CheckSquare, Image, ChevronDown, ChevronRight, Plus, Layers, FileCode,
 } from 'lucide-react'
 import { CliStatusPopover } from '#/features/studio/CliStatusPopover'
 import { ArtifactContextMenu } from './ArtifactContextMenu'
 import { GitTab } from './GitTab'
 import { SessionsTab } from './SessionsTab'
+import { StagedAnnotationsPanel } from './StagedAnnotationsPanel'
 import type { ArtifactMenuState } from './ArtifactContextMenu'
-import type { SessionFile, Annotation } from './types'
+import type { SessionFile, StagedAnnotation } from './types'
 import type { GitStatusResult, GitLogEntry } from './useGitInfo'
 
 type SidebarTab = 'files' | 'git' | 'sessions'
@@ -21,10 +21,14 @@ const HIDDEN_FILES = new Set(['diff.txt', 'annotations.json'])
 interface SessionSidebarProps {
   files: SessionFile[]
   activeFile: string | null
-  annotations: Annotation[]
+  stagedAnnotations: StagedAnnotation[]
   isConnected: boolean
   onSelectFile: (path: string) => void
+  onDeleteFile: (path: string) => void
   onUploadFiles: (files: FileList) => void
+  onNavigateToAnnotation: (filePath: string, annotationId: string) => void
+  onDeleteAnnotation: (annotationId: string) => void
+  onClearAnnotations: () => void
   onShowDiff: () => void
   onSelectCommit: (hash: string) => void
   gitStatus: GitStatusResult | null | undefined
@@ -83,13 +87,14 @@ const FILE_ICONS: Record<SessionFile['type'], { icon: typeof FileText; color: st
 }
 
 export function SessionSidebar({
-  files, activeFile, annotations, isConnected,
-  onSelectFile, onUploadFiles, onShowDiff, onSelectCommit,
+  files, activeFile, stagedAnnotations, isConnected,
+  onSelectFile, onDeleteFile, onUploadFiles,
+  onNavigateToAnnotation, onDeleteAnnotation, onClearAnnotations,
+  onShowDiff, onSelectCommit,
   gitStatus, gitLog,
 }: SessionSidebarProps) {
   const [tab, setTab] = useState<SidebarTab>('files')
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
-  const [annotationsOpen, setAnnotationsOpen] = useState(false)
   const [contextMenu, setContextMenu] = useState<ArtifactMenuState | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -110,13 +115,13 @@ export function SessionSidebar({
 
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-card/30">
-      {/* Tab bar */}
-      <div className="flex border-b border-border shrink-0">
+      {/* Tab bar — h-9 matches SessionTabBar height */}
+      <div className="flex items-center border-b border-border shrink-0 h-9">
         {(['files', 'git', 'sessions'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`flex-1 py-2.5 text-center text-[11px] font-medium border-b-2 transition-colors capitalize ${
+            className={`flex-1 h-full text-center text-[11px] font-medium border-b-2 transition-colors capitalize ${
               tab === t ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
@@ -131,16 +136,17 @@ export function SessionSidebar({
             todo={todo}
             groups={groups}
             activeFile={activeFile}
-            annotations={annotations}
-            annotationsOpen={annotationsOpen}
+            stagedAnnotations={stagedAnnotations}
             collapsedGroups={collapsedGroups}
             isConnected={isConnected}
             fileInputRef={fileInputRef}
             onSelectFile={onSelectFile}
             onUploadFiles={onUploadFiles}
             onToggleGroup={toggleGroup}
-            onToggleAnnotations={() => setAnnotationsOpen(!annotationsOpen)}
             onContextMenu={handleContextMenu}
+            onNavigateToAnnotation={onNavigateToAnnotation}
+            onDeleteAnnotation={onDeleteAnnotation}
+            onClearAnnotations={onClearAnnotations}
           />
         )}
         {tab === 'git' && (
@@ -157,7 +163,7 @@ export function SessionSidebar({
       </div>
 
       {contextMenu && (
-        <ArtifactContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} onDelete={() => setContextMenu(null)} />
+        <ArtifactContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} onDelete={onDeleteFile} />
       )}
     </aside>
   )
@@ -165,20 +171,21 @@ export function SessionSidebar({
 
 // ── Files Tab ──
 
-function FilesTab({ todo, groups, activeFile, annotations, annotationsOpen, collapsedGroups, isConnected, fileInputRef, onSelectFile, onUploadFiles, onToggleGroup, onToggleAnnotations, onContextMenu }: {
+function FilesTab({ todo, groups, activeFile, stagedAnnotations, collapsedGroups, isConnected, fileInputRef, onSelectFile, onUploadFiles, onToggleGroup, onContextMenu, onNavigateToAnnotation, onDeleteAnnotation, onClearAnnotations }: {
   todo: SessionFile | null
   groups: FileGroup[]
   activeFile: string | null
-  annotations: Annotation[]
-  annotationsOpen: boolean
+  stagedAnnotations: StagedAnnotation[]
   collapsedGroups: Set<string>
   isConnected: boolean
   fileInputRef: React.RefObject<HTMLInputElement | null>
   onSelectFile: (path: string) => void
   onUploadFiles: (files: FileList) => void
   onToggleGroup: (label: string) => void
-  onToggleAnnotations: () => void
   onContextMenu: (e: React.MouseEvent, file: SessionFile) => void
+  onNavigateToAnnotation: (filePath: string, annotationId: string) => void
+  onDeleteAnnotation: (annotationId: string) => void
+  onClearAnnotations: () => void
 }) {
   return (
     <div className="px-3 pt-3 pb-2">
@@ -218,22 +225,13 @@ function FilesTab({ todo, groups, activeFile, annotations, annotationsOpen, coll
         <span>Add files</span>
       </button>
       <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => { if (e.target.files?.length) onUploadFiles(e.target.files); e.target.value = '' }} />
-      {annotations.length > 0 && (
-        <>
-          <div className="my-3 border-t border-border/40" />
-          <SectionHeader label="Annotations" count={annotations.length} open={annotationsOpen} onToggle={onToggleAnnotations} />
-          {annotationsOpen && (
-            <div className="mt-1 space-y-0.5">
-              {annotations.map((ann, i) => (
-                <div key={ann.id} className="flex items-center gap-2 px-2 py-1 rounded text-xs text-muted-foreground hover:text-foreground hover:bg-muted/30 cursor-pointer transition">
-                  <MapPin className="size-3 text-primary shrink-0" />
-                  <span className="truncate">{ann.type === 'click' ? ann.note || ann.text : ann.type === 'box' ? ann.note : ann.text}</span>
-                  <span className="ml-auto text-[9px] text-muted-foreground/40">#{i + 1}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </>
+      {stagedAnnotations.length > 0 && (
+        <StagedAnnotationsPanel
+          staged={stagedAnnotations}
+          onNavigate={onNavigateToAnnotation}
+          onDelete={onDeleteAnnotation}
+          onClearAll={onClearAnnotations}
+        />
       )}
     </div>
   )

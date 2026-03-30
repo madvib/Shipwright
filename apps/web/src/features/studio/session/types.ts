@@ -45,3 +45,12 @@ export type UploadResult =
 
 // Main content area display mode
 export type ViewMode = 'canvas' | 'diff' | 'artifact'
+
+// A staged annotation: an Annotation plus its file context.
+// Annotations live in local React state until the user sends — no server calls per annotation.
+// id is a stable client-side key used for deletion/deduplication.
+export interface StagedAnnotation {
+  filePath: string
+  id: string
+  ann: Annotation
+}
