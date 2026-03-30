@@ -104,9 +104,12 @@ impl EventRelay {
 }
 
 /// System namespaces that all agents receive regardless of skill set.
+/// `studio.` is included so Studio→agent events (visual messages, canvas
+/// annotations) reach connected peers without skill declarations.
 const SYSTEM_PREFIXES: &[&str] = &[
     "workspace.", "session.", "actor.", "config.",
     "gate.", "runtime.", "sync.", "project.",
+    "studio.",
 ];
 
 fn is_system_event(event_type: &str) -> bool {

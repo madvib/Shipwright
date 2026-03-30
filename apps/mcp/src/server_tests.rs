@@ -280,9 +280,9 @@ fn stable_build_registers_only_platform_tools() {
         "get_skill_vars",
         "set_skill_var",
         "list_skill_vars",
-        "list_events",
         // Studio-only tools NOT here: pull_agents, list_local_agents,
-        // push_bundle, write/delete_skill_file, list_project_skills
+        // push_bundle, write/delete_skill_file, list_project_skills, emit_studio_event
+        // Removed: list_events — agents do not have read access to the event store
     ];
     for tool in expected {
         assert!(

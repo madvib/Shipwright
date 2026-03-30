@@ -32,7 +32,6 @@ impl ShipServer {
         "get_session",
         "list_sessions",
         "list_skills",
-        "list_events",
         // Studio-only tools (pull_agents, push_bundle, list_local_agents,
         // write/delete_skill_file, list_project_skills) are NOT here —
         // they live exclusively on StudioServer.

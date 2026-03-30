@@ -24,6 +24,7 @@ fn studio_server_registers_exactly_studio_tools() {
         "get_git_diff",
         "get_git_log",
         "list_worktrees",
+        "emit_studio_event",
     ];
     for tool in expected {
         assert!(
@@ -54,7 +55,8 @@ fn studio_server_does_not_include_workspace_tools() {
         "end_session",
         "log_progress",
         "set_agent",
-        "list_events",
+        "list_events", // agents must not access the event store
+        "event",       // agent event tool blocked from Studio surface
     ];
     for tool in excluded {
         assert!(

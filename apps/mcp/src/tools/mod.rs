@@ -2,7 +2,6 @@
 pub mod adr;
 pub mod agent;
 pub mod event;
-pub mod events;
 pub mod git_info;
 #[cfg(feature = "unstable")]
 pub mod job;

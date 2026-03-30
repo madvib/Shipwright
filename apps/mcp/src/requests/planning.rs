@@ -147,3 +147,11 @@ pub struct ListEventsRequest {
     /// Maximum number of events to return (default: 50, max: 200)
     pub limit: Option<u32>,
 }
+
+#[derive(Deserialize, JsonSchema)]
+pub struct EmitStudioEventRequest {
+    /// Event type, must start with "studio." (e.g. "studio.message.visual").
+    pub event_type: String,
+    /// Arbitrary JSON payload. Must be self-contained — agents receive this directly.
+    pub payload: serde_json::Value,
+}

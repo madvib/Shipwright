@@ -288,6 +288,76 @@ impl StudioServer {
         };
         git_info::list_worktrees(&project_dir)
     }
+
+    // ---- Studio Events ----
+
+    #[tool(
+        description = "Emit a Studio event into the workspace event bus. \
+        event_type must start with 'studio.' (e.g. 'studio.message.visual'). \
+        actor is always 'studio' — not agent-controlled. \
+        Payload must be self-contained: agents receive it directly with no follow-up queries. \
+        Returns the persisted event id."
+    )]
+    async fn emit_studio_event(
+        &self,
+        Parameters(req): Parameters<EmitStudioEventRequest>,
+    ) -> String {
+        if !req.event_type.starts_with("studio.") {
+            return format!(
+                "Error: event_type '{}' must start with 'studio.' — \
+                 only studio.* events are accepted here",
+                req.event_type
+            );
+        }
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let workspace_id = match current_git_branch(&project_dir) {
+            Ok(b) => b,
+            Err(e) => return format!("Error resolving workspace: {}", e),
+        };
+        let mut envelope = match runtime::events::EventEnvelope::new(
+            &req.event_type,
+            &workspace_id,
+            &req.payload,
+        ) {
+            Ok(e) => e,
+            Err(e) => return format!("Error building event: {}", e),
+        };
+        envelope.actor = "studio".to_string();
+        let envelope = envelope
+            .with_actor_id("studio")
+            .with_context(Some(&workspace_id), None);
+        let ctx = runtime::events::EmitContext {
+            caller_kind: runtime::events::CallerKind::Mcp,
+            skill_id: None,
+            workspace_id: Some(workspace_id),
+            session_id: None,
+        };
+        let router = match std::panic::catch_unwind(runtime::events::router) {
+            Ok(r) => r,
+            Err(_) => return "Error: EventRouter not initialized".to_string(),
+        };
+        if let Err(e) = router.emit(envelope.clone(), &ctx).await {
+            return format!("Error emitting event: {}", e);
+        }
+        format!("{{\"id\":\"{}\"}}", envelope.id)
+    }
+}
+
+// ---- Helpers ----
+
+fn current_git_branch(project_dir: &std::path::Path) -> anyhow::Result<String> {
+    let root = project_dir.parent().unwrap_or(project_dir);
+    let out = std::process::Command::new("git")
+        .args(["branch", "--show-current"])
+        .current_dir(root)
+        .output()?;
+    anyhow::ensure!(out.status.success(), "git branch --show-current failed");
+    let branch = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    anyhow::ensure!(!branch.is_empty(), "HEAD is detached — cannot resolve workspace");
+    Ok(branch)
 }
 
 // ---- ServerHandler ----

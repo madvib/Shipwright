@@ -4,6 +4,7 @@ use runtime::events::EventEnvelope;
 pub const RESERVED_PREFIXES: &[&str] = &[
     "actor.", "session.", "skill.", "workspace.",
     "gate.", "job.", "config.", "project.",
+    "studio.", // Studio app namespace — only StudioServer may emit
 ];
 
 /// Build and validate an agent-emitted domain event.

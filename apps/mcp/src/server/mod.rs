@@ -14,7 +14,7 @@ use std::path::PathBuf;
 
 use crate::requests::*;
 use crate::tools::{
-    agent, event, events, project, session, session_files, skills, workspace, workspace_ops,
+    agent, event, project, session, session_files, skills, workspace, workspace_ops,
 };
 use skills::{
     get_skill_vars_tool, list_skill_vars_tool,
@@ -495,18 +495,6 @@ impl ShipServer {
         }
     }
 
-    #[tool(
-        description = "Query the project event log. Returns JSON array of events. \
-        Filter by since (ISO 8601 or relative: '1h', '24h', '7d'), actor, entity, or action. \
-        Default limit: 50, max: 200."
-    )]
-    async fn list_events(&self, Parameters(req): Parameters<ListEventsRequest>) -> String {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(e) => return e,
-        };
-        events::list_events(&project_dir, req)
-    }
 }
 
 // ---- Unstable tool registration ----

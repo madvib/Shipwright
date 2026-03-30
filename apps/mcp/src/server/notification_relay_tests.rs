@@ -208,6 +208,24 @@ async fn system_event_detection() {
     assert!(is_system_event("actor.woke"));
     assert!(is_system_event("config.changed"));
     assert!(is_system_event("gate.passed"));
+    assert!(is_system_event("studio.message.visual"));
+    assert!(is_system_event("studio.canvas.annotation"));
     assert!(!is_system_event("visual-brainstorm.annotation_created"));
     assert!(!is_system_event("mcp-setup.server_ready"));
+}
+
+#[tokio::test]
+async fn studio_events_delivered_to_skill_peers_without_declaration() {
+    // studio.* events pass through to all peers — no events.json declaration needed
+    let (sink, log) = MockSink::new();
+    let relay = EventRelay::new();
+    relay
+        .add_peer(skill_peer("p1", sink, vec!["some-skill.event"]))
+        .await;
+    run_relay(
+        relay,
+        vec![envelope("studio.message.visual")],
+    )
+    .await;
+    assert_eq!(log.lock().await.len(), 1);
 }

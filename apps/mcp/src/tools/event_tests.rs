@@ -120,10 +120,20 @@ fn ship_event_rejects_reserved_job_type() {
 }
 
 #[test]
+fn ship_event_rejects_studio_namespace() {
+    // Agents must not emit studio.* events — only StudioServer may do so
+    let result = handle_ship_event("actor-1", "ws-1", "studio.message.visual", json!({}), false);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("reserved"), "error must mention 'reserved': {msg}");
+}
+
+#[test]
 fn reserved_type_list_is_complete() {
     let required = [
         "actor.", "session.", "skill.", "workspace.",
         "gate.", "job.", "config.", "project.",
+        "studio.",
     ];
     for prefix in required {
         assert!(
