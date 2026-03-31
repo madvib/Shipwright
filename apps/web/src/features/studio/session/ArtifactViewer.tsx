@@ -2,7 +2,7 @@
 // images (click-to-zoom), JSON, and text files.
 
 import { useMemo, useState, lazy, Suspense } from 'react'
-import { FileText, Image as ImageIcon, File, ZoomIn, ZoomOut, Save, Maximize, ChevronDown, ChevronRight } from 'lucide-react'
+import { FileText, Image as ImageIcon, File, ZoomIn, ZoomOut, Save, Maximize, ChevronDown, ChevronRight, MonitorPlay, ExternalLink } from 'lucide-react'
 import type { FrontmatterEntry } from '@ship/primitives'
 import { MarkdownPreview } from '#/features/studio/skills-ide/MarkdownPreview'
 
@@ -216,10 +216,50 @@ function TextViewer({ content, file }: { content: string; file: SessionFile }) {
   )
 }
 
+// ── URL Viewer (iframe for dev tools) ──
+
+function UrlViewer({ file, content }: { file: SessionFile; content: string }) {
+  const url = content.trim()
+
+  if (!url) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 p-8">
+        <MonitorPlay className="size-12 text-muted-foreground/40" />
+        <p className="text-sm text-muted-foreground">No URL</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-border/60 shrink-0 bg-card/30">
+        <MonitorPlay className="size-3.5 text-indigo-500" />
+        <span className="text-xs font-medium text-foreground">{file.name}</span>
+        <div className="flex-1" />
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted transition"
+        >
+          <ExternalLink className="size-3" />
+          Open
+        </a>
+      </div>
+      <iframe
+        src={url}
+        className="flex-1 w-full border-0"
+        title={file.name}
+      />
+    </div>
+  )
+}
+
 // ── Router ──
 
 export function ArtifactViewer({ file, content, draftContent, isDirty, onContentChange, onSave, onComment }: ArtifactViewerProps) {
   if (file.type === 'image') return <ImageViewer file={file} content={content} />
+  if (file.type === 'url') return <UrlViewer file={file} content={content} />
   if (file.type === 'markdown') {
     return (
       <MarkdownFileEditor

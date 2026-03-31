@@ -11,7 +11,11 @@ order: 2
 
 Every skill is a directory under `.ship/skills/`. The directory name is the skill id. Additional skill directories can be configured in `ship.jsonc` via `project.skill_paths` (relative to project root). The default `.ship/skills/` is always included. This allows top-level skill directories like `docs/` for documentation skills.
 
-## Canonical layout
+## Two kinds of skills
+
+### Agent skill layout
+
+Most skills. Instructs agents how to do something.
 
 ```
 .ship/skills/{skill-id}/
@@ -22,20 +26,33 @@ Every skill is a directory under `.ship/skills/`. The directory name is the skil
     templates/
   app/                <- optional custom frontend (future)
   scripts/
-  references/
-    docs/
-      index.md
-      {topic}.md
-    api/
   evals/
     evals.json
 ```
+
+### Doc-skill layout
+
+Documentation that also loads as a skill. Lives under `docs/` in the project root. The `references/docs/` directory is collected by the site generator and rendered on the documentation website.
+
+```
+docs/{skill-id}/
+  SKILL.md
+  references/
+    docs/             <- SITE GENERATOR INPUT — docs website pages only
+      index.md
+      {topic}.md
+    api/
+```
+
+`references/docs/` is a **reserved namespace owned by the site generator**. Do not add it to agent skills. The site generator scans all `references/docs/` directories across the project and builds documentation pages from them. Putting agent skill content there pollutes the website and misleads agents into thinking the pattern is universal.
 
 ## SKILL.md
 
 The skill's agent instructions. Always loaded into the agent's context window at startup. This is the only required file.
 
 Starts with YAML frontmatter delimited by `---`. Body is Markdown, optionally with MiniJinja template syntax when `assets/vars.json` is present. Keep under 100 lines.
+
+SKILL.md is the table of contents for the skill. Keep it focused. Long is fine if the content belongs there — do not move content out of SKILL.md into `references/docs/` just because it is long.
 
 ### Frontmatter fields
 
@@ -79,21 +96,25 @@ The skill author is responsible for building their app. Ship does not run build 
 
 Helper scripts that SKILL.md instructs the agent to run. Shell scripts, Python scripts, or any executable. Referenced by relative path from SKILL.md. The skill directory is self-contained.
 
-## references/
+## references/ (doc-skills only)
 
-Supporting material not loaded into the agent's context by default.
+`references/` is only present in doc-skills — skills that live under `docs/` and whose purpose is documentation rendered on the website.
 
 ### references/docs/
 
-Documentation pages in Markdown (`.md`) or Markdoc (`.mdoc`). Serves two audiences: humans on a docs site and agents reading from the filesystem. See the [Skill Documentation](documentation.md) reference.
+**Reserved namespace. Site generator input. Do not add to agent skills.**
 
-- `index.md` is the landing page. Always create this first.
+Markdown (`.md`) or Markdoc (`.mdoc`) pages collected at build time and rendered on the documentation website. Also readable by agents via filesystem when they need reference depth.
+
+- `index.md` is the landing page.
 - Additional pages cover one concern each.
 - Each page has YAML frontmatter with `title`, `order`, and optional `group`, `description`, `audience`, `section`.
 
+If you are writing an agent skill and feel like you need `references/docs/`, put the content in SKILL.md instead.
+
 ### references/api/
 
-API tables, external specs, and machine-readable reference data. For skills that document external APIs or protocols.
+API tables, external specs, and machine-readable reference data. Only in doc-skills that document external APIs or protocols.
 
 ## evals/evals.json
 
@@ -118,7 +139,7 @@ The absolute minimum is a directory with SKILL.md:
   SKILL.md
 ```
 
-Add `assets/vars.json` when the skill needs user configuration. Add `references/docs/` when content exceeds what fits in SKILL.md. Add `evals/` when the skill produces verifiable output.
+Add `assets/vars.json` when the skill needs user configuration. Add `scripts/` for helper scripts the agent runs. Add `evals/` when the skill produces verifiable output. Do not add `references/docs/` — that is for doc-skills only.
 
 ## Naming rules
 

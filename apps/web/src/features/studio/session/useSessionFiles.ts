@@ -13,6 +13,7 @@ function classifyFile(name: string): SessionFile['type'] {
   if (/\.html?$/i.test(name)) return 'html'
   if (/\.(png|jpe?g|gif|webp|svg)$/i.test(name)) return 'image'
   if (/\.md$/i.test(name)) return 'markdown'
+  if (/\.url$/i.test(name)) return 'url'
   return 'other'
 }
 

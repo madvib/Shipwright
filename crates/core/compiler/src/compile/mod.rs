@@ -146,7 +146,7 @@ pub fn compile(resolved: &ResolvedConfig, provider_id: &str) -> Option<CompileOu
         out.mcp_servers = serde_json::json!({});
     }
     out.context_content = context::build_context_content(desc, resolved);
-    out.skill_files = skills::build_skill_files(desc, &resolved.skills);
+    out.skill_files = skills::build_skill_files(desc, resolved);
     out.event_subscriptions = skills::resolve_event_subscriptions(&resolved.skills);
 
     // Compile agent profiles for this provider

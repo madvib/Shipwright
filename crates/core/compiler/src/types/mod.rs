@@ -25,6 +25,6 @@ pub use plugin::{PluginEntry, PluginsManifest};
 pub use rule::Rule;
 pub use skill::{Skill, SkillSource, is_valid_skill_name};
 pub use transfer::{
-    AgentBundle, ListAgentsResponse, PullAgent, PullMcpServer, PullProfile, PullResponse, PullRule,
-    PullSkill, SkillBundle, TransferBundle,
+    AgentBundle, ArtifactType, ListAgentsResponse, PullAgent, PullMcpServer, PullProfile,
+    PullResponse, PullRule, PullSkill, SkillBundle, TransferBundle,
 };

@@ -57,7 +57,11 @@ PORTS=(
   -p 3001:3001   # Ship Studio (alt)
   -p 3002:3002   # Vite HMR websocket
   -p 4321:4321   # Astro docs site (dev)
+  -p 4983:4983   # Drizzle Studio
+  -p 5173:5173   # Vite dev server / Vite Inspect
   -p 6006:6006   # Storybook
+  -p 6274:6274   # MCP Inspector
+  -p 51204:51204 # Vitest UI
   -p 51741:51741 # Ship MCP server (HTTP mode — Studio default)
 )
 

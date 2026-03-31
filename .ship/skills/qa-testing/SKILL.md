@@ -1,28 +1,36 @@
 ---
-name: qa-testing
-stable-id: qa-testing
-description: Use when testing a web application — navigate, interact, screenshot, find bugs. Outputs to .ship-session/ for live viewing in Ship Studio Session page.
-tags: [qa, testing, browser]
+name: web-qa
+stable-id: web-qa
+description: Use when testing a web application — navigate pages, interact, screenshot, file bugs, write a report. Each run is timestamped. Outputs to .ship-session/{{ stable_id }}/ for live viewing in Ship Studio.
+tags: [qa, testing, browser, playwright]
 authors: [ship]
+license: MIT
+compatibility: Requires playwright-cli (@playwright/cli). Install: npm install -g @playwright/cli@latest
+artifacts: [image, markdown]
+allowed-tools: Bash(playwright-cli:*) Bash(npx:*)
 ---
 
-# QA Testing
+# Web QA
 
-Systematic QA with results viewable in Ship Studio's Session page. All artifacts go to `.ship-session/` where the Session canvas can render them.
+Systematic QA using playwright-cli. Each run is isolated in a timestamped folder under `.ship-session/{{ stable_id }}/`. Results are viewable live in Ship Studio's Session page.
 
 ## Setup
 
-All screenshots and reports go to `.ship-session/qa/`. Create the directory structure:
-
 ```bash
-mkdir -p .ship-session/qa/screenshots
+QA_ROOT="$(git rev-parse --show-toplevel)/.ship-session/{{ stable_id }}"
+QA_RUN="$(date -u +%Y-%m-%dT%H-%M)"
+QA_DIR="$QA_ROOT/$QA_RUN"
+mkdir -p "$QA_DIR/screenshots" "$QA_DIR/bugs"
+npx --no-install playwright-cli --version || npm install -g @playwright/cli@latest
 ```
+
+Use `$QA_DIR` for all paths. Never use relative paths — playwright-cli resolves them from its own working directory.
 
 ## Workflow
 
 ### 1. Target
 
-Ask for the URL. Default tier is Standard.
+Ask for the URL. Default tier is `{{ tier }}`.
 
 | Tier | Scope |
 |------|-------|
@@ -32,7 +40,12 @@ Ask for the URL. Default tier is Standard.
 
 ### 2. Inventory
 
-Navigate systematically. Write inventory to `.ship-session/qa/inventory.md`:
+```bash
+playwright-cli open --browser={{ browser }} <url>
+playwright-cli snapshot
+```
+
+Write inventory to `$QA_DIR/inventory.md`:
 
 ```markdown
 # QA Inventory
@@ -40,22 +53,32 @@ Navigate systematically. Write inventory to `.ship-session/qa/inventory.md`:
 | Page | URL | Status | Issues |
 |------|-----|--------|--------|
 | Landing | / | pending | - |
-| Dashboard | /dashboard | pending | - |
 ```
 
 ### 3. Test each page
 
-For every page, take a screenshot with a descriptive name:
+Navigate, snapshot for element refs, screenshot, check diagnostics:
 
 ```bash
-$B goto <url>
-$B screenshot .ship-session/qa/screenshots/<page-name>.png
-$B console --errors
+playwright-cli goto <url>
+playwright-cli snapshot
+playwright-cli screenshot --filename="$QA_DIR/screenshots/<page-name>.png"
+playwright-cli console
+playwright-cli network
 ```
 
-Screenshot naming: `landing.png`, `settings-form-empty.png`, `dashboard-loading.png`. Descriptive, no numbers.
+Screenshot naming: `landing.png`, `settings-form-empty.png`. Descriptive, no numbers.
 
-Check per page:
+Test interactions using refs from snapshot:
+
+```bash
+playwright-cli fill e3 "user@test.com"
+playwright-cli click e5
+playwright-cli snapshot
+playwright-cli screenshot --filename="$QA_DIR/screenshots/<page-name>-after.png"
+```
+
+Per-page checks:
 - **Critical**: loads, primary action works, auth correct
 - **High**: forms validate, errors render, data loads
 - **Medium**: responsive, loading states, empty states
@@ -63,7 +86,7 @@ Check per page:
 
 ### 4. File bugs
 
-Each bug is a markdown file in `.ship-session/qa/bugs/`:
+Each bug: `$QA_DIR/bugs/<slug>.md`
 
 ```markdown
 ---
@@ -73,8 +96,6 @@ screenshot: screenshots/settings-broken-form.png
 ---
 
 # Form submit button unresponsive
-
-The submit button on the settings page does nothing when clicked.
 
 ## Steps to reproduce
 1. Navigate to /settings
@@ -90,14 +111,15 @@ Nothing happens. No console errors.
 
 ### 5. Write report
 
-Summarize in `.ship-session/qa/report.md`:
+`$QA_DIR/report.md`:
 
 ```markdown
 # QA Report
 
 **URL**: http://localhost:3000
-**Date**: 2026-03-28
+**Run**: 2026-03-31T19-30
 **Tier**: Standard
+**Browser**: {{ browser }}
 **Pages tested**: 8
 **Issues found**: 5
 
@@ -114,23 +136,45 @@ Summarize in `.ship-session/qa/report.md`:
 
 1. **[Critical]** Form submit unresponsive on /settings
 2. **[High]** Missing loading state on /dashboard
-3. **[High]** Console error on /agents detail
-
-## Screenshots
-
-All screenshots in `qa/screenshots/`.
 ```
 
-### 6. Update TODO
+### 6. Close and update TODO
 
-Append unfixed issues to `.ship-session/todo.md` so the Session page TODO tab shows them:
+```bash
+playwright-cli close
+```
+
+Append to `$(git rev-parse --show-toplevel)/.ship-session/todo.md`:
 
 ```markdown
-- [ ] [Critical] Fix form submit on /settings
-- [ ] [High] Add loading state to /dashboard
-- [ ] [High] Fix console error on /agents/$id
+- [ ] [Critical] Fix form submit on /settings — qa/{{ run_timestamp }}/bugs/form-submit.md
 ```
 
 ## Quality
 
-Every issue needs a screenshot. No exceptions. Use descriptive filenames so they're identifiable in the Session artifacts tab.
+Every bug needs a screenshot. Use descriptive filenames — they appear in the Studio Session artifacts tab.
+
+## Auth
+
+```bash
+playwright-cli state-save "$QA_DIR/auth.json"
+playwright-cli state-load "$QA_DIR/auth.json"
+```
+
+## Cross-browser
+
+```bash
+playwright-cli open --browser=firefox <url>
+```
+
+Supported: `chromium`, `firefox`, `webkit`, `msedge`.
+
+## Studio trace viewer
+
+```bash
+playwright-cli tracing-start
+# ... run session ...
+playwright-cli tracing-stop
+npx playwright show-trace <trace-file> --port 9323
+# Studio iframes http://localhost:9323
+```

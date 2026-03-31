@@ -10,16 +10,15 @@ authors: [ship]
 
 Dispatch a job to a specialist agent in a git worktree. Idempotent — safe to re-run.
 
-## Available scripts
-
-- **`scripts/dispatch.sh`** — Creates worktree, writes job spec, compiles agent, opens terminal. One command does everything.
-
 ## Quick dispatch (preferred)
 
-Write a job spec file, then dispatch:
+The `scripts/dispatch.sh` script does everything: creates worktree, writes job spec, compiles agent, opens terminal.
 
 ```bash
-bash scripts/dispatch.sh --slug jsonc-config --agent rust-compiler --spec /path/to/spec.md
+bash scripts/dispatch.sh \
+  --slug jsonc-config \
+  --agent rust-compiler \
+  --spec /path/to/spec.md
 ```
 
 Options:
@@ -32,6 +31,13 @@ Options:
 - `--confirm` — Show spec and ask y/n before launching
 - `--dry-run` — Show what would happen
 
+{% if runtime.agents %}
+## Available agents
+
+{% for a in runtime.agents %}- **{{ a.id }}**{% if a.description %} — {{ a.description }}{% endif %}
+
+{% endfor %}
+{% endif %}
 ## Environment setup (mandatory)
 
 Before launching any agent, dispatch verifies:
@@ -48,27 +54,18 @@ An agent without MCP cannot access the Ship runtime. This is not recoverable aft
 
 ## Test/impl separation for feature jobs
 
-When `kind=feature` or the spec describes new behaviour, spawn **two sequential jobs**:
+When the spec describes new behaviour, spawn **two sequential jobs**:
 
-| Job | Slug | Agent | Input | Constraint |
-|-----|------|-------|-------|------------|
-| 1 | `<slug>-tests` | `test-writer` | Spec + interface definition only | No implementation files in scope. Writes failing tests that define the contract. |
-| 2 | `<slug>-impl` | Implementer | Tests as spec | `blocked_by: <slug>-tests`. Makes tests pass. Never writes tests. |
+| Job | Slug | Input | Constraint |
+|-----|------|-------|------------|
+| 1 — tests | `<slug>-tests` | Spec + interface definition only | No implementation files in scope. Writes failing tests. |
+| 2 — impl | `<slug>-impl` | Tests as spec | `blocked_by: <slug>-tests`. Makes tests pass. Never writes tests. |
 
 Single-agent feature jobs are permitted only with `single-agent: true` in the spec and a noted reason.
-
-### Example
-
-```bash
-bash scripts/dispatch.sh --slug auth-tokens-tests --agent test-writer --spec /path/to/auth-tokens-spec.md
-bash scripts/dispatch.sh --slug auth-tokens-impl --agent rust-runtime --spec /path/to/auth-tokens-impl-spec.md
-```
 
 The impl spec must reference the test job and list the test files as its authoritative contract.
 
 ## Job spec template
-
-Every job spec must include all sections below. Commander fills the architectural context section before dispatch — never omit it.
 
 ```markdown
 # Job Spec: <title>
@@ -103,36 +100,22 @@ Every job spec must include all sections below. Commander fills the architectura
 > Never silently leave a noticed problem.
 ```
 
-## Agent selection
-
-| Work type | Agent |
-|-----------|---------|
-| Rust runtime / DB / platform | `rust-runtime` |
-| Rust compiler / CLI | `rust-compiler` |
-| Web / React / Studio | `web-lane` |
-| Cloudflare Workers / infra | `cloudflare` |
-| Auth / Better Auth | `better-auth` |
-| Default / mixed | `default` |
-
-## User preferences
+## Configuration
 
 {% if terminal == "auto" %}
-Terminal auto-detected from environment: `$WT_SESSION` → wt, `$TMUX` → tmux, `$TERM_PROGRAM` → iterm/vscode/apple-terminal, `gnome-terminal` on PATH → gnome.
+Terminal: auto-detected from environment (`$WT_SESSION` → wt, `$TMUX` → tmux, `$TERM_PROGRAM` → iterm/vscode, `gnome-terminal` on PATH → gnome).
 {% else %}
-Terminal: **{{ terminal }}** (configured via `ship vars set spawn-agent terminal`).
+Terminal: **{{ terminal }}**
 {% endif %}
 
 Worktree base: **{{ worktree_dir }}**
 
 {% if confirm_on_dispatch %}
 Dispatch confirmation is **on** — you will be shown the job spec and prompted before launch.
-{% else %}
-Dispatch confirmation is **off** — agents launch immediately.
 {% endif %}
 
-To change any of these:
 ```bash
-ship vars set spawn-agent terminal <value>        # auto, wt, iterm, tmux, gnome, vscode, manual
+ship vars set spawn-agent terminal <auto|wt|iterm|tmux|gnome|vscode|manual>
 ship vars set spawn-agent worktree_dir <path>
 ship vars set spawn-agent confirm_on_dispatch true
 ```

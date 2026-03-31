@@ -34,7 +34,7 @@ export type Annotation = ClickAnnotation | BoxAnnotation | ActionAnnotation
 export interface SessionFile {
   name: string
   path: string
-  type: 'html' | 'image' | 'markdown' | 'other'
+  type: 'html' | 'image' | 'markdown' | 'url' | 'other'
   size: number
   modifiedAt: number
 }

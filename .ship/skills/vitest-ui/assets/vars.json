@@ -1,0 +1,31 @@
+{
+  "$schema": "https://getship.dev/schemas/vars.schema.json",
+  "host": {
+    "type": "string",
+    "default": "127.0.0.1",
+    "storage-hint": "project",
+    "label": "Bind host",
+    "description": "Address the server listens on. Use 0.0.0.0 inside Docker/Podman containers so port mappings work."
+  },
+  "port": {
+    "type": "string",
+    "default": "51204",
+    "storage-hint": "project",
+    "label": "Port",
+    "description": "Port for the Vitest UI server. Project-scoped so the whole team hits the same URL."
+  },
+  "filter": {
+    "type": "string",
+    "default": "",
+    "storage-hint": "local",
+    "label": "Test filter",
+    "description": "File path or pattern to scope which tests run. Empty runs all tests."
+  },
+  "coverage": {
+    "type": "bool",
+    "default": false,
+    "storage-hint": "project",
+    "label": "Coverage",
+    "description": "Run with @vitest/coverage-v8. Adds a coverage tab to the UI."
+  }
+}

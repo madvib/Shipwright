@@ -4,7 +4,8 @@
 /// No `proptest`/`quickcheck` in Cargo.toml, so these are deterministic
 /// parameterised tests as permitted by the job spec.
 use compiler::{
-    McpServerConfig, ProjectLibrary, Rule, Skill, compile, list_providers, resolve_library,
+    AgentProfile, McpServerConfig, ProfileMeta, ProjectLibrary, Rule, Skill, SkillRefs, McpRefs,
+    PluginRefs, ProfilePermissions, ProfileRules, compile, list_providers, resolve_library,
 };
 
 // ─── Fixture helpers ──────────────────────────────────────────────────────────
@@ -296,6 +297,156 @@ fn compile_and_resolve_are_pure_no_io() {
             desc.id
         );
     }
+}
+
+// ─── Runtime var injection ────────────────────────────────────────────────────
+
+fn make_agent_profile(id: &str, description: &str) -> AgentProfile {
+    AgentProfile {
+        profile: ProfileMeta {
+            id: id.to_string(),
+            name: id.to_string(),
+            version: None,
+            description: Some(description.to_string()),
+            providers: vec![],
+            icon: None,
+        },
+        skills: SkillRefs::default(),
+        mcp: McpRefs::default(),
+        plugins: PluginRefs::default(),
+        permissions: ProfilePermissions::default(),
+        rules: ProfileRules::default(),
+        provider_settings: Default::default(),
+    }
+}
+
+/// Skills with `{{ runtime.agents }}` get the project's agent profiles injected at
+/// compile time. The compiled skill file must contain the rendered agent list.
+#[test]
+fn runtime_agents_injected_into_skill_template() {
+    let skill = Skill {
+        id: "dispatch".to_string(),
+        name: "dispatch".to_string(),
+        stable_id: None,
+        description: Some("Dispatch jobs.".to_string()),
+        license: None,
+        compatibility: None,
+        allowed_tools: vec![],
+        metadata: Default::default(),
+        content: "{% for a in runtime.agents %}- {{ a.id }}\n{% endfor %}".to_string(),
+        source: Default::default(),
+        vars: Default::default(),
+    };
+
+    let library = ProjectLibrary {
+        skills: vec![skill],
+        agent_profiles: vec![
+            make_agent_profile("rust-compiler", "Compiles Rust"),
+            make_agent_profile("web-lane", "Frontend work"),
+        ],
+        ..Default::default()
+    };
+
+    let resolved = resolve_library(&library, None, None);
+    let output = compile(&resolved, "claude").expect("claude compile");
+
+    let skill_content = output
+        .skill_files
+        .values()
+        .find(|c| c.contains("rust-compiler"))
+        .expect("dispatch skill must be in skill_files");
+
+    assert!(
+        skill_content.contains("- rust-compiler\n"),
+        "runtime.agents must include rust-compiler; got:\n{skill_content}"
+    );
+    assert!(
+        skill_content.contains("- web-lane\n"),
+        "runtime.agents must include web-lane; got:\n{skill_content}"
+    );
+}
+
+/// Skills with `{{ runtime.providers }}` get the active provider list.
+#[test]
+fn runtime_providers_injected_into_skill_template() {
+    let skill = Skill {
+        id: "providers".to_string(),
+        name: "providers".to_string(),
+        stable_id: None,
+        description: None,
+        license: None,
+        compatibility: None,
+        allowed_tools: vec![],
+        metadata: Default::default(),
+        content: "{% for p in runtime.providers %}{{ p }} {% endfor %}".to_string(),
+        source: Default::default(),
+        vars: Default::default(),
+    };
+
+    let library = ProjectLibrary {
+        skills: vec![skill],
+        ..Default::default()
+    };
+
+    let resolved = resolve_library(&library, None, None);
+    let output = compile(&resolved, "claude").expect("claude compile");
+
+    let skill_content = output
+        .skill_files
+        .values()
+        .next()
+        .expect("skill must be present");
+
+    assert!(
+        skill_content.contains("claude"),
+        "runtime.providers must include 'claude'; got:\n{skill_content}"
+    );
+}
+
+/// `runtime.skills` lists the other active skills by id and name.
+#[test]
+fn runtime_skills_injected_into_skill_template() {
+    let meta_skill = Skill {
+        id: "meta".to_string(),
+        name: "meta".to_string(),
+        stable_id: None,
+        description: None,
+        license: None,
+        compatibility: None,
+        allowed_tools: vec![],
+        metadata: Default::default(),
+        content: "{% for s in runtime.skills %}{{ s.id }} {% endfor %}".to_string(),
+        source: Default::default(),
+        vars: Default::default(),
+    };
+
+    let library = ProjectLibrary {
+        skills: vec![
+            meta_skill,
+            make_skill("deploy"),
+            make_skill("review"),
+        ],
+        ..Default::default()
+    };
+
+    let resolved = resolve_library(&library, None, None);
+    let output = compile(&resolved, "claude").expect("claude compile");
+
+    let meta_content = output
+        .skill_files
+        .iter()
+        .find(|(k, _)| k.contains("/meta/"))
+        .map(|(_, v)| v.as_str())
+        .expect("meta skill must be present");
+
+    assert!(
+        meta_content.contains("deploy"),
+        "runtime.skills must include 'deploy'; got:\n{meta_content}"
+    );
+    assert!(
+        meta_content.contains("review"),
+        "runtime.skills must include 'review'; got:\n{meta_content}"
+    );
 }
 
 /// Unknown provider IDs must return None rather than panicking.

@@ -25,13 +25,13 @@ pub use decompile::{
 pub use resolve::{ProjectLibrary, ResolvedConfig, WorkspaceOverrides, resolve, resolve_library};
 pub use schemas::{PROVIDER_MANAGED_KEYS, PROVIDER_SCHEMAS, managed_keys, schema_url};
 pub use types::{
-    AgentBundle, AgentLayerConfig, AgentLimits, AgentProfile, AiConfig, CatalogCategory,
-    CatalogEntry, CatalogKind, CommandPermissions, FsPermissions, GitConfig, HookConfig,
-    HookTrigger, ListAgentsResponse, McpRefs, McpServerConfig, McpServerType, ModeConfig,
-    NamespaceConfig, NetworkPermissions, NetworkPolicy, PermissionConfig, Permissions, PluginEntry,
-    PluginRefs, PluginsManifest, ProfileMeta, ProfilePermissions, ProfileRules, ProjectConfig,
-    PullAgent, PullMcpServer, PullProfile, PullResponse, PullRule, PullSkill, Rule, Skill,
-    SkillBundle, SkillRefs, SkillSource, StatusConfig, ToolPermissions, TransferBundle,
+    AgentBundle, AgentLayerConfig, AgentLimits, AgentProfile, AiConfig, ArtifactType,
+    CatalogCategory, CatalogEntry, CatalogKind, CommandPermissions, FsPermissions, GitConfig,
+    HookConfig, HookTrigger, ListAgentsResponse, McpRefs, McpServerConfig, McpServerType,
+    ModeConfig, NamespaceConfig, NetworkPermissions, NetworkPolicy, PermissionConfig, Permissions,
+    PluginEntry, PluginRefs, PluginsManifest, ProfileMeta, ProfilePermissions, ProfileRules,
+    ProjectConfig, PullAgent, PullMcpServer, PullProfile, PullResponse, PullRule, PullSkill, Rule,
+    Skill, SkillBundle, SkillRefs, SkillSource, StatusConfig, ToolPermissions, TransferBundle,
     list_catalog, list_catalog_by_kind, search_catalog,
 };
 

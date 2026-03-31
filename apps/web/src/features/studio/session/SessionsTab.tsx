@@ -1,169 +1,172 @@
-// Sessions tab content for the Session sidebar.
-// Shows current workspace info from git status, workspace list, and project info.
-
-import { Circle, GitBranch, FolderClosed, Layers, Info } from 'lucide-react'
+// Sessions tab — recent sessions across all workspaces on this machine.
+import { useState } from 'react'
+import { Circle, GitBranch, ChevronDown, ChevronRight, Bot, Clock } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
-import type { GitStatusResult, GitLogEntry } from './useGitInfo'
+import type { GitStatusResult } from './useGitInfo'
 import { sessionKeys } from './query-keys'
+
+interface SessionRecord {
+  id: string
+  workspace_branch: string
+  status: 'active' | 'ended'
+  started_at: string
+  ended_at: string | null
+  agent_id: string | null
+  primary_provider: string | null
+  goal: string | null
+  summary: string | null
+}
+
+function useSessions(isConnected: boolean) {
+  const mcp = useLocalMcpContext()
+  return useQuery({
+    queryKey: [...sessionKeys.all, 'list'],
+    queryFn: async (): Promise<SessionRecord[]> => {
+      if (!mcp) return []
+      try {
+        const raw = await mcp.callTool('list_sessions')
+        const parsed = JSON.parse(raw)
+        return Array.isArray(parsed) ? parsed : []
+      } catch {
+        return []
+      }
+    },
+    enabled: isConnected && mcp?.status === 'connected',
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  })
+}
+
+function relTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  if (diff < 60_000) return 'just now'
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`
+  return `${Math.floor(diff / 86_400_000)}d ago`
+}
+
+function sessionDuration(start: string, end: string | null): string {
+  const ms = (end ? new Date(end).getTime() : Date.now()) - new Date(start).getTime()
+  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m`
+  return `${(ms / 3_600_000).toFixed(1)}h`
+}
 
 interface SessionsTabProps {
   isConnected: boolean
   gitStatus: GitStatusResult | null | undefined
-  gitLog: GitLogEntry[] | null | undefined
 }
 
-interface WorkspaceInfo {
-  id: string
-  branch: string
-  status: string
-  kind?: string
-  name?: string
-}
+export function SessionsTab({ isConnected, gitStatus }: SessionsTabProps) {
+  const { data: sessions = [], isLoading } = useSessions(isConnected)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
-interface ProjectInfo {
-  name?: string
-  path?: string
-}
+  const toggle = (id: string) =>
+    setExpanded((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
 
-function useWorkspaces(isConnected: boolean) {
-  const mcp = useLocalMcpContext()
+  if (!isConnected) {
+    return (
+      <div className="flex flex-col items-center gap-2 py-8 px-3 text-center">
+        <GitBranch className="size-5 text-muted-foreground/30" />
+        <p className="text-[11px] text-muted-foreground/50">Connect CLI to see session history.</p>
+      </div>
+    )
+  }
 
-  return useQuery({
-    queryKey: [...sessionKeys.all, 'workspaces'],
-    queryFn: async (): Promise<WorkspaceInfo[]> => {
-      if (!mcp) return []
-      try {
-        const raw = await mcp.callTool('list_workspaces')
-        const parsed = JSON.parse(raw)
-        if (Array.isArray(parsed)) return parsed as WorkspaceInfo[]
-        if (parsed?.workspaces) return parsed.workspaces as WorkspaceInfo[]
-        return []
-      } catch {
-        return []
-      }
-    },
-    enabled: isConnected && mcp?.status === 'connected',
-    staleTime: 30_000,
-    refetchInterval: 60_000,
-  })
-}
+  if (isLoading) {
+    return <div className="px-3 pt-4 text-[11px] text-muted-foreground/40">Loading…</div>
+  }
 
-function useProjectInfo(isConnected: boolean) {
-  const mcp = useLocalMcpContext()
+  if (sessions.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-2 py-8 px-3 text-center">
+        <Clock className="size-5 text-muted-foreground/30" />
+        <p className="text-[11px] text-muted-foreground/50">No sessions yet on this machine.</p>
+      </div>
+    )
+  }
 
-  return useQuery({
-    queryKey: [...sessionKeys.all, 'projectInfo'],
-    queryFn: async (): Promise<ProjectInfo | null> => {
-      if (!mcp) return null
-      try {
-        const raw = await mcp.callTool('get_project_info')
-        return JSON.parse(raw) as ProjectInfo
-      } catch {
-        return null
-      }
-    },
-    enabled: isConnected && mcp?.status === 'connected',
-    staleTime: 60_000,
-  })
-}
-
-const STATUS_STYLES: Record<string, string> = {
-  active: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
-  idle: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
-  archived: 'bg-muted text-muted-foreground',
-  complete: 'bg-sky-500/15 text-sky-600 dark:text-sky-400',
-}
-
-export function SessionsTab({ isConnected, gitStatus, gitLog }: SessionsTabProps) {
-  const { data: workspaces } = useWorkspaces(isConnected)
-  const { data: projectInfo } = useProjectInfo(isConnected)
-  const commitsAhead = gitLog?.length ?? 0
+  const active = sessions.filter((s) => s.status === 'active')
+  const ended = sessions.filter((s) => s.status === 'ended')
 
   return (
-    <div className="px-3 pt-3 text-xs text-muted-foreground">
-      {isConnected && gitStatus ? (
-        <div className="space-y-3">
-          {/* Current workspace */}
-          <div className="rounded-md border border-border/40 bg-muted/20 p-2.5">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 mb-2">Current Workspace</div>
-            <div className="flex items-center gap-2">
-              <GitBranch className="size-3.5 text-primary shrink-0" />
-              <span className="text-xs font-mono font-medium text-foreground">{gitStatus.branch}</span>
-            </div>
-            <div className="flex items-center gap-1.5 mt-1.5 ml-[22px]">
-              <Circle className={`size-1.5 shrink-0 ${gitStatus.clean ? 'fill-emerald-500 text-emerald-500' : 'fill-amber-500 text-amber-500'}`} />
-              <span className="text-[10px] text-muted-foreground">
-                {gitStatus.clean ? 'Clean working tree' : 'Uncommitted changes'}
-              </span>
-            </div>
-            {commitsAhead > 0 && (
-              <div className="flex items-center gap-1.5 mt-1 ml-[22px]">
-                <Circle className="size-1.5 shrink-0 fill-sky-500 text-sky-500" />
-                <span className="text-[10px] text-muted-foreground">{commitsAhead} recent commit{commitsAhead !== 1 ? 's' : ''}</span>
-              </div>
-            )}
-          </div>
+    <div className="py-1">
+      {active.length > 0 && (
+        <>
+          <SectionLabel>Active</SectionLabel>
+          {active.map((s) => (
+            <SessionRow key={s.id} session={s} isExpanded={expanded.has(s.id)} onToggle={() => toggle(s.id)} currentBranch={gitStatus?.branch} />
+          ))}
+        </>
+      )}
+      {ended.length > 0 && (
+        <>
+          <SectionLabel className={active.length > 0 ? 'mt-2' : ''}>Recent</SectionLabel>
+          {ended.map((s) => (
+            <SessionRow key={s.id} session={s} isExpanded={expanded.has(s.id)} onToggle={() => toggle(s.id)} currentBranch={gitStatus?.branch} />
+          ))}
+        </>
+      )}
+    </div>
+  )
+}
 
-          {/* Project info */}
-          {projectInfo && (projectInfo.name || projectInfo.path) && (
-            <div className="rounded-md border border-border/40 bg-muted/20 p-2.5">
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 mb-2">Project</div>
-              {projectInfo.name && (
-                <div className="flex items-center gap-2">
-                  <Info className="size-3.5 text-muted-foreground shrink-0" />
-                  <span className="text-xs font-medium text-foreground">{projectInfo.name}</span>
-                </div>
-              )}
-              {projectInfo.path && (
-                <div className="flex items-center gap-2 mt-1">
-                  <FolderClosed className="size-3.5 text-muted-foreground shrink-0" />
-                  <span className="text-[10px] font-mono text-muted-foreground truncate">{projectInfo.path}</span>
-                </div>
-              )}
-            </div>
-          )}
+function SectionLabel({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`px-3 py-1 text-[9.5px] font-semibold uppercase tracking-wider text-muted-foreground/35 ${className}`}>
+      {children}
+    </div>
+  )
+}
 
-          {/* Working directory fallback when no project info */}
-          {!projectInfo?.path && gitStatus.workingDirectory && (
-            <div className="rounded-md border border-border/40 bg-muted/20 p-2.5">
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 mb-2">Working Directory</div>
-              <div className="flex items-center gap-2">
-                <FolderClosed className="size-3.5 text-muted-foreground shrink-0" />
-                <span className="text-[10px] font-mono text-muted-foreground truncate">{gitStatus.workingDirectory}</span>
-              </div>
-            </div>
-          )}
+function SessionRow({ session: s, isExpanded, onToggle, currentBranch }: {
+  session: SessionRecord
+  isExpanded: boolean
+  onToggle: () => void
+  currentBranch?: string
+}) {
+  const isCurrent = s.workspace_branch === currentBranch
+  const isActive = s.status === 'active'
 
-          {/* Workspace list */}
-          {workspaces && workspaces.length > 0 && (
-            <div className="rounded-md border border-border/40 bg-muted/20 p-2.5">
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 mb-2">
-                Workspaces
-                <span className="ml-1.5 text-muted-foreground/40">{workspaces.length}</span>
-              </div>
-              <div className="space-y-1.5">
-                {workspaces.map((ws) => (
-                  <div key={ws.id || ws.branch} className="flex items-center gap-2">
-                    <Layers className="size-3 text-muted-foreground/60 shrink-0" />
-                    <span className="text-[10px] font-mono text-foreground/80 truncate flex-1">
-                      {ws.name || ws.branch || ws.id}
-                    </span>
-                    <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${STATUS_STYLES[ws.status] ?? STATUS_STYLES.idle}`}>
-                      {ws.status}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+  return (
+    <div className="border-b border-border/15 last:border-0">
+      <button
+        onClick={onToggle}
+        className="w-full px-3 py-2 text-left hover:bg-white/[0.02] transition-colors"
+      >
+        {/* branch + duration + chevron */}
+        <div className="flex items-center gap-1.5 mb-0.5">
+          <Circle className={`size-1.5 shrink-0 ${isActive ? 'fill-emerald-500 text-emerald-500' : 'fill-muted-foreground/20 text-muted-foreground/20'}`} />
+          <span className={`text-[10.5px] font-mono truncate flex-1 ${isCurrent ? 'text-primary font-medium' : 'text-foreground/70'}`}>
+            {s.workspace_branch}
+          </span>
+          <span className="text-[9px] text-muted-foreground/30 tabular-nums shrink-0">
+            {sessionDuration(s.started_at, s.ended_at)}
+          </span>
+          {isExpanded
+            ? <ChevronDown className="size-2.5 text-muted-foreground/25 shrink-0" />
+            : <ChevronRight className="size-2.5 text-muted-foreground/25 shrink-0" />}
         </div>
-      ) : (
-        <div className="flex flex-col items-center gap-2 py-6 text-center">
-          <GitBranch className="size-5 text-muted-foreground/30" />
-          <p className="text-[11px] text-muted-foreground/60">
-            {isConnected ? 'No workspace info available.' : 'No active workspaces. Connect CLI to see workspace info.'}
-          </p>
+        {/* goal */}
+        {s.goal && (
+          <p className="text-[10px] text-muted-foreground/65 leading-snug truncate mb-1 ml-3.5">{s.goal}</p>
+        )}
+        {/* agent + time */}
+        <div className="flex items-center gap-1.5 ml-3.5">
+          {s.agent_id && (
+            <span className="flex items-center gap-1 text-[9px] text-muted-foreground/40">
+              <Bot className="size-2.5 shrink-0" />
+              <span className="truncate max-w-[80px]">{s.agent_id}</span>
+            </span>
+          )}
+          <span className="ml-auto text-[9px] text-muted-foreground/28 tabular-nums shrink-0">
+            {relTime(s.started_at)}
+          </span>
+        </div>
+      </button>
+      {isExpanded && s.summary && (
+        <div className="px-3 pb-2.5 pt-2 bg-black/[0.06] border-t border-border/10">
+          <p className="text-[10px] text-muted-foreground/55 leading-relaxed">{s.summary}</p>
         </div>
       )}
     </div>

@@ -11,6 +11,7 @@ import { useSessionDrafts } from '#/features/studio/session/useSessionDrafts'
 import { SessionTabBar } from '#/features/studio/session/SessionTabBar'
 import { useAnnotations } from '#/features/studio/session/useAnnotations'
 import { SendVisualMessage } from '#/features/studio/session/SendVisualMessage'
+import { EventDebugPanel } from '#/features/studio/events/EventDebugPanel'
 import { useSessionHandlers } from '#/features/studio/session/useSessionHandlers'
 import { useDiffContent } from '#/features/studio/session/useDiffContent'
 import { useGitStatus, useGitLog, useGitDiff } from '#/features/studio/session/useGitInfo'
@@ -181,6 +182,7 @@ function SessionPage() {
             <div className="relative flex-1 flex flex-col min-h-0 min-w-0">
               {showCanvas && (
                 <SessionCanvas
+                  key={activeTabPath}
                   htmlContent={fileContent ?? ''}
                   fileType={activeFile?.type}
                   annotations={ann.annotations}
@@ -243,6 +245,7 @@ function SessionPage() {
 
         {isDragging && isConnected && <DropZoneOverlay />}
       </div>
+      <EventDebugPanel />
     </>
   )
 }

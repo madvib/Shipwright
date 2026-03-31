@@ -164,7 +164,9 @@ impl ShipServer {
             subscribe_namespaces,
         };
 
-        match kr.lock().await.spawn_actor(&actor_id, config) {
+        let mut kr_guard = kr.lock().await;
+        let _ = kr_guard.stop_actor(&actor_id);
+        match kr_guard.spawn_actor(&actor_id, config) {
             Ok((store, mailbox)) => {
                 *self.actor_store.lock().await = Some(store);
                 *self.actor_mailbox.lock().await = Some(mailbox);

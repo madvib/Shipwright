@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::resolve::ResolvedConfig;
 use crate::types::Skill;
 
 use super::provider::ProviderDescriptor;
@@ -49,23 +50,69 @@ pub(super) fn resolve_event_subscriptions(skills: &[Skill]) -> Vec<String> {
 
 pub(super) fn build_skill_files(
     desc: &ProviderDescriptor,
-    skills: &[Skill],
+    resolved: &ResolvedConfig,
 ) -> HashMap<String, String> {
     let Some(base) = desc.skills_dir.base_path() else {
         return HashMap::new();
     };
-    skills
+    let runtime_vars = build_runtime_vars(resolved);
+    resolved
+        .skills
         .iter()
         .filter(|skill| !skill.content.trim().is_empty())
         .map(|skill| {
             let path = format!("{}/{}/SKILL.md", base, skill.id);
-            let content = format_skill_file(skill);
+            let content = format_skill_file(skill, &runtime_vars);
             (path, content)
         })
         .collect()
 }
 
-pub(super) fn format_skill_file(skill: &Skill) -> String {
+/// Build the `runtime` context map injected into every skill template.
+///
+/// Skills access these as `{{ runtime.agents }}`, `{{ runtime.model }}`, etc.
+/// This data is derived from `ResolvedConfig` at compile time — not user-configurable.
+///
+/// | Key | Type | Description |
+/// |-----|------|-------------|
+/// | `runtime.agents` | array of `{id, name, description}` | Agent profiles from `.ship/agents/*.toml` |
+/// | `runtime.providers` | array of strings | Active provider IDs (e.g. `["claude", "cursor"]`) |
+/// | `runtime.model` | string or `""` | Configured model override, empty if not set |
+/// | `runtime.skills` | array of `{id, name, description}` | All skills active in this compile |
+fn build_runtime_vars(resolved: &ResolvedConfig) -> serde_json::Value {
+    let agents: Vec<serde_json::Value> = resolved
+        .agent_profiles
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "id": p.profile.id,
+                "name": p.profile.name,
+                "description": p.profile.description,
+            })
+        })
+        .collect();
+
+    let skills: Vec<serde_json::Value> = resolved
+        .skills
+        .iter()
+        .map(|s| {
+            serde_json::json!({
+                "id": s.id,
+                "name": s.name,
+                "description": s.description,
+            })
+        })
+        .collect();
+
+    serde_json::json!({
+        "agents": agents,
+        "providers": resolved.providers,
+        "model": resolved.model.as_deref().unwrap_or(""),
+        "skills": skills,
+    })
+}
+
+pub(super) fn format_skill_file(skill: &Skill, runtime: &serde_json::Value) -> String {
     let description = skill
         .description
         .as_deref()
@@ -73,14 +120,23 @@ pub(super) fn format_skill_file(skill: &Skill) -> String {
 
     let mut fm = format!("---\nname: {}\ndescription: {}", skill.id, description);
 
-    // Resolve template variables in content before emitting.
-    // Warnings go to stderr so they surface during `ship use` / `ship compile`.
+    // Merge user vars with runtime-injected context before template resolution.
+    // `runtime.*` is always available; user vars take the flat namespace.
+    // `stable_id` is the skill's canonical stable-id from frontmatter (reserved, read-only).
     let resolved_content;
-    let content: &str = if skill.vars.is_empty() {
-        &skill.content
-    } else {
-        resolved_content = crate::vars::resolve_template(&skill.content, &skill.vars);
+    let needs_resolution = !skill.vars.is_empty()
+        || skill.content.contains("runtime.")
+        || skill.content.contains("stable_id");
+    let content: &str = if needs_resolution {
+        let mut vars = skill.vars.clone();
+        vars.insert("runtime".to_string(), runtime.clone());
+        if let Some(ref sid) = skill.stable_id {
+            vars.insert("stable_id".to_string(), serde_json::json!(sid));
+        }
+        resolved_content = crate::vars::resolve_template(&skill.content, &vars);
         &resolved_content
+    } else {
+        &skill.content
     };
 
     if let Some(license) = &skill.license {
@@ -122,6 +178,10 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
+    fn no_runtime() -> serde_json::Value {
+        serde_json::json!({ "agents": [] })
+    }
+
     fn base_skill() -> Skill {
         Skill {
             id: "my-skill".to_string(),
@@ -142,7 +202,7 @@ mod tests {
     #[test]
     fn format_skill_file_minimal() {
         let skill = base_skill();
-        let out = format_skill_file(&skill);
+        let out = format_skill_file(&skill, &no_runtime());
         assert!(out.starts_with("---\nname: my-skill\ndescription: Does things."));
         assert!(out.contains("\n---\n\nInstructions here."));
         // No optional fields present
@@ -156,7 +216,7 @@ mod tests {
     fn format_skill_file_with_license() {
         let mut skill = base_skill();
         skill.license = Some("MIT".to_string());
-        let out = format_skill_file(&skill);
+        let out = format_skill_file(&skill, &no_runtime());
         assert!(out.contains("\nlicense: MIT\n"), "got:\n{out}");
     }
 
@@ -164,7 +224,7 @@ mod tests {
     fn format_skill_file_with_compatibility() {
         let mut skill = base_skill();
         skill.compatibility = Some("claude >= 3".to_string());
-        let out = format_skill_file(&skill);
+        let out = format_skill_file(&skill, &no_runtime());
         assert!(
             out.contains("\ncompatibility: claude >= 3\n"),
             "got:\n{out}"
@@ -175,7 +235,7 @@ mod tests {
     fn format_skill_file_with_allowed_tools() {
         let mut skill = base_skill();
         skill.allowed_tools = vec!["Read".to_string(), "Edit".to_string()];
-        let out = format_skill_file(&skill);
+        let out = format_skill_file(&skill, &no_runtime());
         assert!(out.contains("\nallowed-tools: Read Edit\n"), "got:\n{out}");
     }
 
@@ -188,7 +248,7 @@ mod tests {
         skill
             .metadata
             .insert("author".to_string(), "alice".to_string());
-        let out = format_skill_file(&skill);
+        let out = format_skill_file(&skill, &no_runtime());
         assert!(out.contains("\nmetadata:\n"), "got:\n{out}");
         // author comes before version alphabetically
         let author_pos = out.find("author").unwrap();
@@ -200,7 +260,7 @@ mod tests {
     fn format_skill_file_no_description_uses_fallback() {
         let mut skill = base_skill();
         skill.description = None;
-        let out = format_skill_file(&skill);
+        let out = format_skill_file(&skill, &no_runtime());
         assert!(
             out.contains("description: No description provided."),
             "got:\n{out}"
@@ -214,14 +274,14 @@ mod tests {
         skill
             .vars
             .insert("style".to_string(), serde_json::json!("gitmoji"));
-        let out = format_skill_file(&skill);
+        let out = format_skill_file(&skill, &no_runtime());
         assert!(out.contains("Use gitmoji commits."), "got:\n{out}");
     }
 
     #[test]
     fn format_skill_file_no_vars_passthrough() {
         let skill = base_skill();
-        let out = format_skill_file(&skill);
+        let out = format_skill_file(&skill, &no_runtime());
         assert!(out.contains("Instructions here."), "got:\n{out}");
     }
 
@@ -229,14 +289,14 @@ mod tests {
     fn format_skill_file_with_artifacts() {
         let mut skill = base_skill();
         skill.artifacts = vec!["html".to_string(), "adr".to_string()];
-        let out = format_skill_file(&skill);
+        let out = format_skill_file(&skill, &no_runtime());
         assert!(out.contains("\nartifacts: [html, adr]\n"), "got:\n{out}");
     }
 
     #[test]
     fn format_skill_file_no_artifacts_omitted() {
         let skill = base_skill();
-        let out = format_skill_file(&skill);
+        let out = format_skill_file(&skill, &no_runtime());
         assert!(!out.contains("artifacts:"), "got:\n{out}");
     }
 
@@ -250,7 +310,6 @@ mod tests {
         let mut skill = base_skill();
         skill.artifacts = vec!["html".to_string()];
         let subs = resolve_event_subscriptions(&[skill]);
-        // studio.* is already in the base subscription — not duplicated here
         assert!(!subs.iter().any(|s| s.starts_with("studio.")));
         assert!(!subs.iter().any(|s| s.starts_with("ship.")));
         assert!(subs.contains(&"my-skill.".to_string()));
@@ -264,9 +323,48 @@ mod tests {
         s2.id = "other-skill".to_string();
         s2.artifacts = vec!["adr".to_string()];
         let subs = resolve_event_subscriptions(&[s1, s2]);
-        // two distinct skills → two distinct custom namespaces
         assert!(subs.contains(&"my-skill.".to_string()));
         assert!(subs.contains(&"other-skill.".to_string()));
         assert_eq!(subs.len(), 2);
+    }
+
+    #[test]
+    fn format_skill_file_stable_id_injected() {
+        let mut skill = base_skill();
+        skill.stable_id = Some("web-qa".to_string());
+        skill.content = "Write to .ship-session/{{ stable_id }}/report.md".to_string();
+        let out = format_skill_file(&skill, &no_runtime());
+        assert!(
+            out.contains("Write to .ship-session/web-qa/report.md"),
+            "got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn format_skill_file_stable_id_none_leaves_placeholder() {
+        let mut skill = base_skill();
+        skill.stable_id = None;
+        skill.content = "Write to .ship-session/{{ stable_id }}/report.md".to_string();
+        let out = format_skill_file(&skill, &no_runtime());
+        assert!(
+            !out.contains("{{ stable_id }}"),
+            "unresolved placeholder in output:\n{out}"
+        );
+    }
+
+    #[test]
+    fn format_skill_file_runtime_agents_injected() {
+        let mut skill = base_skill();
+        skill.content =
+            "{% for a in runtime.agents %}- {{ a.id }}\n{% endfor %}".to_string();
+        let runtime = serde_json::json!({
+            "agents": [
+                {"id": "rust-compiler", "name": "Rust Compiler", "description": null},
+                {"id": "web-lane", "name": "Web Lane", "description": null},
+            ]
+        });
+        let out = format_skill_file(&skill, &runtime);
+        assert!(out.contains("- rust-compiler\n"), "got:\n{out}");
+        assert!(out.contains("- web-lane\n"), "got:\n{out}");
     }
 }
