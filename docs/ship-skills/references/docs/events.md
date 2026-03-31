@@ -42,39 +42,48 @@ The platform maps artifact types to applicable events automatically:
 
 Skills do not opt into events. They declare what they produce via the `artifacts` frontmatter field. The platform handles the rest.
 
-## How routing works
+## Actor-isolated event architecture
 
-1. Agent activates with skills that declare `artifacts: [html, pdf]`.
-2. Runtime knows which events apply to those artifact types.
-3. When a user annotates an HTML artifact in Studio, `ship.annotation` fires.
-4. EventRelay delivers the event to agents whose active skills produce compatible artifact types.
-5. System events (`session.*`, `workspace.*`, `actor.*`, etc.) bypass filtering — all agents receive them.
+Events are routed through the KernelRouter. Each actor (agent, app, service) has its own event store and mailbox. Actors communicate through kernel-managed message passing, not shared storage.
 
-Events are delivered as `ship/event` custom MCP notifications with the full EventEnvelope payload. No resource polling, no file watching.
+### How routing works
 
-## Studio as the first event surface
+1. Agent spawns as an actor with namespace `agent.{id}` and a mailbox subscribing to relevant namespaces.
+2. Studio is an app actor with namespace `studio`, subscribing to `studio.*` and `agent.*`.
+3. User annotates an HTML artifact in Studio → Studio emits `studio.message.visual` via its ActorStore.
+4. KernelRouter routes the event to the agent's mailbox based on subscription.
+5. Agent receives a `ship/event` SSE notification with the full payload. No follow-up queries needed — payloads are self-contained.
 
-Ship Studio is the first UI that sends and receives Ship events. It renders artifacts by type, provides annotation/feedback tools, and delivers events to agents via the MCP notification channel.
+Agents do not have read access to the event store. They receive events through their mailbox only. The `list_events` MCP tool has been removed.
 
-Future: the Ship SDK (`@ship/overlay`) will allow any web application to send and receive Ship events. A skill's `app/` directory could include a custom frontend that integrates with the event bus. But skills themselves do not define event protocols — that belongs at the app tier.
+### Namespace boundaries
 
-## Event debug panel
+Every event type is namespaced. `RESERVED_NAMESPACES` blocks agents from emitting platform-controlled prefixes (`actor.*`, `session.*`, `studio.*`, `kernel.*`, etc.). Apps like Studio emit in their own namespace (`studio.*`) via their ActorStore.
 
-In development builds, Studio includes an event debug panel (toggle: `Ctrl+Shift+E`). It shows all events flowing in real time with type, entity, actor, and expandable payload.
+### Visual messages
+
+Studio supports visual feedback: users annotate HTML artifacts, add comments, draw on the canvas, then send everything as a single `studio.message.visual` event. Individual annotations are local UI state until the user explicitly sends. The agent receives one event with all annotations as a self-contained payload.
+
+## Studio as the first app actor
+
+Ship Studio is the first application on the runtime. It registers as an actor, owns the `studio.*` event namespace, and defines its own event types and UI interactions. Studio is a peer to agents, not a layer above them — both are actors managed by the kernel.
+
+The event debug panel (toggle: `Ctrl+Shift+E` in dev builds) shows all events flowing through the actor's mailbox in real time.
 
 ## Stability
 
 Stable in Ship 0.2.0:
 
-- Five Ship built-in event types
-- Artifact-type-to-event mapping
-- Event routing to agents via EventRelay
-- `ship/event` custom MCP notifications
-- Event debug panel (dev builds)
+- Per-actor event stores with namespace isolation
+- KernelRouter with spawn/route/stop/snapshot/restore
+- Studio as app actor with visual message flow
+- Artifact-type-to-event mapping (skills declare artifacts, platform infers events)
+- `ship/event` SSE notifications via actor mailboxes
+- Actor snapshot and restore for migration
 
 Not yet available:
 
+- Service actors (sync, docs, auth)
 - Ship SDK for external applications
-- `app/` directory with event bus integration
-- Typed artifact schemas (adr, note) with cloud docs API sync
-- Custom event types (app tier, future)
+- Typed artifact schemas with cloud docs API sync
+- Custom app event types beyond Studio

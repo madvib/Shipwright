@@ -7,7 +7,7 @@ description: What the runtime owns -- workspaces, sessions, events, jobs, file c
 
 # Runtime
 
-The runtime crate (`crates/core/runtime/`) owns all persistent state. It manages `~/.ship/platform.db` via SQLite and sqlx. No other layer touches the database.
+The runtime crate (`crates/core/runtime/`) owns all persistent state. It manages per-actor SQLite databases under `~/.ship/actors/` and the kernel store at `~/.ship/kernel/events.db`. Legacy state remains in `~/.ship/platform.db` during migration. No other layer touches the databases directly — all access goes through the KernelRouter and ActorStore.
 
 ## Module Map
 
@@ -80,13 +80,78 @@ Session records include: start/end timestamps, model used, progress notes, summa
 
 Key functions: `start_workspace_session`, `end_workspace_session`, `record_workspace_session_progress`, `get_active_workspace_session`, `list_workspace_sessions`, `get_workspace_session_record`.
 
+## Actor Model
+
+The runtime uses an actor model with per-actor isolation. Every entity on the runtime — agents, apps, services — is an actor with its own event store and mailbox. Actors communicate through kernel-routed messages, never shared storage.
+
+### Actor types
+
+| Type | Has UI | Has MCP | Examples |
+|------|--------|---------|----------|
+| Agent | no | yes (client) | Code agent, design agent |
+| App | yes | yes (server) | Ship Studio |
+| Service | no | no | Sync, auth, docs API |
+
+### KernelRouter
+
+The `KernelRouter` manages actor lifecycles and message routing. It replaces the old `EventRouter` and `global_router` singleton.
+
+- `spawn_actor(id, config)` — creates actor directory, SQLite DB, mailbox. Returns `ActorStore` + `Mailbox`.
+- `route(event, ctx)` — validates, persists to kernel store, delivers to subscribed mailboxes.
+- `stop_actor(id)` — flushes WAL, drops mailbox, removes subscriptions.
+- `snapshot(id)` — read-only copy of actor state for migration.
+- `suspend(id)` — snapshot + stop.
+- `restore(snapshot)` — rebuild actor from portable snapshot.
+
+### ActorStore
+
+A scoped event handle bound to one actor's SQLite DB. Enforces namespace boundaries.
+
+- Writes reject event types outside the actor's `write_namespaces`.
+- Reads reject filters targeting other namespaces.
+- Each actor's DB lives at `~/.ship/actors/{actor_id}/events.db`.
+
+Actors never construct their own store. The kernel creates it via `spawn_actor`.
+
+### Mailbox
+
+Per-actor mpsc channel. The kernel delivers messages based on namespace subscriptions. An actor subscribing to `["studio.", "agent."]` receives all events with those prefixes.
+
+### Namespace enforcement
+
+Every event type is namespaced (e.g. `studio.message.visual`, `agent.task.completed`). `RESERVED_NAMESPACES` in `validator.rs` is the single source of truth. Agents cannot emit reserved prefixes through MCP tools.
+
+### Directory layout
+
+```
+~/.ship/
+  kernel/
+    events.db           # System lifecycle events only
+  actors/
+    studio/
+      events.db         # Studio's domain events
+    agent-{id}/
+      events.db         # Agent's scoped events
+```
+
+### Event flow
+
+```
+Agent emits event → Agent's ActorStore (persisted)
+                  → KernelRouter.route() (kernel store + routing)
+                  → Studio's Mailbox (delivered if subscribed)
+                  → Studio's EventRelay → SSE notification to UI
+```
+
+Cross-actor queries do not exist at the actor level. The kernel can join across stores for admin/debug purposes only.
+
 ## Events
 
-Every state change emits an event to an append-only log. Events are never updated or deleted.
+Events are immutable, append-only records. Each event has: id (ULID), event_type (namespaced), entity_id, actor, payload_json, version, correlation_id, causation_id, workspace_id, session_id, actor_id, parent_actor_id, elevated flag, and created_at timestamp.
 
-Each event has: id, timestamp, actor, entity type, action, subject, and optional details. Entity types: `Workspace`, `Session`, `Note`, `Project`, and others. Actions: `Create`, `Update`, `Delete`, `Start`, `Stop`, `Log`.
+Skills declare artifact types in their SKILL.md frontmatter (`artifacts: [html, pdf, adr]`), not events. The platform infers applicable event types from artifact types. There is no `events.json` in skills.
 
-Functions: `append_event`, `append_event_with_context`, `read_events`, `read_recent_events`, `list_events_since`, `record_gate_outcome`, `list_gate_outcomes`.
+Agents do not have read access to the event store. They receive events through their mailbox via SSE notifications. The `list_events` MCP tool has been removed.
 
 ## Jobs
 
