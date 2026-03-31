@@ -1,9 +1,0 @@
-import { createFileRoute, redirect } from '@tanstack/react-router';
-import { SETTINGS_ROUTE } from '@/lib/constants/routes';
-
-export const Route = createFileRoute('/project/agents/permissions')({
-  beforeLoad: () => {
-    throw redirect({ to: SETTINGS_ROUTE, search: { tab: 'permissions' } });
-  },
-  component: () => null,
-});
