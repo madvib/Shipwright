@@ -4,10 +4,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::events::EventEnvelope;
 
-/// Push request body — sent to POST /api/sync/push or /api/sync/workspace/{id}/push.
+/// Push request body — sent to POST /api/sync/platform/push or /api/sync/workspace/{id}/push.
+///
+/// The project ID is transmitted via the `x-project-id` request header, not the body.
 #[derive(Debug, Serialize)]
 pub struct PushRequest {
-    pub project_id: String,
     pub events: Vec<EventEnvelope>,
 }
 
@@ -52,12 +53,12 @@ mod tests {
     #[test]
     fn push_request_serializes() {
         let req = PushRequest {
-            project_id: "proj-1".to_string(),
             events: vec![sample_envelope()],
         };
         let json = serde_json::to_string(&req).unwrap();
-        assert!(json.contains("proj-1"));
         assert!(json.contains("workspace.created"));
+        // project_id is in the header, not the body
+        assert!(!json.contains("project_id"));
     }
 
     #[test]
