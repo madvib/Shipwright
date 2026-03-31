@@ -75,6 +75,7 @@ pub const RESERVED_NAMESPACES: &[&str] = &[
     "config.",
     "gate.",
     "job.",
+    "mesh.",
     "project.",
     "runtime.",
     "session.",
