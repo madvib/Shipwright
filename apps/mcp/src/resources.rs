@@ -8,7 +8,6 @@ pub fn static_resource_list() -> Vec<rmcp::model::Annotated<RawResource>> {
         RawResource::new("ship://project_info", "Project Info").no_annotation(),
         RawResource::new("ship://specs", "Specs").no_annotation(),
         RawResource::new("ship://adrs", "ADRs").no_annotation(),
-        RawResource::new("ship://notes", "Project Notes").no_annotation(),
         RawResource::new("ship://skills", "Skills").no_annotation(),
         RawResource::new("ship://workspaces", "Workspaces").no_annotation(),
         RawResource::new("ship://sessions", "Workspace Sessions").no_annotation(),
@@ -16,8 +15,6 @@ pub fn static_resource_list() -> Vec<rmcp::model::Annotated<RawResource>> {
         RawResource::new("ship://providers", "Providers").no_annotation(),
         RawResource::new("ship://log", "Project Log").no_annotation(),
         RawResource::new("ship://events", "Event Stream").no_annotation(),
-        RawResource::new("ship://jobs", "Jobs").no_annotation(),
-        RawResource::new("ship://targets", "Targets").no_annotation(),
     ]
 }
 
@@ -42,7 +39,6 @@ pub fn static_resource_template_list() -> Vec<rmcp::model::Annotated<RawResource
         ),
         tmpl("ship://specs/{id}", "Spec", "text/markdown"),
         tmpl("ship://adrs/{id}", "ADR", "text/markdown"),
-        tmpl("ship://notes/{id}", "Note", "text/markdown"),
         tmpl(
             "ship://workspaces/{branch}",
             "Workspace",
@@ -70,9 +66,6 @@ pub fn static_resource_template_list() -> Vec<rmcp::model::Annotated<RawResource
         ),
         tmpl("ship://events/{limit}", "Recent Events", "text/plain"),
         tmpl("ship://skills/{id}", "Skill", "text/markdown"),
-        tmpl("ship://jobs/{id}", "Job", "application/json"),
-        tmpl("ship://targets/{id}", "Target", "application/json"),
-        tmpl("ship://capabilities/{id}", "Capability", "application/json"),
     ]
 }
 

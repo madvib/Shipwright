@@ -12,15 +12,11 @@ mod config;
 mod convert;
 mod dep_skills;
 #[cfg(feature = "unstable")]
-mod diff;
-#[cfg(feature = "unstable")]
 mod events_cmd;
 mod help_topics;
 mod hook;
 mod init;
 mod install;
-#[cfg(feature = "unstable")]
-mod job;
 mod loader;
 mod logging;
 mod mcp;
@@ -31,13 +27,11 @@ mod publish;
 mod skill;
 mod validate;
 mod vars;
-#[cfg(feature = "unstable")]
-mod view;
 
 use anyhow::Result;
 use cli::{AgentCommands, Cli, Commands, ConfigCommands, HookCommands, McpCommands, SkillCommands, VarsCommands};
 #[cfg(feature = "unstable")]
-use cli::{EventsCommands, JobCommands};
+use cli::EventsCommands;
 use std::path::PathBuf;
 
 /// Initialize the global KernelRouter for CLI commands that emit events.
@@ -94,11 +88,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Convert { source } => convert::run_convert(&source),
             Commands::Docs { topic } => help_topics::run(topic.as_deref()),
             #[cfg(feature = "unstable")]
-            Commands::Job { action } => dispatch_job(action),
-            #[cfg(feature = "unstable")]
             Commands::Adrs => run_adrs(),
-            #[cfg(feature = "unstable")]
-            Commands::Notes => run_notes(),
             Commands::Publish {
                 export_path,
                 dry_run,
@@ -129,11 +119,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
                 validate::run_validate(agent.as_deref(), json, &root)
             }
             #[cfg(feature = "unstable")]
-            Commands::Diff { milestone } => diff::run(milestone.as_deref()),
-            #[cfg(feature = "unstable")]
             Commands::Events { action } => dispatch_events(action),
-            #[cfg(feature = "unstable")]
-            Commands::View => view::run_view(),
             Commands::Hook { action } => dispatch_hook(action),
             Commands::Studio { port, open } => run_studio(port, open),
             Commands::Help => {
@@ -357,32 +343,6 @@ fn run_compile_cmd(provider: Option<&str>, dry_run: bool, path: Option<PathBuf>)
 
 // ── Subcommand dispatchers ────────────────────────────────────────────────────
 
-#[cfg(feature = "unstable")]
-fn dispatch_job(action: JobCommands) -> Result<()> {
-    match action {
-        JobCommands::Create {
-            kind,
-            title,
-            milestone,
-            description,
-            branch,
-        } => job::create(
-            &kind,
-            &title,
-            milestone.as_deref(),
-            description.as_deref(),
-            branch.as_deref(),
-        ),
-        JobCommands::List {
-            status,
-            branch,
-            milestone,
-        } => job::list(status.as_deref(), branch.as_deref(), milestone.as_deref()),
-        JobCommands::Update { id, status } => job::update(&id, &status),
-        JobCommands::Done { id } => job::update(&id, "complete"),
-    }
-}
-
 fn dispatch_skill(action: SkillCommands) -> Result<()> {
     match action {
         SkillCommands::List => skill::list(),
@@ -451,20 +411,6 @@ fn run_adrs() -> Result<()> {
     } else {
         for entry in &adrs {
             println!("{}\t[{}]\t{}", entry.id, entry.status, entry.title);
-        }
-    }
-    Ok(())
-}
-
-#[cfg(feature = "unstable")]
-fn run_notes() -> Result<()> {
-    let _ship_dir = paths::project_ship_dir_required()?;
-    let notes = runtime::db::notes::list_notes(None)?;
-    if notes.is_empty() {
-        println!("No notes found.");
-    } else {
-        for entry in &notes {
-            println!("{}\t{}", entry.id, entry.title);
         }
     }
     Ok(())

@@ -3,17 +3,11 @@ pub mod adr;
 pub mod agent;
 pub mod event;
 pub mod git_info;
-#[cfg(feature = "unstable")]
-pub mod job;
-#[cfg(feature = "unstable")]
-pub mod notes;
 pub mod project;
 pub mod session;
 pub mod session_files;
 pub mod skills;
 pub mod studio;
 pub mod studio_push;
-#[cfg(feature = "unstable")]
-pub mod target;
 pub mod workspace;
 pub mod workspace_ops;

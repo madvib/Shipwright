@@ -3,14 +3,13 @@ use std::path::PathBuf;
 
 pub use crate::commands::{AgentCommands, HookCommands, McpCommands, SkillCommands, VarsCommands};
 #[cfg(feature = "unstable")]
-pub use crate::commands::{EventsCommands, JobCommands};
+pub use crate::commands::EventsCommands;
 
 const AFTER_HELP: &str = "\x1b[1mDaily Workflow:\x1b[0m
   ship init              Start here — scaffold .ship/
   ship use <agent-id>    Activate an agent (compiles immediately)
   ship status            Show active agent
   ship compile           Re-compile after editing config
-  ship view              Browse state in the TUI
 
 \x1b[1mPackages:\x1b[0m
   ship add <package>     Add a dependency
@@ -201,10 +200,6 @@ pub enum Commands {
         action: EventsCommands,
     },
 
-    /// Browse and manage project state in the terminal UI
-    #[cfg(feature = "unstable")]
-    View,
-
     /// Show detailed help for a topic (run `ship docs topics` to list)
     Docs {
         /// Topic name (e.g. agents, skills, mcp, compile, providers)
@@ -213,25 +208,7 @@ pub enum Commands {
 
     #[cfg(feature = "unstable")]
     #[command(hide = true)]
-    Job {
-        #[command(subcommand)]
-        action: JobCommands,
-    },
-
-    #[cfg(feature = "unstable")]
-    #[command(hide = true)]
     Adrs,
-
-    #[cfg(feature = "unstable")]
-    #[command(hide = true)]
-    Notes,
-
-    #[cfg(feature = "unstable")]
-    #[command(hide = true)]
-    Diff {
-        #[arg(long)]
-        milestone: Option<String>,
-    },
 
     /// Provider hook integration (before-tool, after-tool, session-end)
     #[command(hide = true)]

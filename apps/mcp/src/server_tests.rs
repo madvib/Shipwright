@@ -191,29 +191,10 @@ fn core_tool_with_prefix_and_suffix() {
 #[test]
 #[cfg(feature = "unstable")]
 fn unstable_tools_are_core_when_feature_enabled() {
-    let unstable_tools = [
-        "create_note",
-        "update_note",
-        "create_adr",
-        "create_job",
-        "update_job",
-        "list_jobs",
-        "create_target",
-        "update_target",
-        "list_targets",
-        "get_target",
-        "create_capability",
-        "update_capability",
-        "delete_capability",
-        "mark_capability_actual",
-        "list_capabilities",
-    ];
-    for tool in unstable_tools {
-        assert!(
-            ShipServer::is_core_tool(tool),
-            "{tool} should be a core tool with unstable feature"
-        );
-    }
+    assert!(
+        ShipServer::is_core_tool("create_adr"),
+        "create_adr should be a core tool with unstable feature"
+    );
 }
 
 #[test]
@@ -305,140 +286,16 @@ fn stable_build_registers_only_platform_tools() {
 fn unstable_build_registers_all_tools() {
     let server = ShipServer::new();
     let names = server.registered_tool_names();
-    let unstable_tools: &[&str] = &[
-        "create_note",
-        "update_note",
-        "create_adr",
-        "create_target",
-        "update_target",
-        "list_targets",
-        "get_target",
-        "create_capability",
-        "update_capability",
-        "delete_capability",
-        "mark_capability_actual",
-        "list_capabilities",
-        "create_job",
-        "update_job",
-        "list_jobs",
-        "append_job_log",
-        "claim_file",
-        "get_file_owner",
-    ];
-    for tool in unstable_tools {
-        assert!(
-            names.iter().any(|n| n == tool),
-            "{tool} missing from unstable router"
-        );
-    }
-    // stable + unstable
+    assert!(
+        names.iter().any(|n| n == "create_adr"),
+        "create_adr missing from unstable router"
+    );
+    // stable (20) + unstable (1)
     assert_eq!(
         names.len(),
-        38,
-        "unstable build should register 38 tools, got: {:?}",
+        21,
+        "unstable build should register 21 tools, got: {:?}",
         names
     );
 }
 
-// ── update_target handler ──────────────────────────────────────────
-
-#[cfg(feature = "unstable")]
-#[test]
-fn update_target_patches_fields() {
-    let tmp = tempdir().expect("tempdir");
-    let project_dir = init_project(tmp.path().to_path_buf()).expect("init project");
-
-    let create_req = crate::requests::CreateTargetRequest {
-        kind: "surface".into(),
-        title: "Original Title".into(),
-        description: Some("Original desc".into()),
-        goal: Some("Original goal".into()),
-        status: Some("active".into()),
-        phase: None,
-        due_date: None,
-        body_markdown: Some("# Original body".into()),
-        file_scope: None,
-    };
-    let created = crate::tools::target::create_target(&project_dir, create_req);
-    assert!(
-        created.starts_with("Created target:"),
-        "unexpected: {}",
-        created
-    );
-
-    let id = created
-        .split("id: ")
-        .nth(1)
-        .unwrap()
-        .split(',')
-        .next()
-        .unwrap()
-        .to_string();
-
-    let update_req = crate::requests::UpdateTargetRequest {
-        id: id.clone(),
-        title: Some("Updated Title".into()),
-        description: Some("Updated desc".into()),
-        goal: Some("Updated goal".into()),
-        status: Some("planned".into()),
-        phase: None,
-        due_date: None,
-        body_markdown: Some("# Updated body".into()),
-        file_scope: None,
-    };
-    let updated = crate::tools::target::update_target(&project_dir, update_req);
-    assert!(
-        updated.contains("Updated target"),
-        "unexpected: {}",
-        updated
-    );
-
-    let get_req = crate::requests::GetTargetRequest { id };
-    let detail = crate::tools::target::get_target(&project_dir, get_req);
-    assert!(
-        detail.contains("Updated Title"),
-        "title not updated: {}",
-        detail
-    );
-    assert!(
-        detail.contains("Updated desc"),
-        "description not updated: {}",
-        detail
-    );
-    assert!(
-        detail.contains("Updated goal"),
-        "goal not updated: {}",
-        detail
-    );
-    assert!(detail.contains("planned"), "status not updated: {}", detail);
-    assert!(
-        detail.contains("# Updated body"),
-        "body_markdown not updated: {}",
-        detail
-    );
-}
-
-#[cfg(feature = "unstable")]
-#[test]
-fn update_target_nonexistent_returns_error() {
-    let tmp = tempdir().expect("tempdir");
-    let project_dir = init_project(tmp.path().to_path_buf()).expect("init project");
-
-    let update_req = crate::requests::UpdateTargetRequest {
-        id: "nonexistent_id".into(),
-        title: Some("Wont matter".into()),
-        description: None,
-        goal: None,
-        status: None,
-        phase: None,
-        due_date: None,
-        body_markdown: None,
-        file_scope: None,
-    };
-    let result = crate::tools::target::update_target(&project_dir, update_req);
-    assert!(
-        result.contains("Error"),
-        "expected error for nonexistent target: {}",
-        result
-    );
-}
