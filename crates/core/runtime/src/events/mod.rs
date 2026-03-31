@@ -11,6 +11,15 @@ pub mod validator;
 
 pub mod global_kernel_router;
 
+#[cfg(feature = "unstable")]
+pub mod identity;
+#[cfg(feature = "unstable")]
+pub mod permissions;
+#[cfg(feature = "unstable")]
+pub mod cursor;
+#[cfg(feature = "unstable")]
+pub mod kernel_security;
+
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

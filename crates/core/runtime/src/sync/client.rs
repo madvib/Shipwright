@@ -134,6 +134,7 @@ mod tests {
             session_id: None,
             actor_id: None,
             parent_actor_id: None,
+            target_actor_id: None,
             elevated: true,
             created_at: Utc::now(),
         }]

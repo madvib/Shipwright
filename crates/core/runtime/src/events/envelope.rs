@@ -1,7 +1,22 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use ulid::Ulid;
+
+use std::cell::RefCell;
+use std::time::SystemTime;
+
+thread_local! {
+    static ULID_GEN: RefCell<ulid::Generator> = RefCell::new(ulid::Generator::new());
+}
+
+fn monotonic_ulid() -> String {
+    ULID_GEN.with(|g| {
+        g.borrow_mut()
+            .generate_from_datetime(SystemTime::now())
+            .expect("ULID generation failed")
+            .to_string()
+    })
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventEnvelope {
@@ -17,6 +32,7 @@ pub struct EventEnvelope {
     pub session_id: Option<String>,
     pub actor_id: Option<String>,
     pub parent_actor_id: Option<String>,
+    pub target_actor_id: Option<String>,
     pub elevated: bool,
     pub created_at: DateTime<Utc>,
 }
@@ -25,7 +41,7 @@ impl EventEnvelope {
     pub fn new<P: Serialize>(event_type: &str, entity_id: &str, payload: &P) -> Result<Self> {
         let payload_json = serde_json::to_string(payload)?;
         Ok(Self {
-            id: Ulid::new().to_string(),
+            id: monotonic_ulid(),
             event_type: event_type.to_string(),
             entity_id: entity_id.to_string(),
             actor: "ship".to_string(),
@@ -37,6 +53,7 @@ impl EventEnvelope {
             session_id: None,
             actor_id: None,
             parent_actor_id: None,
+            target_actor_id: None,
             elevated: false,
             created_at: Utc::now(),
         })
