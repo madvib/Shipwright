@@ -38,6 +38,7 @@ pub fn make_skill(id: &str) -> Skill {
         content: format!("# {}\n\nDo the thing.", id),
         source: Default::default(),
         vars: Default::default(),
+        artifacts: vec![],
     }
 }
 
@@ -101,5 +102,6 @@ pub fn resolved(servers: Vec<McpServerConfig>) -> ResolvedConfig {
         claude_theme: None,
         claude_auto_updates: None,
         claude_include_co_authored_by: None,
+        studio_mcp_url: None,
     }
 }

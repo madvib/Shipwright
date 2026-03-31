@@ -224,6 +224,7 @@ fn agent_profiles_compiled_into_agent_files() {
         rules: ProfileRules {
             inline: Some("Review carefully.".to_string()),
         },
+        apps: Default::default(),
         provider_settings: Default::default(),
     };
 

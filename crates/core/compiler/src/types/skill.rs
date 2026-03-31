@@ -47,6 +47,10 @@ pub struct Skill {
     /// project state (.ship/state/skills/{id}.json) + vars.json defaults.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub vars: HashMap<String, serde_json::Value>,
+    /// Artifact types this skill produces (e.g. `["html", "adr"]`).
+    /// Used to infer platform event subscriptions at actor spawn time.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub artifacts: Vec<String>,
 }
 
 pub fn is_valid_skill_name(name: &str) -> bool {
@@ -100,6 +104,7 @@ mod tests {
             content: String::new(),
             source: SkillSource::Custom,
             vars: HashMap::new(),
+            artifacts: vec![],
         };
         assert!(skill.stable_id.is_none());
         assert!(skill.license.is_none());
@@ -107,5 +112,6 @@ mod tests {
         assert!(skill.allowed_tools.is_empty());
         assert!(skill.metadata.is_empty());
         assert!(skill.vars.is_empty());
+        assert!(skill.artifacts.is_empty());
     }
 }

@@ -94,11 +94,21 @@ impl StudioServer {
             }
         };
 
+        // Subscribe to all skill custom namespaces so Studio receives agent-emitted skill events.
+        let mut subscribe_namespaces = vec!["studio.".to_string(), "agent.".to_string()];
+        if let Ok(skills) = runtime::list_skills(&project_dir) {
+            for ns in runtime::events::artifact_events::skill_custom_namespaces(&skills) {
+                if !subscribe_namespaces.contains(&ns) {
+                    subscribe_namespaces.push(ns);
+                }
+            }
+        }
+
         let config = runtime::events::ActorConfig {
             namespace: "studio".to_string(),
             write_namespaces: vec!["studio.".to_string()],
             read_namespaces: vec!["studio.".to_string()],
-            subscribe_namespaces: vec!["studio.".to_string(), "agent.".to_string()],
+            subscribe_namespaces,
         };
 
         match kr.lock().await.spawn_actor("studio", config) {

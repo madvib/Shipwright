@@ -19,9 +19,22 @@ pub struct AgentProfile {
     pub permissions: ProfilePermissions,
     #[serde(default)]
     pub rules: ProfileRules,
+    /// App integrations for this agent profile.
+    #[serde(default)]
+    pub apps: ProfileApps,
     #[serde(default)]
     #[cfg_attr(feature = "specta", specta(skip))]
     pub provider_settings: std::collections::HashMap<String, toml::Value>,
+}
+
+/// Declares which Ship apps an agent integrates with.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ProfileApps {
+    /// When true, the compiler emits an HTTP MCP transport pointing at Studio's
+    /// local endpoint instead of a stdio `ship mcp serve` entry.
+    #[serde(default)]
+    pub studio: bool,
 }
 
 #[cfg_attr(feature = "specta", derive(specta::Type))]
@@ -201,6 +214,28 @@ temperature = 0.2
             reparsed.permissions.tools_allow,
             profile.permissions.tools_allow
         );
+    }
+
+    #[test]
+    fn apps_studio_parses_and_defaults_false() {
+        let with_studio = r#"
+[profile]
+id = "design-agent"
+name = "Design Agent"
+
+[apps]
+studio = true
+"#;
+        let profile: AgentProfile = toml::from_str(with_studio).expect("parse failed");
+        assert!(profile.apps.studio);
+
+        let without_apps = r#"
+[profile]
+id = "headless-agent"
+name = "Headless Agent"
+"#;
+        let profile2: AgentProfile = toml::from_str(without_apps).expect("parse failed");
+        assert!(!profile2.apps.studio);
     }
 
     #[test]

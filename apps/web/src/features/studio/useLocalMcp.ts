@@ -34,10 +34,6 @@ function saveConfig(config: McpConfig): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(config))
 }
 
-export interface StudioEventResult {
-  id: string
-}
-
 export interface UseLocalMcpReturn {
   status: McpConnectionStatus
   error: string | null
@@ -51,7 +47,6 @@ export interface UseLocalMcpReturn {
   connect: () => Promise<void>
   disconnect: () => void
   callTool: (name: string, args?: Record<string, unknown>) => Promise<string>
-  postStudioEvent: (event_type: string, payload: unknown, staged: boolean) => Promise<StudioEventResult>
   refreshLocalAgents: () => Promise<void>
 }
 
@@ -204,27 +199,6 @@ export function useLocalMcp(): UseLocalMcpReturn {
     [connect],
   )
 
-  const postStudioEvent = useCallback(
-    async (event_type: string, payload: unknown, staged: boolean): Promise<StudioEventResult> => {
-      // Try the real endpoint. Falls back gracefully when Rust lane hasn't shipped yet.
-      if (clientRef.current) {
-        try {
-          const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-          if (config.token) headers['Authorization'] = `Bearer ${config.token}`
-          const res = await fetch(`http://localhost:${config.port}/studio/event`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ event_type, payload, staged }),
-          })
-          if (res.ok) return res.json() as Promise<StudioEventResult>
-        } catch { /* endpoint not yet available — fall through */ }
-      }
-      // Mock: stable client-side ID
-      return { id: `evt-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}` }
-    },
-    [config.port, config.token],
-  )
-
   const refreshLocalAgents = useCallback(async () => {
     const client = clientRef.current
     if (!client) return
@@ -272,7 +246,6 @@ export function useLocalMcp(): UseLocalMcpReturn {
     connect,
     disconnect,
     callTool,
-    postStudioEvent,
     refreshLocalAgents,
   }
 }

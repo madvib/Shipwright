@@ -111,6 +111,16 @@ pub struct CompileOutput {
     /// Codex-only: `.codex/hooks.json` content.
     /// Only populated for the `codex` provider.
     pub codex_hooks_json: Option<Json>,
+
+    /// Resolved actor event subscription namespaces for this agent.
+    ///
+    /// Combines:
+    /// - `ship.{suffix}` entries inferred from skill artifact declarations.
+    /// - `{skill.id}.` custom namespace for each skill.
+    ///
+    /// The runtime reads this at actor spawn time to replace the hardcoded
+    /// `subscribe_namespaces` list in `ActorConfig`.
+    pub event_subscriptions: Vec<String>,
 }
 
 // ─── Main entry point ─────────────────────────────────────────────────────────
@@ -124,11 +134,12 @@ pub fn compile(resolved: &ResolvedConfig, provider_id: &str) -> Option<CompileOu
 
     // Only emit MCP config for providers that support it.
     if flags.supports_mcp {
+        let studio_url = resolved.studio_mcp_url.as_deref();
         // Use provider-specific MCP builders when available (for per-server fields).
         out.mcp_servers = match provider_id {
-            "gemini" => gemini::build_gemini_mcp_servers(desc, &resolved.mcp_servers),
-            "cursor" => cursor::build_cursor_mcp_servers(desc, &resolved.mcp_servers),
-            _ => mcp::build_mcp_servers(desc, &resolved.mcp_servers),
+            "gemini" => gemini::build_gemini_mcp_servers(desc, &resolved.mcp_servers, studio_url),
+            "cursor" => cursor::build_cursor_mcp_servers(desc, &resolved.mcp_servers, studio_url),
+            _ => mcp::build_mcp_servers(desc, &resolved.mcp_servers, studio_url),
         };
         out.mcp_config_path = desc.mcp_config_path.map(String::from);
     } else {
@@ -136,6 +147,7 @@ pub fn compile(resolved: &ResolvedConfig, provider_id: &str) -> Option<CompileOu
     }
     out.context_content = context::build_context_content(desc, resolved);
     out.skill_files = skills::build_skill_files(desc, &resolved.skills);
+    out.event_subscriptions = skills::resolve_event_subscriptions(&resolved.skills);
 
     // Compile agent profiles for this provider
     let profile_agents = agents::compile_agent_profiles(&resolved.agent_profiles, provider_id);

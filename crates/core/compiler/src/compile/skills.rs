@@ -4,6 +4,57 @@ use crate::types::Skill;
 
 use super::provider::ProviderDescriptor;
 
+// ── Artifact-to-event mapping ─────────────────────────────────────────────────
+
+/// Maps an artifact type to platform event suffixes (maps to `ship.{suffix}`).
+/// Mirrors `runtime::events::artifact_events::events_for_artifact` — the compiler
+/// cannot depend on the runtime, so this is an intentional local copy.
+fn events_for_artifact(artifact_type: &str) -> &'static [&'static str] {
+    match artifact_type {
+        "html" => &[
+            "annotation",
+            "feedback",
+            "selection",
+            "artifact_created",
+            "artifact_deleted",
+        ],
+        "pdf" => &["selection", "feedback", "artifact_created", "artifact_deleted"],
+        "markdown" => &["feedback", "selection", "artifact_created", "artifact_deleted"],
+        "image" => &["annotation", "feedback", "artifact_created", "artifact_deleted"],
+        "adr" => &["feedback", "artifact_created", "artifact_deleted"],
+        "note" => &["feedback", "artifact_created", "artifact_deleted"],
+        "url" => &["feedback"],
+        "json" => &["feedback", "artifact_created", "artifact_deleted"],
+        _ => &[],
+    }
+}
+
+/// Compute the deduplicated set of event subscription namespaces for a list of skills.
+///
+/// Returns:
+/// - `ship.{suffix}` for each platform event inferred from artifact declarations.
+/// - `{skill.id}.` for each skill's custom event namespace.
+pub(super) fn resolve_event_subscriptions(skills: &[Skill]) -> Vec<String> {
+    let mut subs: Vec<String> = Vec::new();
+    for skill in skills {
+        for artifact in &skill.artifacts {
+            for suffix in events_for_artifact(artifact) {
+                let ns = format!("ship.{suffix}");
+                if !subs.contains(&ns) {
+                    subs.push(ns);
+                }
+            }
+        }
+        if !skill.id.is_empty() {
+            let ns = format!("{}.", skill.id);
+            if !subs.contains(&ns) {
+                subs.push(ns);
+            }
+        }
+    }
+    subs
+}
+
 pub(super) fn build_skill_files(
     desc: &ProviderDescriptor,
     skills: &[Skill],
@@ -55,6 +106,10 @@ pub(super) fn format_skill_file(skill: &Skill) -> String {
         ));
     }
 
+    if !skill.artifacts.is_empty() {
+        fm.push_str(&format!("\nartifacts: [{}]", skill.artifacts.join(", ")));
+    }
+
     if !skill.metadata.is_empty() {
         // Sort keys for deterministic output.
         let mut keys: Vec<&String> = skill.metadata.keys().collect();
@@ -84,6 +139,7 @@ mod tests {
             license: None,
             compatibility: None,
             allowed_tools: vec![],
+            artifacts: vec![],
             metadata: HashMap::new(),
             content: "Instructions here.".to_string(),
             source: Default::default(),
@@ -175,5 +231,48 @@ mod tests {
         let skill = base_skill();
         let out = format_skill_file(&skill);
         assert!(out.contains("Instructions here."), "got:\n{out}");
+    }
+
+    #[test]
+    fn format_skill_file_with_artifacts() {
+        let mut skill = base_skill();
+        skill.artifacts = vec!["html".to_string(), "adr".to_string()];
+        let out = format_skill_file(&skill);
+        assert!(out.contains("\nartifacts: [html, adr]\n"), "got:\n{out}");
+    }
+
+    #[test]
+    fn format_skill_file_no_artifacts_omitted() {
+        let skill = base_skill();
+        let out = format_skill_file(&skill);
+        assert!(!out.contains("artifacts:"), "got:\n{out}");
+    }
+
+    #[test]
+    fn resolve_event_subscriptions_empty() {
+        assert!(resolve_event_subscriptions(&[]).is_empty());
+    }
+
+    #[test]
+    fn resolve_event_subscriptions_html_skill() {
+        let mut skill = base_skill();
+        skill.artifacts = vec!["html".to_string()];
+        let subs = resolve_event_subscriptions(&[skill]);
+        assert!(subs.contains(&"ship.annotation".to_string()));
+        assert!(subs.contains(&"ship.feedback".to_string()));
+        assert!(subs.contains(&"ship.artifact_created".to_string()));
+        assert!(subs.contains(&"my-skill.".to_string()));
+    }
+
+    #[test]
+    fn resolve_event_subscriptions_deduplicates() {
+        let mut s1 = base_skill();
+        s1.artifacts = vec!["adr".to_string()];
+        let mut s2 = base_skill();
+        s2.id = "other-skill".to_string();
+        s2.artifacts = vec!["adr".to_string()];
+        let subs = resolve_event_subscriptions(&[s1, s2]);
+        let feedback_count = subs.iter().filter(|s| *s == "ship.feedback").count();
+        assert_eq!(feedback_count, 1);
     }
 }

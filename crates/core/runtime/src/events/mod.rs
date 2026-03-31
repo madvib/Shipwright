@@ -1,4 +1,5 @@
 pub mod actor_store;
+pub mod artifact_events;
 pub mod envelope;
 pub mod filter;
 pub mod kernel_router;

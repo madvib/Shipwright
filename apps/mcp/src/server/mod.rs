@@ -127,28 +127,40 @@ impl ShipServer {
             }
         };
 
-        let actor_id = runtime::get_active_agent(Some(project_dir))
+        let actor_id = runtime::get_active_agent(Some(project_dir.clone()))
             .ok()
             .flatten()
             .map(|a| format!("agent.{}", a.id))
             .unwrap_or_else(|| "agent.mcp".to_string());
+
+        // Compute skill-derived subscriptions: ship.* platform events + custom skill namespaces.
+        let skill_subs = runtime::list_skills(&project_dir)
+            .map(|skills| runtime::events::artifact_events::skill_event_subscriptions(&skills))
+            .unwrap_or_default();
+
+        let mut subscribe_namespaces = vec![
+            "studio.".to_string(),
+            "workspace.".to_string(),
+            "session.".to_string(),
+            "actor.".to_string(),
+            "config.".to_string(),
+            "runtime.".to_string(),
+            "sync.".to_string(),
+            "project.".to_string(),
+            "gate.".to_string(),
+        ];
+        for ns in skill_subs {
+            if !subscribe_namespaces.contains(&ns) {
+                subscribe_namespaces.push(ns);
+            }
+        }
 
         let config = runtime::events::ActorConfig {
             namespace: actor_id.clone(),
             // Allow writing any non-system namespace (enforced by the event tool).
             write_namespaces: vec!["".to_string()],
             read_namespaces: vec!["agent.".to_string()],
-            subscribe_namespaces: vec![
-                "studio.".to_string(),
-                "workspace.".to_string(),
-                "session.".to_string(),
-                "actor.".to_string(),
-                "config.".to_string(),
-                "runtime.".to_string(),
-                "sync.".to_string(),
-                "project.".to_string(),
-                "gate.".to_string(),
-            ],
+            subscribe_namespaces,
         };
 
         match kr.lock().await.spawn_actor(&actor_id, config) {
