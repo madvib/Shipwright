@@ -20,6 +20,8 @@ mod kernel_router_tests;
 mod cross_actor_tests;
 #[cfg(test)]
 mod snapshot_tests;
+#[cfg(test)]
+mod cli_routing_tests;
 
 pub use actor_store::ActorStore;
 pub use envelope::EventEnvelope;

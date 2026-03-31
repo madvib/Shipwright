@@ -40,6 +40,14 @@ use cli::{AgentCommands, Cli, Commands, ConfigCommands, HookCommands, McpCommand
 use cli::{EventsCommands, JobCommands};
 use std::path::PathBuf;
 
+/// Initialize the global KernelRouter for CLI commands that emit events.
+/// Silently skips if the global dir is unavailable or the router fails to start.
+fn try_init_kernel_router() {
+    if let Ok(dir) = runtime::project::get_global_dir() {
+        let _ = runtime::events::init_kernel_router(dir);
+    }
+}
+
 pub fn build_version() -> &'static str {
     if cfg!(feature = "unstable") {
         concat!(env!("CARGO_PKG_VERSION"), "+unstable")
@@ -199,6 +207,7 @@ fn dispatch_config(action: ConfigCommands) -> Result<()> {
 
 /// Activate an agent: load, compile, install plugins, write workspace state.
 fn run_use(agent_id: Option<&str>, path: Option<PathBuf>) -> Result<()> {
+    try_init_kernel_router();
     let ship_dir = match path {
         Some(ref p) => {
             let sd = std::fs::canonicalize(p)?.join(".ship");
@@ -462,6 +471,7 @@ fn run_notes() -> Result<()> {
 }
 
 fn dispatch_hook(action: HookCommands) -> Result<()> {
+    try_init_kernel_router();
     match action {
         HookCommands::SessionStart => hook::run_session_start(),
         HookCommands::BeforeTool => hook::run_before_tool(),
