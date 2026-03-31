@@ -117,9 +117,15 @@ impl ShipServer {
             Err(_) => return,
         };
 
-        // Initialize KernelRouter with the project's .ship/ dir as base.
-        let ship_dir = project_dir.join(".ship");
-        let kr = match runtime::events::init_kernel_router(ship_dir) {
+        // Initialize KernelRouter with the global ~/.ship/ dir — never the project's .ship/.
+        let global_dir = match runtime::project::get_global_dir() {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::warn!("failed to resolve global dir: {e}");
+                return;
+            }
+        };
+        let kr = match runtime::events::init_kernel_router(global_dir) {
             Ok(kr) => kr,
             Err(e) => {
                 tracing::warn!("failed to initialize KernelRouter: {e}");

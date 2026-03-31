@@ -85,8 +85,14 @@ impl StudioServer {
             Err(_) => return,
         };
 
-        let ship_dir = project_dir.join(".ship");
-        let kr = match runtime::events::init_kernel_router(ship_dir) {
+        let global_dir = match runtime::project::get_global_dir() {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::warn!("studio: failed to resolve global dir: {e}");
+                return;
+            }
+        };
+        let kr = match runtime::events::init_kernel_router(global_dir) {
             Ok(kr) => kr,
             Err(e) => {
                 tracing::warn!("studio: failed to initialize KernelRouter: {e}");
