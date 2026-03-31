@@ -1,8 +1,10 @@
+use crate::db::block_on_anyhow;
 use crate::events::envelope::EventEnvelope;
 use crate::events::filter::EventFilter;
 use crate::events::store::{EventStore, SqliteEventStore};
 use crate::events::types::event_types;
 use crate::events::types::ProjectLog;
+use crate::events::validator::{CallerKind, EmitContext};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -35,6 +37,16 @@ pub fn log_action_by(
     let mut envelope = EventEnvelope::new(event_types::PROJECT_LOG, "project", &payload)?;
     envelope.actor = actor.to_string();
     store.append(&envelope)?;
+
+    let ctx = EmitContext {
+        caller_kind: CallerKind::Cli,
+        skill_id: None,
+        workspace_id: None,
+        session_id: None,
+    };
+    if let Some(kr) = crate::events::kernel_router() {
+        let _ = block_on_anyhow(async { kr.lock().await.route(envelope, &ctx).await });
+    }
     Ok(())
 }
 
