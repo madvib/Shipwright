@@ -18,20 +18,20 @@ impl SyncClient {
         }
     }
 
-    /// Push platform events (workspace.*, job.*, config.*) to cloud.
+    /// Push platform events (workspace.*, job.*, session.*, gate.*) to cloud.
     pub fn push_platform_events(
         &self,
         project_id: &str,
         events: &[EventEnvelope],
     ) -> Result<PushResponse> {
-        let url = format!("{}/api/sync/push", self.base_url);
+        let url = format!("{}/api/sync/platform/push", self.base_url);
         let body = PushRequest {
-            project_id: project_id.to_string(),
             events: events.to_vec(),
         };
         let resp: PushResponse = self
             .agent
             .post(&url)
+            .header("x-project-id", project_id)
             .send_json(&body)
             .context("sync push request failed")?
             .body_mut()
@@ -46,13 +46,14 @@ impl SyncClient {
         project_id: &str,
         cursor: Option<&str>,
     ) -> Result<PullResponse> {
-        let mut url = format!("{}/api/sync/pull?project_id={project_id}", self.base_url);
+        let mut url = format!("{}/api/sync/platform/pull", self.base_url);
         if let Some(c) = cursor {
-            url.push_str(&format!("&since={c}"));
+            url.push_str(&format!("?since={c}"));
         }
         let resp: PullResponse = self
             .agent
             .get(&url)
+            .header("x-project-id", project_id)
             .call()
             .context("sync pull request failed")?
             .body_mut()
@@ -73,12 +74,12 @@ impl SyncClient {
             self.base_url
         );
         let body = PushRequest {
-            project_id: project_id.to_string(),
             events: events.to_vec(),
         };
         let resp: PushResponse = self
             .agent
             .post(&url)
+            .header("x-project-id", project_id)
             .send_json(&body)
             .context("workspace sync push failed")?
             .body_mut()
@@ -91,21 +92,20 @@ impl SyncClient {
     pub fn pull_workspace_events(
         &self,
         workspace_id: &str,
+        project_id: &str,
         cursor: Option<&str>,
     ) -> Result<PullResponse> {
         let mut url = format!(
             "{}/api/sync/workspace/{workspace_id}/pull",
             self.base_url
         );
-        let mut has_query = false;
         if let Some(c) = cursor {
             url.push_str(&format!("?since={c}"));
-            has_query = true;
         }
-        let _ = has_query; // future: additional query params
         let resp: PullResponse = self
             .agent
             .get(&url)
+            .header("x-project-id", project_id)
             .call()
             .context("workspace sync pull failed")?
             .body_mut()
@@ -140,14 +140,11 @@ mod tests {
     }
 
     #[test]
-    fn push_request_body_is_valid_json() {
+    fn push_request_body_has_no_project_id() {
         let events = sample_events();
-        let body = PushRequest {
-            project_id: "proj-1".to_string(),
-            events,
-        };
+        let body = PushRequest { events };
         let json = serde_json::to_value(&body).unwrap();
-        assert_eq!(json["project_id"], "proj-1");
+        assert!(json.get("project_id").is_none(), "project_id must be in header, not body");
         assert_eq!(json["events"].as_array().unwrap().len(), 1);
     }
 
