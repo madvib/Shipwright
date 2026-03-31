@@ -41,15 +41,6 @@ pub async fn resolve_resource_uri(
             )
         });
     }
-    if uri == "ship://notes" {
-        return resolve_notes_list();
-    }
-    if let Some(id) = uri.strip_prefix("ship://notes/") {
-        return runtime::db::notes::get_note(id)
-            .ok()
-            .flatten()
-            .map(|n| format!("Title: {}\n\n{}", n.title, n.content));
-    }
     if uri == "ship://skills" {
         let entries = list_effective_skills(dir).ok()?;
         if entries.is_empty() {
@@ -83,9 +74,6 @@ pub async fn resolve_resource_uri(
         return render_events_resource(dir, limit);
     }
     if let Some(result) = resolve_workspace_uri(uri, dir) {
-        return Some(result);
-    }
-    if let Some(result) = resolve_workflow_uri(uri) {
         return Some(result);
     }
     None
@@ -129,20 +117,6 @@ fn resolve_adr_list() -> Option<String> {
             Some(out)
         }
         Err(_) => Some("No ADRs found.".to_string()),
-    }
-}
-
-fn resolve_notes_list() -> Option<String> {
-    match runtime::db::notes::list_notes(None) {
-        Ok(notes) if notes.is_empty() => Some("No notes found.".to_string()),
-        Ok(notes) => {
-            let mut out = String::from("Notes:\n");
-            for n in &notes {
-                out.push_str(&format!("- {} {}\n", n.id, n.title));
-            }
-            Some(out)
-        }
-        Err(_) => Some("No notes found.".to_string()),
     }
 }
 
@@ -218,53 +192,3 @@ fn resolve_workspace_uri(uri: &str, dir: &Path) -> Option<String> {
     None
 }
 
-fn resolve_workflow_uri(uri: &str) -> Option<String> {
-    if uri == "ship://jobs" {
-        return match runtime::db::jobs::list_jobs(None, None) {
-            Ok(jobs) if jobs.is_empty() => Some("No jobs found.".to_string()),
-            Ok(jobs) => {
-                let mut out = String::from("Jobs:\n");
-                for j in &jobs {
-                    out.push_str(&format!("- {} [{}] {}\n", j.id, j.status, j.kind));
-                }
-                Some(out)
-            }
-            Err(_) => Some("No jobs found.".to_string()),
-        };
-    }
-    if let Some(id) = uri.strip_prefix("ship://jobs/") {
-        return runtime::db::jobs::get_job(id)
-            .ok()
-            .flatten()
-            .and_then(|j| serde_json::to_string_pretty(&j).ok());
-    }
-    if uri == "ship://targets" {
-        return match runtime::db::targets::list_targets(None) {
-            Ok(targets) if targets.is_empty() => Some("No targets found.".to_string()),
-            Ok(targets) => {
-                let mut out = String::from("Targets:\n");
-                for t in &targets {
-                    out.push_str(&format!(
-                        "- {} [{}] {} ({})\n",
-                        t.id, t.status, t.title, t.kind
-                    ));
-                }
-                Some(out)
-            }
-            Err(_) => Some("No targets found.".to_string()),
-        };
-    }
-    if let Some(id) = uri.strip_prefix("ship://targets/") {
-        return runtime::db::targets::get_target(id)
-            .ok()
-            .flatten()
-            .and_then(|t| serde_json::to_string_pretty(&t).ok());
-    }
-    if let Some(id) = uri.strip_prefix("ship://capabilities/") {
-        return runtime::db::targets::get_capability(id)
-            .ok()
-            .flatten()
-            .and_then(|c| serde_json::to_string_pretty(&c).ok());
-    }
-    None
-}

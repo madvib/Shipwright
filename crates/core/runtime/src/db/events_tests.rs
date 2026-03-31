@@ -1,14 +1,13 @@
-//! Tests for db::events — typed event queries, gate outcomes, time filtering.
+//! Tests for db::events — typed event queries, time filtering.
 
 use super::events::{
-    list_all_events, list_events_since_time, list_gate_outcomes, list_recent_events,
-    query_events_since, record_gate_outcome,
+    list_all_events, list_events_since_time, list_recent_events, query_events_since,
 };
 use crate::db::ensure_db;
 use crate::events::envelope::EventEnvelope;
 use crate::events::store::{EventStore, SqliteEventStore};
 use crate::events::types::event_types;
-use crate::events::types::{GateFailed, GatePassed, ProjectLog};
+use crate::events::types::ProjectLog;
 use crate::project::init_project;
 use chrono::Utc;
 use tempfile::tempdir;
@@ -97,76 +96,6 @@ fn list_recent_returns_in_asc_order() {
     let mut sorted = ids.clone();
     sorted.sort_unstable();
     assert_eq!(ids, sorted, "list_recent_events must return events in ASC order");
-}
-
-#[test]
-fn record_gate_pass_creates_event_and_completes_job() {
-    let (_tmp, _ship_dir) = setup();
-    let job =
-        crate::db::jobs::create_job("gate-test", None, None, None, None, 0, None, vec![], vec![])
-            .unwrap();
-    crate::db::jobs::update_job_status(&job.id, "running").unwrap();
-
-    let env = record_gate_outcome(&job.id, true, "all tests green").unwrap();
-    assert_eq!(env.event_type, event_types::GATE_PASSED);
-    assert_eq!(env.entity_id, job.id);
-
-    let payload: GatePassed = serde_json::from_str(&env.payload_json).unwrap();
-    assert_eq!(payload.evidence, "all tests green");
-
-    let updated = crate::db::jobs::get_job(&job.id).unwrap().unwrap();
-    assert_eq!(updated.status, "complete");
-}
-
-#[test]
-fn record_gate_fail_creates_event_leaves_job_running() {
-    let (_tmp, _ship_dir) = setup();
-    let job =
-        crate::db::jobs::create_job("gate-test", None, None, None, None, 0, None, vec![], vec![])
-            .unwrap();
-    crate::db::jobs::update_job_status(&job.id, "running").unwrap();
-
-    let env = record_gate_outcome(&job.id, false, "3 tests failed").unwrap();
-    assert_eq!(env.event_type, event_types::GATE_FAILED);
-
-    let payload: GateFailed = serde_json::from_str(&env.payload_json).unwrap();
-    assert_eq!(payload.evidence, "3 tests failed");
-
-    let updated = crate::db::jobs::get_job(&job.id).unwrap().unwrap();
-    assert_eq!(updated.status, "running");
-}
-
-#[test]
-fn list_gate_outcomes_filters_by_job() {
-    let (_tmp, _ship_dir) = setup();
-    let job_a =
-        crate::db::jobs::create_job("gate-a", None, None, None, None, 0, None, vec![], vec![])
-            .unwrap();
-    let job_b =
-        crate::db::jobs::create_job("gate-b", None, None, None, None, 0, None, vec![], vec![])
-            .unwrap();
-    crate::db::jobs::update_job_status(&job_a.id, "running").unwrap();
-    crate::db::jobs::update_job_status(&job_b.id, "running").unwrap();
-
-    record_gate_outcome(&job_a.id, false, "lint errors").unwrap();
-    record_gate_outcome(&job_a.id, true, "all clean").unwrap();
-    record_gate_outcome(&job_b.id, false, "build broken").unwrap();
-
-    // Non-gate event in the store (no job_id set — must not appear in gate outcomes)
-    let store = SqliteEventStore::new().unwrap();
-    store.append(&make_log_event("noise")).unwrap();
-
-    let outcomes_a = list_gate_outcomes(&job_a.id).unwrap();
-    assert_eq!(outcomes_a.len(), 2);
-    assert_eq!(outcomes_a[0].event_type, event_types::GATE_FAILED);
-    assert_eq!(outcomes_a[1].event_type, event_types::GATE_PASSED);
-
-    let outcomes_b = list_gate_outcomes(&job_b.id).unwrap();
-    assert_eq!(outcomes_b.len(), 1);
-    assert_eq!(outcomes_b[0].event_type, event_types::GATE_FAILED);
-
-    let outcomes_none = list_gate_outcomes("no-such-job").unwrap();
-    assert!(outcomes_none.is_empty());
 }
 
 #[test]

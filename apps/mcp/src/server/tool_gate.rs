@@ -39,24 +39,7 @@ impl ShipServer {
 
     #[cfg(feature = "unstable")]
     const UNSTABLE_TOOLS: &[&str] = &[
-        "create_note",
-        "update_note",
         "create_adr",
-        "create_job",
-        "update_job",
-        "list_jobs",
-        "append_job_log",
-        "claim_file",
-        "get_file_owner",
-        "create_target",
-        "update_target",
-        "list_targets",
-        "get_target",
-        "create_capability",
-        "update_capability",
-        "delete_capability",
-        "mark_capability_actual",
-        "list_capabilities",
     ];
 
     pub fn is_core_tool(tool_name: &str) -> bool {

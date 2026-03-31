@@ -24,40 +24,6 @@ pub struct TrackProjectRequest {
 }
 
 #[derive(Deserialize, JsonSchema)]
-pub struct CreateNoteRequest {
-    /// Title of the note
-    pub title: String,
-    /// Optional markdown content
-    pub content: Option<String>,
-    /// Optional git branch to associate with this note
-    pub branch: Option<String>,
-}
-
-#[derive(Deserialize, JsonSchema)]
-pub struct ListNotesRequest {
-    /// Scope: project (default) or user
-    pub scope: Option<String>,
-}
-
-#[derive(Deserialize, JsonSchema)]
-pub struct GetNoteRequest {
-    /// Note ID (nanoid returned by create_note)
-    pub id: String,
-    /// Scope: project (default) or user
-    pub scope: Option<String>,
-}
-
-#[derive(Deserialize, JsonSchema)]
-pub struct UpdateNoteRequest {
-    /// Note ID (nanoid returned by create_note)
-    pub id: String,
-    /// Full replacement markdown content
-    pub content: String,
-    /// Scope: project (default) or user
-    pub scope: Option<String>,
-}
-
-#[derive(Deserialize, JsonSchema)]
 pub struct ListSkillsRequest {
     /// Optional search filter (substring match on skill id/name/description)
     pub query: Option<String>,

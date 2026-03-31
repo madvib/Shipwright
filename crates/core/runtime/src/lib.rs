@@ -49,8 +49,7 @@ pub use config::{
 };
 
 pub use events::{
-    EventEnvelope, list_events_since, list_gate_outcomes, query_events_since, read_events,
-    read_recent_events, record_gate_outcome,
+    EventEnvelope, list_events_since, query_events_since, read_events, read_recent_events,
 };
 pub use hooks::{DefaultRuntimeHooks, RuntimeHooks};
 pub use log::{LogEntry, log_action, log_action_by, read_log, read_log_entries};
@@ -81,7 +80,6 @@ pub use db::branch_context::{
     clear_branch_doc, clear_branch_link, get_branch_doc, get_branch_link, set_branch_doc,
     set_branch_link,
 };
-pub use db::file_claims::{FileClaim, check_conflicts, claim_files, list_claims, release_claims};
 pub use db::managed_state::{get_managed_state_db, set_managed_state_db};
 pub use db::session::get_workspace_session_record_db;
 pub use db::types::{
