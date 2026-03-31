@@ -21,6 +21,16 @@ mod kernel_router_tests;
 mod cross_actor_tests;
 #[cfg(test)]
 mod snapshot_tests;
+#[cfg(test)]
+mod identity_tests;
+#[cfg(test)]
+mod permission_tests;
+#[cfg(test)]
+mod scoped_delivery_tests;
+#[cfg(test)]
+mod directed_delivery_tests;
+#[cfg(test)]
+mod cursor_tests;
 
 pub use actor_store::ActorStore;
 pub use envelope::EventEnvelope;
