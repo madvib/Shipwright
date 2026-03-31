@@ -18,11 +18,14 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Result, anyhow};
+use chrono::Utc;
+use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
 use crate::events::actor_store::{ActorStore, init_actor_db, raw_append};
 use crate::events::envelope::EventEnvelope;
 use crate::events::mailbox::Mailbox;
+use crate::events::snapshot::{ActorSnapshot, event_stats};
 use crate::events::validator::{EmitContext, EventValidator};
 
 const MAILBOX_CAPACITY: usize = 256;
@@ -46,6 +49,7 @@ fn is_kernel_event(event_type: &str) -> bool {
 }
 
 /// Configuration provided to `KernelRouter::spawn_actor`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActorConfig {
     /// Logical namespace, e.g. `"studio"` or `"agent.abc123"`.
     pub namespace: String,
@@ -68,6 +72,8 @@ pub struct KernelRouter {
     kernel_store_path: PathBuf,
     /// Send ends of per-actor mailboxes, keyed by actor_id.
     mailboxes: HashMap<String, mpsc::Sender<EventEnvelope>>,
+    /// Config retained per actor for snapshot/restore.
+    actor_configs: HashMap<String, ActorConfig>,
     /// Namespace prefix → subscribed actor_ids.
     subscriptions: HashMap<String, Vec<String>>,
     /// Ingress validators run by `route`.
@@ -85,6 +91,7 @@ impl KernelRouter {
             base_dir,
             kernel_store_path,
             mailboxes: HashMap::new(),
+            actor_configs: HashMap::new(),
             subscriptions: HashMap::new(),
             validators: Vec::new(),
         })
@@ -118,6 +125,7 @@ impl KernelRouter {
 
         let (tx, rx) = mpsc::channel(MAILBOX_CAPACITY);
         self.mailboxes.insert(actor_id.to_string(), tx);
+        self.actor_configs.insert(actor_id.to_string(), config.clone());
 
         for ns in &config.subscribe_namespaces {
             self.subscriptions
@@ -166,6 +174,7 @@ impl KernelRouter {
         if self.mailboxes.remove(actor_id).is_none() {
             return Err(anyhow!("actor '{}' not found", actor_id));
         }
+        self.actor_configs.remove(actor_id);
         for actor_ids in self.subscriptions.values_mut() {
             actor_ids.retain(|id| id != actor_id);
         }
@@ -175,6 +184,85 @@ impl KernelRouter {
             flush_wal(&db_path)?;
         }
         Ok(())
+    }
+
+    /// Create a portable snapshot of an actor's state.
+    /// The actor remains running — this is a read-only copy.
+    pub fn snapshot(&self, actor_id: &str) -> Result<ActorSnapshot> {
+        if !self.mailboxes.contains_key(actor_id) {
+            return Err(anyhow!("actor '{}' not found", actor_id));
+        }
+        let config = self
+            .actor_configs
+            .get(actor_id)
+            .ok_or_else(|| anyhow!("actor config missing for '{}'", actor_id))?
+            .clone();
+        let db_path = self.actor_db_path(actor_id);
+        flush_wal(&db_path)?;
+        let db_bytes = std::fs::read(&db_path)?;
+        let (event_count, last_event_id) = event_stats(&db_path)?;
+        let snap = ActorSnapshot {
+            actor_id: actor_id.to_string(),
+            namespace: config.namespace.clone(),
+            config,
+            db_bytes,
+            created_at: Utc::now(),
+            event_count,
+            last_event_id,
+        };
+        let payload = serde_json::json!({
+            "actor_id": actor_id,
+            "event_count": snap.event_count,
+            "last_event_id": snap.last_event_id,
+            "size_bytes": snap.db_bytes.len(),
+        });
+        raw_append(
+            &self.kernel_store_path,
+            &EventEnvelope::new("kernel.actor.snapshot", actor_id, &payload)?,
+        )?;
+        Ok(snap)
+    }
+
+    /// Suspend an actor: snapshot + stop. Returns the snapshot.
+    /// The actor is stopped after the snapshot completes.
+    pub fn suspend(&mut self, actor_id: &str) -> Result<ActorSnapshot> {
+        let snap = self.snapshot(actor_id)?;
+        self.stop_actor(actor_id)?;
+        let payload = serde_json::json!({
+            "actor_id": actor_id,
+            "reason": "suspend_requested",
+        });
+        raw_append(
+            &self.kernel_store_path,
+            &EventEnvelope::new("kernel.actor.suspended", actor_id, &payload)?,
+        )?;
+        Ok(snap)
+    }
+
+    /// Restore an actor from a snapshot.
+    /// Creates the actor directory, writes the DB, spawns mailbox.
+    /// Errors if an actor with the same ID already exists.
+    pub fn restore(&mut self, snapshot: ActorSnapshot) -> Result<(ActorStore, Mailbox)> {
+        if self.mailboxes.contains_key(&snapshot.actor_id) {
+            return Err(anyhow!("actor '{}' already exists", snapshot.actor_id));
+        }
+        let db_path = self.actor_db_path(&snapshot.actor_id);
+        if let Some(parent) = db_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&db_path, &snapshot.db_bytes)?;
+        let event_count = snapshot.event_count;
+        let actor_id = snapshot.actor_id.clone();
+        let result = self.spawn_actor(&actor_id, snapshot.config)?;
+        let payload = serde_json::json!({
+            "actor_id": &actor_id,
+            "event_count": event_count,
+        });
+        raw_append(
+            &self.kernel_store_path,
+            &EventEnvelope::new("kernel.actor.restored", &actor_id, &payload)?,
+        )?;
+        Ok(result)
     }
 
     /// Number of currently live actors.

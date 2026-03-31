@@ -3,6 +3,7 @@ pub mod envelope;
 pub mod filter;
 pub mod kernel_router;
 pub mod mailbox;
+pub mod snapshot;
 pub mod store;
 pub mod types;
 pub mod validator;
@@ -17,12 +18,15 @@ mod tests_actor;
 mod kernel_router_tests;
 #[cfg(test)]
 mod cross_actor_tests;
+#[cfg(test)]
+mod snapshot_tests;
 
 pub use actor_store::ActorStore;
 pub use envelope::EventEnvelope;
 pub use filter::EventFilter;
 pub use kernel_router::{ActorConfig, KernelRouter};
 pub use mailbox::Mailbox;
+pub use snapshot::ActorSnapshot;
 pub use store::{EventStore, SqliteEventStore};
 pub use validator::{CallerKind, EmitContext, EventValidator, ValidationError, RESERVED_NAMESPACES};
 pub use global_kernel_router::{init_kernel_router, kernel_router};
