@@ -8,8 +8,6 @@ use crate::events::{ActorStore, EventEnvelope};
 use crate::services::mesh::{AgentStatus, MeshService};
 use crate::services::ServiceHandler;
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
 fn setup() -> (MeshService, mpsc::UnboundedReceiver<EventEnvelope>, ActorStore) {
     let (tx, rx) = mpsc::unbounded_channel();
     let svc = MeshService::new(tx);
@@ -20,67 +18,39 @@ fn setup() -> (MeshService, mpsc::UnboundedReceiver<EventEnvelope>, ActorStore) 
     (svc, rx, store)
 }
 
-fn register_event(agent_id: &str, caps: &[&str]) -> EventEnvelope {
-    let caps: Vec<String> = caps.iter().map(|s| s.to_string()).collect();
-    EventEnvelope::new(
-        "mesh.register",
-        agent_id,
-        &serde_json::json!({ "agent_id": agent_id, "capabilities": caps }),
-    )
-    .unwrap()
+fn ev(event_type: &str, entity: &str, payload: serde_json::Value) -> EventEnvelope {
+    EventEnvelope::new(event_type, entity, &payload).unwrap()
 }
 
-fn deregister_event(agent_id: &str) -> EventEnvelope {
-    EventEnvelope::new(
-        "mesh.deregister",
-        agent_id,
-        &serde_json::json!({ "agent_id": agent_id }),
-    )
-    .unwrap()
+fn register_event(id: &str, caps: &[&str]) -> EventEnvelope {
+    let caps: Vec<String> = caps.iter().map(|s| s.to_string()).collect();
+    ev("mesh.register", id, serde_json::json!({ "agent_id": id, "capabilities": caps }))
+}
+
+fn deregister_event(id: &str) -> EventEnvelope {
+    ev("mesh.deregister", id, serde_json::json!({ "agent_id": id }))
 }
 
 fn send_event(from: &str, to: &str, body: serde_json::Value) -> EventEnvelope {
-    EventEnvelope::new(
-        "mesh.send",
-        from,
-        &serde_json::json!({ "from": from, "to": to, "body": body }),
-    )
-    .unwrap()
+    ev("mesh.send", from, serde_json::json!({ "from": from, "to": to, "body": body }))
 }
 
-fn broadcast_event(
-    from: &str,
-    body: serde_json::Value,
-    cap_filter: Option<&str>,
-) -> EventEnvelope {
-    let mut payload = serde_json::json!({ "from": from, "body": body });
-    if let Some(cap) = cap_filter {
-        payload["capability_filter"] = serde_json::json!(cap);
-    }
-    EventEnvelope::new("mesh.broadcast", from, &payload).unwrap()
+fn broadcast_event(from: &str, body: serde_json::Value, cap_filter: Option<&str>) -> EventEnvelope {
+    let mut p = serde_json::json!({ "from": from, "body": body });
+    if let Some(cap) = cap_filter { p["capability_filter"] = serde_json::json!(cap); }
+    ev("mesh.broadcast", from, p)
 }
 
 fn discover_event(from: &str, cap: Option<&str>, status: Option<&str>) -> EventEnvelope {
-    let mut payload = serde_json::json!({ "from": from });
-    if let Some(c) = cap {
-        payload["capability"] = serde_json::json!(c);
-    }
-    if let Some(s) = status {
-        payload["status"] = serde_json::json!(s);
-    }
-    EventEnvelope::new("mesh.discover.request", from, &payload).unwrap()
+    let mut p = serde_json::json!({ "from": from });
+    if let Some(c) = cap { p["capability"] = serde_json::json!(c); }
+    if let Some(s) = status { p["status"] = serde_json::json!(s); }
+    ev("mesh.discover.request", from, p)
 }
 
-fn status_event(agent_id: &str, status: &str) -> EventEnvelope {
-    EventEnvelope::new(
-        "mesh.status",
-        agent_id,
-        &serde_json::json!({ "agent_id": agent_id, "status": status }),
-    )
-    .unwrap()
+fn status_event(id: &str, status: &str) -> EventEnvelope {
+    ev("mesh.status", id, serde_json::json!({ "agent_id": id, "status": status }))
 }
-
-// ── Registration ─────────────────────────────────────────────────────────────
 
 #[test]
 fn register_adds_agent() {
@@ -132,8 +102,6 @@ fn status_unknown_agent_is_noop() {
     assert_eq!(svc.agent_count(), 0);
 }
 
-// ── Directed messaging ───────────────────────────────────────────────────────
-
 #[test]
 fn send_to_registered_agent_emits_message() {
     let (mut svc, mut rx, store) = setup();
@@ -168,8 +136,6 @@ fn send_to_unknown_agent_emits_failed() {
     let p: serde_json::Value = serde_json::from_str(&msg.payload_json).unwrap();
     assert_eq!(p["reason"], "agent not found");
 }
-
-// ── Broadcast ────────────────────────────────────────────────────────────────
 
 #[test]
 fn broadcast_delivers_to_all_except_sender() {
@@ -226,8 +192,6 @@ fn broadcast_without_filter_excludes_sender() {
 
     assert!(rx.try_recv().is_err());
 }
-
-// ── Discovery ────────────────────────────────────────────────────────────────
 
 #[test]
 fn discover_returns_all_agents() {
@@ -298,8 +262,6 @@ fn discover_filters_by_capability_and_status() {
     assert_eq!(agents[0]["agent_id"], "agent.a");
 }
 
-// ── ServiceHandler trait ─────────────────────────────────────────────────────
-
 #[test]
 fn service_name_is_mesh() {
     let (tx, _rx) = mpsc::unbounded_channel();
@@ -313,4 +275,16 @@ fn unknown_mesh_event_is_ignored() {
     let event = EventEnvelope::new("mesh.unknown.thing", "x", &serde_json::json!({})).unwrap();
     svc.handle(&event, &store).unwrap();
     assert_eq!(svc.agent_count(), 0);
+}
+
+#[test]
+fn registered_agent_survives_malformed_events() {
+    let (mut svc, _rx, store) = setup();
+    svc.handle(&register_event("agent.rust", &["rust"]), &store).unwrap();
+    // Malformed send (missing "to" field) — mesh should handle gracefully
+    let bad = EventEnvelope::new("mesh.send", "agent.rust", &serde_json::json!({})).unwrap();
+    let _ = svc.handle(&bad, &store);
+    // Agent stays registered
+    assert_eq!(svc.agent_count(), 1);
+    assert!(svc.get_agent("agent.rust").is_some());
 }
