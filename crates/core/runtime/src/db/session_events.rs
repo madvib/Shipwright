@@ -9,7 +9,7 @@
 //!
 //! ADR GHihs2tn: all session lifecycle transitions must emit typed events.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 
 use crate::db::block_on_anyhow;
 use crate::events::store::EventStore;

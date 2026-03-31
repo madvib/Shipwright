@@ -5,10 +5,11 @@ use chrono::{DateTime, Utc};
 use sqlx::Row;
 use ulid::Ulid;
 
-use crate::db::{block_on, db_path, ensure_db, open_db_at};
+use crate::db::{block_on, block_on_anyhow, db_path, ensure_db, open_db_at};
 use crate::events::envelope::EventEnvelope;
 use crate::events::types::event_types;
 use crate::events::types::{GateFailed, GatePassed};
+use crate::events::validator::{CallerKind, EmitContext};
 
 const COLS: &str = "id, event_type, entity_id, actor, payload_json, version, \
     correlation_id, causation_id, workspace_id, session_id, \
@@ -123,7 +124,7 @@ pub fn record_gate_outcome(
         crate::db::jobs::update_job_status(job_id, "complete")?;
     }
 
-    Ok(EventEnvelope {
+    let envelope = EventEnvelope {
         id,
         event_type: event_type.to_string(),
         entity_id: job_id.to_string(),
@@ -138,7 +139,20 @@ pub fn record_gate_outcome(
         parent_actor_id: None,
         elevated: false,
         created_at: now,
-    })
+    };
+
+    // Route to actor mailboxes if the kernel router is running.
+    let ctx = EmitContext {
+        caller_kind: CallerKind::Cli,
+        skill_id: None,
+        workspace_id: None,
+        session_id: None,
+    };
+    if let Some(kr) = crate::events::kernel_router() {
+        let _ = block_on_anyhow(async { kr.lock().await.route(envelope.clone(), &ctx).await });
+    }
+
+    Ok(envelope)
 }
 
 /// Query events with ID greater than the given cursor.

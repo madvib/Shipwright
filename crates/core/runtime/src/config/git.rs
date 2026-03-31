@@ -39,10 +39,12 @@ pub fn set_category_committed(project_dir: &Path, category: &str, commit: bool) 
     }
     set_git_config(project_dir, git)?;
     {
+        use crate::db::block_on_anyhow;
         use crate::events::envelope::EventEnvelope;
         use crate::events::store::{EventStore, SqliteEventStore};
         use crate::events::types::event_types;
         use crate::events::types::ConfigChanged;
+        use crate::events::validator::{CallerKind, EmitContext};
         let store = SqliteEventStore::new()?;
         let payload = ConfigChanged {
             subject: "git_category".to_string(),
@@ -51,6 +53,16 @@ pub fn set_category_committed(project_dir: &Path, category: &str, commit: bool) 
         let envelope =
             EventEnvelope::new(event_types::CONFIG_CHANGED, "git_category", &payload)?;
         store.append(&envelope)?;
+
+        let ctx = EmitContext {
+            caller_kind: CallerKind::Cli,
+            skill_id: None,
+            workspace_id: None,
+            session_id: None,
+        };
+        if let Some(kr) = crate::events::kernel_router() {
+            let _ = block_on_anyhow(async { kr.lock().await.route(envelope, &ctx).await });
+        }
     }
     Ok(())
 }

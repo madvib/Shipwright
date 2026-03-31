@@ -13,10 +13,12 @@ pub fn get_project_statuses(project_dir: Option<PathBuf>) -> Result<Vec<String>>
 }
 
 fn emit_config_event(subject: &str, detail: Option<String>) -> Result<()> {
+    use crate::db::block_on_anyhow;
     use crate::events::envelope::EventEnvelope;
     use crate::events::store::{EventStore, SqliteEventStore};
     use crate::events::types::event_types;
     use crate::events::types::ConfigChanged;
+    use crate::events::validator::{CallerKind, EmitContext};
     let store = SqliteEventStore::new()?;
     let payload = ConfigChanged {
         subject: subject.to_string(),
@@ -24,6 +26,16 @@ fn emit_config_event(subject: &str, detail: Option<String>) -> Result<()> {
     };
     let envelope = EventEnvelope::new(event_types::CONFIG_CHANGED, subject, &payload)?;
     store.append(&envelope)?;
+
+    let ctx = EmitContext {
+        caller_kind: CallerKind::Cli,
+        skill_id: None,
+        workspace_id: None,
+        session_id: None,
+    };
+    if let Some(kr) = crate::events::kernel_router() {
+        let _ = block_on_anyhow(async { kr.lock().await.route(envelope, &ctx).await });
+    }
     Ok(())
 }
 
