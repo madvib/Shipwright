@@ -165,28 +165,50 @@ pub async fn run_http_server(port: u16) -> Result<()> {
 }
 
 /// Build the axum Router for the Studio MCP HTTP server.
-/// Uses the StudioServer with its reduced tool set and no tool gating.
+///
+/// Serves two MCP endpoints on the same port — sharing one process and one
+/// `KernelRouter` (via `OnceLock`), which eliminates the split-brain routing bug:
+///
+/// - `/mcp`   → `StudioServer`  — web UI (reduced tool set, studio actor)
+/// - `/agent` → `ShipServer`    — agent connections (full tool set, agent actor)
+///
+/// Both servers call `init_kernel_router` on first connection, which is idempotent.
+/// Because they run in the same process they get the same router instance and
+/// events flow between actors via in-memory channels.
 pub fn build_studio_app(token: Option<String>, ct: CancellationToken) -> Router {
-    let service: StreamableHttpService<StudioServer, LocalSessionManager> =
+    let studio_service: StreamableHttpService<StudioServer, LocalSessionManager> =
         StreamableHttpService::new(
             || Ok(StudioServer::new()),
             Default::default(),
             StreamableHttpServerConfig {
-                cancellation_token: ct,
+                cancellation_token: ct.child_token(),
                 sse_retry: None,
                 sse_keep_alive: None,
                 ..Default::default()
             },
         );
 
-    let mcp_router = Router::new()
-        .nest_service("/mcp", service)
+    let agent_service: StreamableHttpService<ShipServer, LocalSessionManager> =
+        StreamableHttpService::new(
+            || Ok(ShipServer::new()),
+            Default::default(),
+            StreamableHttpServerConfig {
+                cancellation_token: ct.child_token(),
+                sse_retry: None,
+                sse_keep_alive: None,
+                ..Default::default()
+            },
+        );
+
+    let app = Router::new()
+        .nest_service("/mcp", studio_service)
+        .nest_service("/agent", agent_service)
         .layer(middleware::from_fn(cors_middleware));
 
     if let Some(tok) = token {
-        mcp_router.route_layer(middleware::from_fn_with_state(tok, bearer_auth))
+        app.route_layer(middleware::from_fn_with_state(tok, bearer_auth))
     } else {
-        mcp_router
+        app
     }
 }
 

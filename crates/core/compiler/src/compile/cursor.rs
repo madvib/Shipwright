@@ -245,14 +245,16 @@ pub(super) fn build_cursor_server_entry(
 pub(super) fn build_cursor_mcp_servers(
     desc: &super::provider::ProviderDescriptor,
     servers: &[McpServerConfig],
+    studio_url: Option<&str>,
 ) -> Json {
     let mut map = serde_json::Map::new();
 
     // Ship server always first.
-    map.insert(
-        "ship".to_string(),
-        super::mcp::ship_server_entry(desc.emit_type_field),
-    );
+    let ship_entry = match studio_url {
+        Some(url) => super::mcp::ship_server_entry_http(url, desc.emit_type_field),
+        None => super::mcp::ship_server_entry(desc.emit_type_field),
+    };
+    map.insert("ship".to_string(), ship_entry);
 
     for s in servers {
         if s.disabled || s.id == "ship" {

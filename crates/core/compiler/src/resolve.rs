@@ -83,6 +83,11 @@ pub struct ResolvedConfig {
     pub claude_theme: Option<String>,
     pub claude_auto_updates: Option<bool>,
     pub claude_include_co_authored_by: Option<bool>,
+    // ── Studio integration ─────────────────────────────────────────────────────
+    /// When the active agent profile declares `[apps] studio = true`, this is
+    /// set to the Studio MCP URL (e.g. `http://localhost:51741/agent`).
+    /// The compiler uses it to emit HTTP transport config instead of stdio.
+    pub studio_mcp_url: Option<String>,
 }
 
 /// Resolve the effective agent config from pre-loaded project data.
@@ -194,6 +199,11 @@ pub struct ProjectLibrary {
     pub claude_auto_updates: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claude_include_co_authored_by: Option<bool>,
+    // ── Studio integration ─────────────────────────────────────────────────────
+    /// Port Studio listens on. Defaults to 51741. Used when an agent profile
+    /// declares `[apps] studio = true` to emit the correct HTTP transport URL.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub studio_port: Option<u16>,
 }
 
 /// Deep-merge two JSON values. `override_val` wins on key conflicts.
@@ -302,6 +312,16 @@ pub fn resolve_library(
     resolved.claude_theme = library.claude_theme.clone();
     resolved.claude_auto_updates = library.claude_auto_updates;
     resolved.claude_include_co_authored_by = library.claude_include_co_authored_by;
+    // Studio integration: if active agent declares apps.studio = true, set HTTP transport URL.
+    let active_id = resolved.active_agent.as_deref().unwrap_or("");
+    let studio_active = library
+        .agent_profiles
+        .iter()
+        .any(|p| p.profile.id == active_id && p.apps.studio);
+    if studio_active {
+        let port = library.studio_port.unwrap_or(51741);
+        resolved.studio_mcp_url = Some(format!("http://localhost:{port}/agent"));
+    }
     resolved
 }
 
@@ -427,6 +447,7 @@ pub fn resolve(
         claude_theme: None,
         claude_auto_updates: None,
         claude_include_co_authored_by: None,
+        studio_mcp_url: None,
     }
 }
 
@@ -512,6 +533,7 @@ mod tests {
             content: String::new(),
             source: Default::default(),
             vars: Default::default(),
+            artifacts: vec![],
         }
     }
 
@@ -930,6 +952,7 @@ mod tests {
                 plugins: PluginRefs::default(),
                 permissions: ProfilePermissions::default(),
                 rules: ProfileRules::default(),
+                apps: Default::default(),
                 provider_settings: Default::default(),
             }],
             claude_team_agents: vec![("team-lead.md".to_string(), "# Team Lead".to_string())],

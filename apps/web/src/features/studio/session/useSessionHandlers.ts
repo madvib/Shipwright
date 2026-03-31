@@ -93,10 +93,10 @@ export function useSessionHandlers({
       if (a.type === 'box') return { filePath, type: 'box', rect: a.rect, elements: a.elements, note: a.note, timestamp: a.timestamp }
       return { filePath, type: 'action', action: a.action, text: a.text, timestamp: a.timestamp }
     })
-    await mcp.postStudioEvent('studio.message', {
-      summary: summary || undefined,
-      annotations,
-    }, false)
+    await mcp.callTool('emit_studio_event', {
+      event_type: 'studio.message',
+      payload: { summary: summary || undefined, annotations },
+    })
     ann.clearAllAnnotations()
   }, [mcp, ann])
 

@@ -22,6 +22,7 @@ fn make_skill(id: &str) -> Skill {
         content: format!("# {id}\nDo something useful."),
         source: Default::default(),
         vars: Default::default(),
+        artifacts: vec![],
     }
 }
 

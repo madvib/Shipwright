@@ -4,6 +4,49 @@ use crate::types::Skill;
 
 use super::provider::ProviderDescriptor;
 
+// ── Artifact-to-event mapping ─────────────────────────────────────────────────
+
+/// Maps an artifact type to the Studio-emitted event suffixes applicable to it.
+///
+/// Mirrors `runtime::events::artifact_events::events_for_artifact` — the compiler
+/// cannot depend on the runtime, so this is an intentional local copy.
+///
+/// Returns Studio-action suffixes only (`annotation`, `feedback`, `selection`).
+/// Agent-emitted lifecycle events (`artifact_created`, `artifact_deleted`) are NOT
+/// listed here — they use `{skill.id}.` prefix at emit time.
+fn events_for_artifact(artifact_type: &str) -> &'static [&'static str] {
+    match artifact_type {
+        "html" => &["annotation", "feedback", "selection"],
+        "pdf" => &["selection", "feedback"],
+        "markdown" => &["feedback", "selection"],
+        "image" => &["annotation", "feedback"],
+        "adr" => &["feedback"],
+        "note" => &["feedback"],
+        "url" => &["feedback"],
+        "json" => &["feedback"],
+        _ => &[],
+    }
+}
+
+/// Compute the deduplicated set of event subscription namespaces for a list of skills.
+///
+/// Returns `{skill.id}.` for each skill. Studio-emitted events (`studio.*`) are
+/// already covered by the base subscription actors register — no additional prefix
+/// is emitted here.
+pub(super) fn resolve_event_subscriptions(skills: &[Skill]) -> Vec<String> {
+    let mut subs: Vec<String> = Vec::new();
+    for skill in skills {
+        if skill.id.is_empty() {
+            continue;
+        }
+        let ns = format!("{}.", skill.id);
+        if !subs.contains(&ns) {
+            subs.push(ns);
+        }
+    }
+    subs
+}
+
 pub(super) fn build_skill_files(
     desc: &ProviderDescriptor,
     skills: &[Skill],
@@ -55,6 +98,10 @@ pub(super) fn format_skill_file(skill: &Skill) -> String {
         ));
     }
 
+    if !skill.artifacts.is_empty() {
+        fm.push_str(&format!("\nartifacts: [{}]", skill.artifacts.join(", ")));
+    }
+
     if !skill.metadata.is_empty() {
         // Sort keys for deterministic output.
         let mut keys: Vec<&String> = skill.metadata.keys().collect();
@@ -84,6 +131,7 @@ mod tests {
             license: None,
             compatibility: None,
             allowed_tools: vec![],
+            artifacts: vec![],
             metadata: HashMap::new(),
             content: "Instructions here.".to_string(),
             source: Default::default(),
@@ -175,5 +223,50 @@ mod tests {
         let skill = base_skill();
         let out = format_skill_file(&skill);
         assert!(out.contains("Instructions here."), "got:\n{out}");
+    }
+
+    #[test]
+    fn format_skill_file_with_artifacts() {
+        let mut skill = base_skill();
+        skill.artifacts = vec!["html".to_string(), "adr".to_string()];
+        let out = format_skill_file(&skill);
+        assert!(out.contains("\nartifacts: [html, adr]\n"), "got:\n{out}");
+    }
+
+    #[test]
+    fn format_skill_file_no_artifacts_omitted() {
+        let skill = base_skill();
+        let out = format_skill_file(&skill);
+        assert!(!out.contains("artifacts:"), "got:\n{out}");
+    }
+
+    #[test]
+    fn resolve_event_subscriptions_empty() {
+        assert!(resolve_event_subscriptions(&[]).is_empty());
+    }
+
+    #[test]
+    fn resolve_event_subscriptions_returns_custom_namespace_only() {
+        let mut skill = base_skill();
+        skill.artifacts = vec!["html".to_string()];
+        let subs = resolve_event_subscriptions(&[skill]);
+        // studio.* is already in the base subscription — not duplicated here
+        assert!(!subs.iter().any(|s| s.starts_with("studio.")));
+        assert!(!subs.iter().any(|s| s.starts_with("ship.")));
+        assert!(subs.contains(&"my-skill.".to_string()));
+    }
+
+    #[test]
+    fn resolve_event_subscriptions_deduplicates() {
+        let mut s1 = base_skill();
+        s1.artifacts = vec!["adr".to_string()];
+        let mut s2 = base_skill();
+        s2.id = "other-skill".to_string();
+        s2.artifacts = vec!["adr".to_string()];
+        let subs = resolve_event_subscriptions(&[s1, s2]);
+        // two distinct skills → two distinct custom namespaces
+        assert!(subs.contains(&"my-skill.".to_string()));
+        assert!(subs.contains(&"other-skill.".to_string()));
+        assert_eq!(subs.len(), 2);
     }
 }

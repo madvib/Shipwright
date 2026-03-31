@@ -353,6 +353,7 @@ fn parse_skill(id: &str, raw: &str) -> Skill {
     let mut license = None;
     let mut compatibility = None;
     let mut allowed_tools = vec![];
+    let mut artifacts = vec![];
     let mut metadata: HashMap<String, String> = HashMap::new();
     let mut content_start = 0usize;
 
@@ -394,6 +395,15 @@ fn parse_skill(id: &str, raw: &str) -> Skill {
                 compatibility = Some(v.trim().to_string());
             } else if let Some(v) = line.strip_prefix("allowed-tools:") {
                 allowed_tools = v.split_whitespace().map(str::to_string).collect();
+            } else if let Some(v) = line.strip_prefix("artifacts:") {
+                // Accept both space-delimited ("html adr") and YAML inline array ("[html, adr]").
+                let trimmed = v.trim().trim_start_matches('[').trim_end_matches(']');
+                artifacts = trimmed
+                    .split(|c: char| c == ',' || c.is_whitespace())
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+                    .collect();
             } else if line.trim_end() == "metadata:" {
                 in_metadata = true;
             } else if let Some(v) = line.strip_prefix("version:") {
@@ -426,6 +436,7 @@ fn parse_skill(id: &str, raw: &str) -> Skill {
         license,
         compatibility,
         allowed_tools,
+        artifacts,
         metadata,
         content,
         source: SkillSource::default(),

@@ -42,6 +42,10 @@ pub struct Skill {
     pub content: String,
     #[serde(default)]
     pub source: SkillSource,
+    /// Artifact types this skill produces (e.g. `["html", "adr"]`).
+    /// Used by the runtime to infer event subscriptions — see `events_for_artifact`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub artifacts: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -64,6 +68,9 @@ struct SkillSpecFrontmatter {
     license: Option<String>,
     #[serde(default)]
     metadata: Option<SkillSpecMetadata>,
+    /// Artifact types produced by this skill (e.g. `[html, adr]`).
+    #[serde(default)]
+    artifacts: Option<Vec<String>>,
 }
 
 fn is_valid_skill_name(name: &str) -> bool {
@@ -203,6 +210,7 @@ fn parse_skill_spec(dir: &Path) -> Result<Skill> {
         author: None,
         content: body,
         source,
+        artifacts: fm.artifacts.unwrap_or_default(),
     })
 }
 
@@ -217,6 +225,11 @@ fn write_skill_spec(dir: &Path, skill: &Skill) -> Result<()> {
         compatibility: None,
         allowed_tools: None,
         license: None,
+        artifacts: if skill.artifacts.is_empty() {
+            None
+        } else {
+            Some(skill.artifacts.clone())
+        },
         metadata: Some(SkillSpecMetadata {
             display_name: Some(skill.name.clone()),
             source: Some(match skill.source {
@@ -763,6 +776,7 @@ pub fn create_skill(project_dir: &Path, id: &str, name: &str, content: &str) -> 
         author: None,
         content: content.to_string(),
         source: SkillSource::Custom,
+        artifacts: vec![],
     };
     write_skill(&dir, &skill)?;
     // Register in project config so checkout hook includes this skill automatically.
@@ -788,6 +802,7 @@ pub fn create_user_skill(id: &str, name: &str, content: &str) -> Result<Skill> {
         author: None,
         content: content.to_string(),
         source: SkillSource::Custom,
+        artifacts: vec![],
     };
     write_skill(&dir, &skill)?;
     Ok(skill)

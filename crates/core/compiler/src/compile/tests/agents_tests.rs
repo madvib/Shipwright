@@ -28,6 +28,7 @@ fn make_profile(id: &str, name: &str, providers: &[&str]) -> AgentProfile {
         rules: ProfileRules {
             inline: Some("You are a specialist.".to_string()),
         },
+        apps: Default::default(),
         provider_settings: Default::default(),
     }
 }
