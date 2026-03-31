@@ -137,6 +137,7 @@ pub fn record_gate_outcome(
         session_id: None,
         actor_id: None,
         parent_actor_id: None,
+        target_actor_id: None,
         elevated: false,
         created_at: now,
     };
@@ -252,5 +253,6 @@ fn row_to_envelope(row: &sqlx::sqlite::SqliteRow) -> Result<EventEnvelope> {
         parent_actor_id: row.get(11),
         elevated: row.get::<i64, _>(12) != 0,
         created_at,
+        target_actor_id: None,
     })
 }

@@ -192,6 +192,7 @@ fn row_to_envelope(row: &sqlx::sqlite::SqliteRow) -> Result<EventEnvelope> {
     // Columns: id(0) event_type(1) entity_id(2) actor(3) payload_json(4) version(5)
     //          correlation_id(6) causation_id(7) workspace_id(8) session_id(9)
     //          actor_id(10) parent_actor_id(11) elevated(12) created_at(13)
+    //          target_actor_id(14)
     let created_at_str: String = row.get(13);
     let created_at = created_at_str
         .parse::<DateTime<Utc>>()
@@ -216,5 +217,6 @@ fn row_to_envelope(row: &sqlx::sqlite::SqliteRow) -> Result<EventEnvelope> {
         parent_actor_id: row.get(11),
         elevated: row.get::<i64, _>(12) != 0,
         created_at,
+        target_actor_id: None,
     })
 }

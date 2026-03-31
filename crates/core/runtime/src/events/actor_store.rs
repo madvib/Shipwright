@@ -18,7 +18,7 @@ use crate::events::filter::EventFilter;
 
 const COLS: &str = "id, event_type, entity_id, actor, payload_json, version, \
     correlation_id, causation_id, workspace_id, session_id, \
-    actor_id, parent_actor_id, elevated, created_at";
+    actor_id, parent_actor_id, elevated, created_at, target_actor_id";
 
 /// A scoped event handle bound to a single actor's SQLite DB.
 ///
@@ -116,8 +116,8 @@ pub(crate) fn raw_append(db_path: &Path, event: &EventEnvelope) -> Result<()> {
             "INSERT INTO events \
              (id, event_type, entity_id, actor, payload_json, version, \
               correlation_id, causation_id, workspace_id, session_id, \
-              actor_id, parent_actor_id, elevated, created_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              actor_id, parent_actor_id, elevated, created_at, target_actor_id) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&event.id)
         .bind(&event.event_type)
@@ -133,6 +133,7 @@ pub(crate) fn raw_append(db_path: &Path, event: &EventEnvelope) -> Result<()> {
         .bind(&event.parent_actor_id)
         .bind(event.elevated as i64)
         .bind(&created_at)
+        .bind(&event.target_actor_id)
         .execute(&mut conn)
         .await
     })?;
@@ -204,6 +205,7 @@ fn row_to_envelope(row: &sqlx::sqlite::SqliteRow) -> Result<EventEnvelope> {
         parent_actor_id: row.get(11),
         elevated: row.get::<i64, _>(12) != 0,
         created_at,
+        target_actor_id: row.get(14),
     })
 }
 

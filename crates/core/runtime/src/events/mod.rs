@@ -11,6 +11,15 @@ pub mod validator;
 
 pub mod global_kernel_router;
 
+#[cfg(feature = "unstable")]
+pub mod identity;
+#[cfg(feature = "unstable")]
+pub mod permissions;
+#[cfg(feature = "unstable")]
+pub mod cursor;
+#[cfg(feature = "unstable")]
+pub mod kernel_security;
+
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
@@ -23,6 +32,16 @@ mod cross_actor_tests;
 mod snapshot_tests;
 #[cfg(test)]
 mod cli_routing_tests;
+#[cfg(test)]
+mod identity_tests;
+#[cfg(test)]
+mod permission_tests;
+#[cfg(test)]
+mod scoped_delivery_tests;
+#[cfg(test)]
+mod directed_delivery_tests;
+#[cfg(test)]
+mod cursor_tests;
 
 pub use actor_store::ActorStore;
 pub use envelope::EventEnvelope;
