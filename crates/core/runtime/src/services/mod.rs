@@ -28,7 +28,10 @@ use tokio::task::JoinHandle;
 use crate::events::kernel_router::{ActorConfig, KernelRouter};
 use crate::events::{ActorStore, EventEnvelope, Mailbox};
 
+pub mod mesh;
 pub mod sync;
+#[cfg(test)]
+mod mesh_tests;
 #[cfg(test)]
 mod tests;
 

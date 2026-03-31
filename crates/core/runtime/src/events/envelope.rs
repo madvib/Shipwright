@@ -85,6 +85,11 @@ impl EventEnvelope {
         self
     }
 
+    pub fn with_target(mut self, target_actor_id: &str) -> Self {
+        self.target_actor_id = Some(target_actor_id.to_string());
+        self
+    }
+
     pub fn elevate(mut self) -> Self {
         self.elevated = true;
         self
