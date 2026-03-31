@@ -44,7 +44,7 @@ impl ServerHandler for ShipServer {
             },
             instructions: Some(
                 "Ship project intelligence — three-stage workflow:\n\n\
-                 PLANNING: get_project_info → create_note / create_adr\n\
+                 PLANNING: get_project_info → create_adr\n\
                  WORKSPACE: list_workspaces → activate_workspace → set_agent\n\
                  SESSION: start_session → (work) → log_progress → end_session\n\n\
                  By default only core workflow tools are visible. To access extended tools, \
