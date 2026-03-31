@@ -186,6 +186,70 @@ async fn studio_does_not_receive_unsubscribed_events() {
     );
 }
 
+// ── artifact event routing ───────────────────────────────────────────────────
+
+/// Agent emits `canvas.artifact_created` → Studio's mailbox receives it.
+///
+/// Studio subscribes to `canvas.` (the skill's custom namespace) so it can
+/// react when the agent produces a new artifact. This verifies the dynamic
+/// subscription path added in the split-brain fix.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn agent_skill_event_reaches_studio_mailbox() {
+    let tmp = tempdir().unwrap();
+    let mut router = KernelRouter::new(tmp.path().join(".ship")).unwrap();
+
+    // Studio subscribes to its own namespace + agent.* + the canvas skill namespace.
+    let studio_cfg = ActorConfig {
+        namespace: "studio".to_string(),
+        write_namespaces: vec!["studio.".to_string()],
+        read_namespaces: vec!["studio.".to_string()],
+        subscribe_namespaces: vec![
+            "studio.".to_string(),
+            "agent.".to_string(),
+            "canvas.".to_string(),
+        ],
+    };
+    let (_studio_store, mut studio_mb) = router.spawn_actor("studio", studio_cfg).unwrap();
+    let (agent_store, _agent_mb) =
+        router.spawn_actor("agent.mcp", agent_config("agent.mcp")).unwrap();
+
+    // Agent emits canvas.artifact_created (prefixed with skill id at emit time).
+    let event = ev("canvas.artifact_created");
+    agent_store.append(&event).unwrap();
+    router.route(event.clone(), &mcp_ctx()).await.unwrap();
+
+    let received = studio_mb
+        .try_recv()
+        .expect("studio mailbox must receive canvas.artifact_created");
+    assert_eq!(received.id, event.id);
+    assert_eq!(received.event_type, "canvas.artifact_created");
+}
+
+/// Studio emits `studio.annotation` → Agent's mailbox receives it.
+///
+/// Agents subscribe to `studio.*` in their base subscription, so any Studio
+/// UI action (annotation, feedback, selection) reaches the agent without needing
+/// a per-artifact-type subscription entry.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn studio_annotation_reaches_agent_mailbox() {
+    let tmp = tempdir().unwrap();
+    let mut router = KernelRouter::new(tmp.path().join(".ship")).unwrap();
+
+    let (studio_store, _studio_mb) = router.spawn_actor("studio", studio_config()).unwrap();
+    let (_agent_store, mut agent_mb) =
+        router.spawn_actor("agent.mcp", agent_config("agent.mcp")).unwrap();
+
+    let event = ev("studio.annotation");
+    studio_store.append(&event).unwrap();
+    router.route(event.clone(), &mcp_ctx()).await.unwrap();
+
+    let received = agent_mb
+        .try_recv()
+        .expect("agent mailbox must receive studio.annotation");
+    assert_eq!(received.id, event.id);
+    assert_eq!(received.event_type, "studio.annotation");
+}
+
 // ── kernel audit trail ───────────────────────────────────────────────────────
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

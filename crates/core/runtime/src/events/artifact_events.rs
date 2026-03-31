@@ -1,71 +1,66 @@
 //! Artifact-to-event mapping for platform event subscriptions.
 //!
 //! Skills declare what they produce via the `artifacts` frontmatter field.
-//! This module maps those artifact types to the `ship.*` platform event suffixes
-//! an actor should subscribe to, and derives custom skill namespace subscriptions
+//! This module maps artifact types to the Studio-emitted events an agent may
+//! receive for that artifact, and derives custom skill namespace subscriptions
 //! from skill IDs.
+//!
+//! ## Event ownership
+//!
+//! - **Studio-emitted** (`studio.annotation`, `studio.feedback`, `studio.selection`):
+//!   Studio UI actions directed at a rendered artifact. Agents receive these
+//!   because they already subscribe to `studio.*` — no additional subscription
+//!   prefix is needed.
+//!
+//! - **Agent-emitted** (e.g. `canvas.artifact_created`): The agent prefixes these
+//!   with its skill ID at emit time. Studio subscribes to `{skill.id}.` to receive
+//!   them. `artifact_created` / `artifact_deleted` are therefore NOT subscription
+//!   topics — they are emit topics.
 
 use crate::agents::skill::Skill;
 
-/// Maps an artifact type to the platform event suffixes applicable to it.
+/// Maps an artifact type to the Studio-emitted event suffixes applicable to it.
 ///
-/// Suffixes correspond to `ship.{suffix}` event types (e.g. `ship.annotation`).
+/// These are `studio.*` events (e.g. `studio.annotation`). Agents already
+/// subscribe to `studio.*`, so no new subscription prefix is generated from
+/// these suffixes — the mapping exists to document which Studio actions are
+/// meaningful for each artifact type.
+///
 /// Returns an empty slice for unrecognised artifact types.
 pub fn events_for_artifact(artifact_type: &str) -> &'static [&'static str] {
     match artifact_type {
-        "html" => &[
-            "annotation",
-            "feedback",
-            "selection",
-            "artifact_created",
-            "artifact_deleted",
-        ],
-        "pdf" => &["selection", "feedback", "artifact_created", "artifact_deleted"],
-        "markdown" => &["feedback", "selection", "artifact_created", "artifact_deleted"],
-        "image" => &["annotation", "feedback", "artifact_created", "artifact_deleted"],
-        "adr" => &["feedback", "artifact_created", "artifact_deleted"],
-        "note" => &["feedback", "artifact_created", "artifact_deleted"],
+        "html" => &["annotation", "feedback", "selection"],
+        "pdf" => &["selection", "feedback"],
+        "markdown" => &["feedback", "selection"],
+        "image" => &["annotation", "feedback"],
+        "adr" => &["feedback"],
+        "note" => &["feedback"],
         "url" => &["feedback"],
-        "json" => &["feedback", "artifact_created", "artifact_deleted"],
+        "json" => &["feedback"],
         _ => &[],
     }
 }
 
-/// Compute the full set of event subscription namespaces for a slice of skills.
+/// Compute the custom skill namespace prefixes an actor should subscribe to.
 ///
-/// Returns a deduplicated list of:
-/// - `ship.{suffix}` for each platform event inferred from artifact declarations.
-/// - `{skill.id}.` for each skill's custom event namespace.
+/// Returns a deduplicated list of `{skill.id}.` prefixes — one per skill.
+/// Agents already subscribe to `studio.*` in their base subscription, so no
+/// `studio.*` entries are added here.
+///
+/// Used by both the agent actor (to receive agent-emitted skill events routed
+/// back) and by the Studio actor.
 pub fn skill_event_subscriptions(skills: &[Skill]) -> Vec<String> {
-    let mut subs: Vec<String> = Vec::new();
-
-    for skill in skills {
-        // Platform event subscriptions derived from artifact declarations.
-        for artifact in &skill.artifacts {
-            for suffix in events_for_artifact(artifact) {
-                let ns = format!("ship.{suffix}");
-                if !subs.contains(&ns) {
-                    subs.push(ns);
-                }
-            }
-        }
-        // Custom skill namespace — the skill emits events in its own id.* namespace.
-        if !skill.artifacts.is_empty() || !skill.id.is_empty() {
-            let ns = format!("{}.", skill.id);
-            if !subs.contains(&ns) {
-                subs.push(ns);
-            }
-        }
-    }
-
-    subs
+    skill_custom_namespaces(skills)
 }
 
-/// Collect only the custom skill namespace prefixes (e.g. `"canvas."`) from a slice
-/// of skills. Used by the studio actor to subscribe to agent-emitted skill events.
+/// Collect the custom skill namespace prefixes (e.g. `"canvas."`) from a slice
+/// of skills. Used by the Studio actor to subscribe to agent-emitted skill events.
 pub fn skill_custom_namespaces(skills: &[Skill]) -> Vec<String> {
     let mut namespaces: Vec<String> = Vec::new();
     for skill in skills {
+        if skill.id.is_empty() {
+            continue;
+        }
         let ns = format!("{}.", skill.id);
         if !namespaces.contains(&ns) {
             namespaces.push(ns);
@@ -95,13 +90,14 @@ mod tests {
     // ── events_for_artifact ───────────────────────────────────────────────────
 
     #[test]
-    fn html_includes_annotation_and_selection() {
+    fn html_includes_studio_events_not_artifact_lifecycle() {
         let evts = events_for_artifact("html");
         assert!(evts.contains(&"annotation"));
         assert!(evts.contains(&"selection"));
         assert!(evts.contains(&"feedback"));
-        assert!(evts.contains(&"artifact_created"));
-        assert!(evts.contains(&"artifact_deleted"));
+        // agent-emitted lifecycle events are NOT subscription topics
+        assert!(!evts.contains(&"artifact_created"));
+        assert!(!evts.contains(&"artifact_deleted"));
     }
 
     #[test]
@@ -134,6 +130,18 @@ mod tests {
         }
     }
 
+    #[test]
+    fn no_ship_prefix_anywhere() {
+        for t in &["html", "pdf", "markdown", "image", "adr", "note", "url", "json"] {
+            for suffix in events_for_artifact(t) {
+                assert!(
+                    !suffix.starts_with("ship."),
+                    "suffix {suffix} must not use ship.* namespace"
+                );
+            }
+        }
+    }
+
     // ── skill_event_subscriptions ─────────────────────────────────────────────
 
     #[test]
@@ -142,12 +150,13 @@ mod tests {
     }
 
     #[test]
-    fn html_skill_produces_ship_annotation() {
-        let skills = vec![make_skill("my-skill", &["html"])];
+    fn returns_only_custom_namespace_not_studio_prefix() {
+        let skills = vec![make_skill("canvas", &["html"])];
         let subs = skill_event_subscriptions(&skills);
-        assert!(subs.contains(&"ship.annotation".to_string()));
-        assert!(subs.contains(&"ship.feedback".to_string()));
-        assert!(subs.contains(&"ship.artifact_created".to_string()));
+        // studio.* already covered by base subscription — not duplicated here
+        assert!(!subs.iter().any(|s| s.starts_with("studio.")));
+        assert!(!subs.iter().any(|s| s.starts_with("ship.")));
+        assert!(subs.contains(&"canvas.".to_string()));
     }
 
     #[test]
@@ -164,12 +173,11 @@ mod tests {
             make_skill("skill-b", &["adr"]),
         ];
         let subs = skill_event_subscriptions(&skills);
-        // ship.feedback should appear exactly once
-        let count = subs.iter().filter(|s| *s == "ship.feedback").count();
-        assert_eq!(count, 1, "ship.feedback should be deduplicated");
-        // Both custom namespaces present
         assert!(subs.contains(&"skill-a.".to_string()));
         assert!(subs.contains(&"skill-b.".to_string()));
+        // no studio.* or ship.* entries
+        assert!(!subs.iter().any(|s| s.starts_with("studio.")));
+        assert!(!subs.iter().any(|s| s.starts_with("ship.")));
     }
 
     #[test]
@@ -194,5 +202,11 @@ mod tests {
         let ns = skill_custom_namespaces(&skills);
         assert!(ns.contains(&"canvas.".to_string()));
         assert!(ns.contains(&"pdf-viewer.".to_string()));
+    }
+
+    #[test]
+    fn empty_id_skipped() {
+        let skills = vec![make_skill("", &[])];
+        assert!(skill_custom_namespaces(&skills).is_empty());
     }
 }

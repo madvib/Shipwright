@@ -6,50 +6,42 @@ use super::provider::ProviderDescriptor;
 
 // ── Artifact-to-event mapping ─────────────────────────────────────────────────
 
-/// Maps an artifact type to platform event suffixes (maps to `ship.{suffix}`).
+/// Maps an artifact type to the Studio-emitted event suffixes applicable to it.
+///
 /// Mirrors `runtime::events::artifact_events::events_for_artifact` — the compiler
 /// cannot depend on the runtime, so this is an intentional local copy.
+///
+/// Returns Studio-action suffixes only (`annotation`, `feedback`, `selection`).
+/// Agent-emitted lifecycle events (`artifact_created`, `artifact_deleted`) are NOT
+/// listed here — they use `{skill.id}.` prefix at emit time.
 fn events_for_artifact(artifact_type: &str) -> &'static [&'static str] {
     match artifact_type {
-        "html" => &[
-            "annotation",
-            "feedback",
-            "selection",
-            "artifact_created",
-            "artifact_deleted",
-        ],
-        "pdf" => &["selection", "feedback", "artifact_created", "artifact_deleted"],
-        "markdown" => &["feedback", "selection", "artifact_created", "artifact_deleted"],
-        "image" => &["annotation", "feedback", "artifact_created", "artifact_deleted"],
-        "adr" => &["feedback", "artifact_created", "artifact_deleted"],
-        "note" => &["feedback", "artifact_created", "artifact_deleted"],
+        "html" => &["annotation", "feedback", "selection"],
+        "pdf" => &["selection", "feedback"],
+        "markdown" => &["feedback", "selection"],
+        "image" => &["annotation", "feedback"],
+        "adr" => &["feedback"],
+        "note" => &["feedback"],
         "url" => &["feedback"],
-        "json" => &["feedback", "artifact_created", "artifact_deleted"],
+        "json" => &["feedback"],
         _ => &[],
     }
 }
 
 /// Compute the deduplicated set of event subscription namespaces for a list of skills.
 ///
-/// Returns:
-/// - `ship.{suffix}` for each platform event inferred from artifact declarations.
-/// - `{skill.id}.` for each skill's custom event namespace.
+/// Returns `{skill.id}.` for each skill. Studio-emitted events (`studio.*`) are
+/// already covered by the base subscription actors register — no additional prefix
+/// is emitted here.
 pub(super) fn resolve_event_subscriptions(skills: &[Skill]) -> Vec<String> {
     let mut subs: Vec<String> = Vec::new();
     for skill in skills {
-        for artifact in &skill.artifacts {
-            for suffix in events_for_artifact(artifact) {
-                let ns = format!("ship.{suffix}");
-                if !subs.contains(&ns) {
-                    subs.push(ns);
-                }
-            }
+        if skill.id.is_empty() {
+            continue;
         }
-        if !skill.id.is_empty() {
-            let ns = format!("{}.", skill.id);
-            if !subs.contains(&ns) {
-                subs.push(ns);
-            }
+        let ns = format!("{}.", skill.id);
+        if !subs.contains(&ns) {
+            subs.push(ns);
         }
     }
     subs
@@ -254,13 +246,13 @@ mod tests {
     }
 
     #[test]
-    fn resolve_event_subscriptions_html_skill() {
+    fn resolve_event_subscriptions_returns_custom_namespace_only() {
         let mut skill = base_skill();
         skill.artifacts = vec!["html".to_string()];
         let subs = resolve_event_subscriptions(&[skill]);
-        assert!(subs.contains(&"ship.annotation".to_string()));
-        assert!(subs.contains(&"ship.feedback".to_string()));
-        assert!(subs.contains(&"ship.artifact_created".to_string()));
+        // studio.* is already in the base subscription — not duplicated here
+        assert!(!subs.iter().any(|s| s.starts_with("studio.")));
+        assert!(!subs.iter().any(|s| s.starts_with("ship.")));
         assert!(subs.contains(&"my-skill.".to_string()));
     }
 
@@ -272,7 +264,9 @@ mod tests {
         s2.id = "other-skill".to_string();
         s2.artifacts = vec!["adr".to_string()];
         let subs = resolve_event_subscriptions(&[s1, s2]);
-        let feedback_count = subs.iter().filter(|s| *s == "ship.feedback").count();
-        assert_eq!(feedback_count, 1);
+        // two distinct skills → two distinct custom namespaces
+        assert!(subs.contains(&"my-skill.".to_string()));
+        assert!(subs.contains(&"other-skill.".to_string()));
+        assert_eq!(subs.len(), 2);
     }
 }
