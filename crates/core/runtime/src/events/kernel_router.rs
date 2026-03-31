@@ -265,23 +265,6 @@ impl KernelRouter {
         Ok(result)
     }
 
-    /// Spawn a headless service actor and start its event loop.
-    ///
-    /// Equivalent to `spawn_actor` followed by `tokio::spawn(run_service(...))`.
-    /// The returned `ServiceHandle` contains the task's `JoinHandle`.
-    #[cfg(feature = "unstable")]
-    pub fn spawn_service(
-        &mut self,
-        id: &str,
-        config: ActorConfig,
-        handler: Box<dyn crate::services::ServiceHandler>,
-    ) -> Result<crate::services::ServiceHandle> {
-        let name = handler.name().to_string();
-        let (store, mailbox) = self.spawn_actor(id, config)?;
-        let handle = tokio::spawn(crate::services::run_service(handler, store, mailbox));
-        Ok(crate::services::ServiceHandle { name, handle })
-    }
-
     /// Number of currently live actors.
     pub fn actor_count(&self) -> usize {
         self.mailboxes.len()

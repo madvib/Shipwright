@@ -30,8 +30,6 @@ pub use snapshot::ActorSnapshot;
 pub use store::{EventStore, SqliteEventStore};
 pub use validator::{CallerKind, EmitContext, EventValidator, ValidationError, RESERVED_NAMESPACES};
 pub use global_kernel_router::{init_kernel_router, kernel_router};
-#[cfg(feature = "unstable")]
-pub use crate::services::ServiceHandle;
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};

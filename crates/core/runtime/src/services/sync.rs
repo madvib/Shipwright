@@ -1,12 +1,11 @@
-//! Sync service — cursor-based push/pull of elevated events to Ship Cloud.
+//! Sync service — cursor-based push of elevated events to Ship Cloud.
 //!
-//! Push cycle: fires every `push_interval_secs`. Reads elevated events from the
-//! kernel store since the push cursor, ships them to cloud, advances the cursor.
+//! Push cycle: fires every `push_interval_secs`. Reads elevated events from
+//! the kernel store since the push cursor, ships them to cloud, advances the
+//! cursor.
 //!
-//! Pull cycle: fires every `pull_interval_secs` (approximated by counting push
-//! ticks). Pulls remote events and records receipt in the service's own store.
-//! Full kernel routing of pulled events is a follow-up (requires kernel access
-//! from within the service task).
+//! Pull (routing received events to subscribed actors) is Phase 2 — it requires
+//! kernel access from within the service task, which doesn't exist yet.
 
 use std::time::Duration;
 
@@ -14,10 +13,28 @@ use anyhow::Result;
 
 use crate::events::{ActorStore, EventEnvelope, query_events_since};
 use crate::services::ServiceHandler;
-use crate::sync::{SyncClient, get_cursor, set_cursor};
+use crate::sync::{PushResponse, SyncClient, get_cursor, set_cursor};
 
 const PUSH_SCOPE_PREFIX: &str = "push:platform";
-const PULL_SCOPE_PREFIX: &str = "pull:platform";
+
+/// Transport abstraction over [`SyncClient`] — enables injection in tests.
+pub(crate) trait SyncTransport: Send + 'static {
+    fn push_platform_events(
+        &self,
+        project_id: &str,
+        events: &[EventEnvelope],
+    ) -> Result<PushResponse>;
+}
+
+impl SyncTransport for SyncClient {
+    fn push_platform_events(
+        &self,
+        project_id: &str,
+        events: &[EventEnvelope],
+    ) -> Result<PushResponse> {
+        self.push_platform_events(project_id, events)
+    }
+}
 
 /// Configuration for the sync service, read from `ship.jsonc` `sync` block.
 #[derive(Debug, Clone)]
@@ -25,8 +42,7 @@ pub struct SyncConfig {
     pub endpoint: String,
     pub project_id: String,
     pub push_interval_secs: u64,
-    pub pull_interval_secs: u64,
-    /// Emit a push immediately once this many events have accumulated.
+    /// Emit a push immediately once this many elevated events have accumulated.
     pub push_threshold: usize,
 }
 
@@ -36,7 +52,6 @@ impl Default for SyncConfig {
             endpoint: "https://api.getship.dev".to_string(),
             project_id: String::new(),
             push_interval_secs: 30,
-            pull_interval_secs: 60,
             push_threshold: 50,
         }
     }
@@ -44,40 +59,29 @@ impl Default for SyncConfig {
 
 /// Headless sync service implementing [`ServiceHandler`].
 ///
-/// Push and pull cycles are driven by the tick interval. Threshold-based push
-/// is triggered from `handle` when elevated events accumulate in the mailbox.
+/// Push cycle fires on the tick interval and on threshold accumulation.
 pub struct SyncServiceHandler {
     config: SyncConfig,
-    client: SyncClient,
-    /// Push ticks elapsed since last pull cycle.
-    ticks_since_pull: u32,
-    /// Number of push ticks per pull tick.
-    pub(crate) pull_every_n_ticks: u32,
-    /// Count of elevated events seen since last push (for threshold trigger).
+    client: Box<dyn SyncTransport>,
     elevated_since_push: usize,
 }
 
 impl SyncServiceHandler {
     pub fn new(config: SyncConfig) -> Self {
-        let client = SyncClient::new(&config.endpoint);
-        let pull_every_n_ticks = (config.pull_interval_secs
-            / config.push_interval_secs.max(1))
-        .max(1) as u32;
-        Self {
-            config,
-            client,
-            ticks_since_pull: 0,
-            pull_every_n_ticks,
-            elevated_since_push: 0,
-        }
+        let client = Box::new(SyncClient::new(&config.endpoint));
+        Self { config, client, elevated_since_push: 0 }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_transport(
+        config: SyncConfig,
+        client: Box<dyn SyncTransport>,
+    ) -> Self {
+        Self { config, client, elevated_since_push: 0 }
     }
 
     fn push_scope(&self) -> String {
         format!("{PUSH_SCOPE_PREFIX}:{}", self.config.project_id)
-    }
-
-    fn pull_scope(&self) -> String {
-        format!("{PULL_SCOPE_PREFIX}:{}", self.config.project_id)
     }
 
     fn push_cycle(&mut self, store: &ActorStore) -> Result<()> {
@@ -87,9 +91,7 @@ impl SyncServiceHandler {
         if events.is_empty() {
             return Ok(());
         }
-        let resp = self
-            .client
-            .push_platform_events(&self.config.project_id, &events)?;
+        let resp = self.client.push_platform_events(&self.config.project_id, &events)?;
         set_cursor(&scope, &resp.cursor)?;
         self.elevated_since_push = 0;
         let payload = serde_json::json!({
@@ -97,27 +99,6 @@ impl SyncServiceHandler {
             "cursor": resp.cursor,
         });
         store.append(&EventEnvelope::new("sync.push.completed", "sync", &payload)?)?;
-        Ok(())
-    }
-
-    fn pull_cycle(&mut self, store: &ActorStore) -> Result<()> {
-        let scope = self.pull_scope();
-        let cursor = get_cursor(&scope)?;
-        let resp = self
-            .client
-            .pull_platform_events(&self.config.project_id, cursor.as_deref())?;
-        if resp.events.is_empty() {
-            return Ok(());
-        }
-        set_cursor(&scope, &resp.cursor)?;
-        // TODO: route pulled events through KernelRouter so subscribed actors
-        // receive them. Requires kernel routing access from within the service
-        // task — deferred to Phase 2.
-        let payload = serde_json::json!({
-            "event_count": resp.events.len(),
-            "cursor": resp.cursor,
-        });
-        store.append(&EventEnvelope::new("sync.pull.completed", "sync", &payload)?)?;
         Ok(())
     }
 }
@@ -131,7 +112,6 @@ impl ServiceHandler for SyncServiceHandler {
         if event.event_type == "sync.trigger.push" {
             return self.push_cycle(store);
         }
-        // Count elevated events for threshold-based push.
         if event.elevated {
             self.elevated_since_push += 1;
             if self.elevated_since_push >= self.config.push_threshold {
@@ -169,15 +149,150 @@ impl ServiceHandler for SyncServiceHandler {
             let payload = serde_json::json!({"error": e.to_string()});
             let _ = store.append(&EventEnvelope::new("sync.push.failed", "sync", &payload)?);
         }
-
-        self.ticks_since_pull += 1;
-        if self.ticks_since_pull >= self.pull_every_n_ticks {
-            self.ticks_since_pull = 0;
-            if let Err(e) = self.pull_cycle(store) {
-                eprintln!("[sync] pull_cycle error: {e}");
-            }
-        }
-
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::{block_on, db_path, ensure_db, open_db_at};
+    use crate::events::actor_store::init_actor_db;
+    use crate::project::init_project;
+    use crate::sync::get_cursor;
+    use tempfile::tempdir;
+
+    struct MockTransport {
+        response_cursor: String,
+    }
+
+    impl SyncTransport for MockTransport {
+        fn push_platform_events(
+            &self,
+            _project_id: &str,
+            _events: &[EventEnvelope],
+        ) -> anyhow::Result<PushResponse> {
+            Ok(PushResponse {
+                accepted: 1,
+                cursor: self.response_cursor.clone(),
+            })
+        }
+    }
+
+    struct FailTransport;
+
+    impl SyncTransport for FailTransport {
+        fn push_platform_events(
+            &self,
+            _project_id: &str,
+            _events: &[EventEnvelope],
+        ) -> anyhow::Result<PushResponse> {
+            anyhow::bail!("simulated network error")
+        }
+    }
+
+    fn setup_global_db() -> tempfile::TempDir {
+        let tmp = tempdir().unwrap();
+        init_project(tmp.path().to_path_buf()).unwrap();
+        ensure_db().unwrap();
+        tmp
+    }
+
+    fn insert_elevated_event(id: &str) {
+        use chrono::Utc;
+        let mut conn = open_db_at(&db_path().unwrap()).unwrap();
+        let now = Utc::now().to_rfc3339();
+        block_on(async {
+            sqlx::query(
+                "INSERT INTO events \
+                 (id, event_type, entity_id, actor, payload_json, elevated, created_at) \
+                 VALUES (?, 'workspace.created', 'ws-1', 'ship', '{}', 1, ?)",
+            )
+            .bind(id)
+            .bind(&now)
+            .execute(&mut conn)
+            .await
+        })
+        .unwrap();
+    }
+
+    fn make_store(tmp: &tempfile::TempDir) -> ActorStore {
+        let db = tmp.path().join("sync.db");
+        init_actor_db(&db).unwrap();
+        ActorStore::new("sync", db, vec!["sync.".into()], vec![])
+    }
+
+    #[test]
+    fn push_cycle_advances_cursor_on_success() {
+        let _global = setup_global_db();
+        insert_elevated_event("01JAAAAAAAAAAAAAAAAAAAAAAA");
+
+        let store_tmp = tempdir().unwrap();
+        let store = make_store(&store_tmp);
+        let config = SyncConfig {
+            project_id: "proj-cursor".to_string(),
+            ..SyncConfig::default()
+        };
+        let mut handler = SyncServiceHandler::with_transport(
+            config.clone(),
+            Box::new(MockTransport {
+                response_cursor: "01JBBBBBBBBBBBBBBBBBBBBBBBB".to_string(),
+            }),
+        );
+
+        handler.push_cycle(&store).unwrap();
+
+        let scope = format!("push:platform:{}", config.project_id);
+        assert_eq!(
+            get_cursor(&scope).unwrap(),
+            Some("01JBBBBBBBBBBBBBBBBBBBBBBBB".to_string())
+        );
+    }
+
+    #[test]
+    fn push_cycle_is_noop_when_no_events() {
+        let _global = setup_global_db();
+        // No events inserted — push_cycle must return without touching cursor.
+
+        let store_tmp = tempdir().unwrap();
+        let store = make_store(&store_tmp);
+        let config = SyncConfig {
+            project_id: "proj-empty".to_string(),
+            ..SyncConfig::default()
+        };
+        let mut handler = SyncServiceHandler::with_transport(
+            config.clone(),
+            Box::new(MockTransport {
+                response_cursor: "should-not-appear".to_string(),
+            }),
+        );
+
+        handler.push_cycle(&store).unwrap();
+
+        let scope = format!("push:platform:{}", config.project_id);
+        assert!(get_cursor(&scope).unwrap().is_none());
+    }
+
+    #[test]
+    fn push_cycle_cursor_not_updated_on_transport_error() {
+        let _global = setup_global_db();
+        insert_elevated_event("01JCCCCCCCCCCCCCCCCCCCCCCCC");
+
+        let store_tmp = tempdir().unwrap();
+        let store = make_store(&store_tmp);
+        let config = SyncConfig {
+            project_id: "proj-fail".to_string(),
+            ..SyncConfig::default()
+        };
+        let mut handler =
+            SyncServiceHandler::with_transport(config.clone(), Box::new(FailTransport));
+
+        assert!(handler.push_cycle(&store).is_err());
+
+        let scope = format!("push:platform:{}", config.project_id);
+        assert!(
+            get_cursor(&scope).unwrap().is_none(),
+            "cursor must not advance on transport failure"
+        );
     }
 }

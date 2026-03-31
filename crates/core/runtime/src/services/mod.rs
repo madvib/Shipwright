@@ -25,6 +25,7 @@ use std::time::Duration;
 use anyhow::Result;
 use tokio::task::JoinHandle;
 
+use crate::events::kernel_router::{ActorConfig, KernelRouter};
 use crate::events::{ActorStore, EventEnvelope, Mailbox};
 
 pub mod sync;
@@ -68,6 +69,22 @@ pub trait ServiceHandler: Send + 'static {
 pub struct ServiceHandle {
     pub name: String,
     pub handle: JoinHandle<()>,
+}
+
+/// Spawn a headless service actor and start its event loop.
+///
+/// Creates the actor's store and mailbox via `router`, then spawns `run_service`
+/// as a tokio task. Returns a `ServiceHandle` containing the `JoinHandle`.
+pub fn spawn_service(
+    router: &mut KernelRouter,
+    id: &str,
+    config: ActorConfig,
+    handler: Box<dyn ServiceHandler>,
+) -> Result<ServiceHandle> {
+    let name = handler.name().to_string();
+    let (store, mailbox) = router.spawn_actor(id, config)?;
+    let handle = tokio::spawn(run_service(handler, store, mailbox));
+    Ok(ServiceHandle { name, handle })
 }
 
 /// Run the service event loop.
