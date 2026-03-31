@@ -147,6 +147,7 @@ fn profile(id: &str, providers: &[&str], refs: &[&str]) -> AgentProfile {
             version: None,
             description: None,
             providers: providers.iter().map(|s| s.to_string()).collect(),
+            icon: None,
         },
         skills: SkillRefs {
             refs: refs.iter().map(|s| s.to_string()).collect(),
