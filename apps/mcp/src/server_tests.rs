@@ -261,6 +261,10 @@ fn stable_build_registers_only_platform_tools() {
         "get_skill_vars",
         "set_skill_var",
         "list_skill_vars",
+        "mesh_send",
+        "mesh_broadcast",
+        "mesh_discover",
+        "mesh_status",
         // Studio-only tools NOT here: pull_agents, list_local_agents,
         // push_bundle, write/delete_skill_file, list_project_skills, emit_studio_event
         // Removed: list_events — agents do not have read access to the event store
@@ -290,11 +294,11 @@ fn unstable_build_registers_all_tools() {
         names.iter().any(|n| n == "create_adr"),
         "create_adr missing from unstable router"
     );
-    // stable (20) + unstable (1)
+    // stable (24) + unstable (1)
     assert_eq!(
         names.len(),
-        21,
-        "unstable build should register 21 tools, got: {:?}",
+        25,
+        "unstable build should register 25 tools, got: {:?}",
         names
     );
 }

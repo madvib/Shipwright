@@ -3,6 +3,7 @@ pub mod adr;
 pub mod agent;
 pub mod event;
 pub mod git_info;
+pub mod mesh;
 pub mod project;
 pub mod session;
 pub mod session_files;

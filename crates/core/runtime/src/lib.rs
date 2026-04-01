@@ -18,7 +18,6 @@ pub mod workspace;
 
 #[cfg(feature = "unstable")]
 pub mod sync;
-#[cfg(feature = "unstable")]
 pub mod services;
 
 // Backward-compatible module aliases.

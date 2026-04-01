@@ -105,7 +105,7 @@ impl EventRelay {
 const SYSTEM_PREFIXES: &[&str] = &[
     "workspace.", "session.", "actor.", "config.",
     "gate.", "runtime.", "sync.", "project.",
-    "studio.",
+    "studio.", "mesh.",
 ];
 
 pub(crate) fn is_system_event(event_type: &str) -> bool {
