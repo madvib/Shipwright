@@ -1,0 +1,32 @@
+[package]
+name = "ship-network"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "ship_network"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ship-network"
+path = "src/main.rs"
+
+[dependencies]
+runtime = { path = "../../crates/core/runtime" }
+tokio = { version = "1.0", features = ["full"] }
+tokio-util = { version = "0.7", features = ["full"] }
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+axum = { version = "0.8", features = ["http1", "tokio"] }
+rmcp = { version = "0.16.0", features = ["server", "transport-streamable-http-server"] }
+async-trait = "0.1"
+
+[features]
+unstable = ["runtime/unstable"]
+
+[dev-dependencies]
+tempfile = "3"
