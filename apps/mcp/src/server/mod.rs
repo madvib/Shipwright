@@ -14,7 +14,8 @@ use std::path::PathBuf;
 
 use crate::requests::*;
 use crate::tools::{
-    agent, event, project, session, session_files, skills, workspace, workspace_ops,
+    agent, event, mesh as mesh_tools, project, session, session_files, skills, workspace,
+    workspace_ops,
 };
 use skills::{
     get_skill_vars_tool, list_skill_vars_tool,
@@ -134,10 +135,13 @@ impl ShipServer {
             .map(|a| format!("agent.{}", a.id))
             .unwrap_or_else(|| "agent.mcp".to_string());
 
+        // Spawn MeshService if not already running.
+        spawn_mesh_service_once(&kr).await;
+
         // Compute skill-derived subscriptions: ship.* platform events + custom skill namespaces.
-        let skill_subs = runtime::list_skills(&project_dir)
-            .map(|skills| runtime::events::artifact_events::skill_event_subscriptions(&skills))
-            .unwrap_or_default();
+        let skills_list = runtime::list_skills(&project_dir).unwrap_or_default();
+        let skill_subs =
+            runtime::events::artifact_events::skill_event_subscriptions(&skills_list);
 
         let mut subscribe_namespaces = vec![
             "studio.".to_string(),
@@ -149,6 +153,7 @@ impl ShipServer {
             "sync.".to_string(),
             "project.".to_string(),
             "gate.".to_string(),
+            "mesh.".to_string(),
         ];
         for ns in skill_subs {
             if !subscribe_namespaces.contains(&ns) {
@@ -171,7 +176,36 @@ impl ShipServer {
             }
             Err(e) => {
                 tracing::warn!("failed to spawn agent actor '{actor_id}': {e}");
+                return;
             }
+        }
+
+        // Auto-register this agent on the mesh.
+        let capabilities: Vec<String> = skills_list.iter().map(|s| s.id.clone()).collect();
+        let capabilities = if capabilities.is_empty() {
+            vec!["general".to_string()]
+        } else {
+            capabilities
+        };
+        let register_event = match runtime::events::EventEnvelope::new(
+            "mesh.register",
+            &actor_id,
+            &serde_json::json!({ "agent_id": actor_id, "capabilities": capabilities }),
+        ) {
+            Ok(e) => e.with_actor_id(&actor_id),
+            Err(e) => {
+                tracing::warn!("failed to build mesh.register event: {e}");
+                return;
+            }
+        };
+        let emit_ctx = runtime::events::EmitContext {
+            caller_kind: runtime::events::CallerKind::Mcp,
+            skill_id: None,
+            workspace_id: None,
+            session_id: None,
+        };
+        if let Err(e) = kr.lock().await.route(register_event, &emit_ctx).await {
+            tracing::warn!("failed to route mesh.register: {e}");
         }
     }
 
@@ -208,6 +242,16 @@ impl ShipServer {
         }
 
         relay_state.handle = Some(relay.spawn(mailbox));
+    }
+
+    /// Resolve the actor_id for the current connection.
+    async fn resolve_actor_id(&self) -> String {
+        self.get_effective_project_dir()
+            .await
+            .ok()
+            .and_then(|d| runtime::get_active_agent(Some(d)).ok().flatten())
+            .map(|a| format!("agent.{}", a.id))
+            .unwrap_or_else(|| "agent.mcp".to_string())
     }
 
     async fn notify_resources_changed(&self) {
@@ -520,6 +564,54 @@ impl ShipServer {
         session_files::list_session_files(&project_dir)
     }
 
+    // ---- Mesh ----
+
+    #[tool(description = "Send a directed message to another agent on the mesh.")]
+    async fn mesh_send(&self, Parameters(req): Parameters<MeshSendRequest>) -> String {
+        let actor_id = self.resolve_actor_id().await;
+        let envelope = match mesh_tools::build_mesh_send(&actor_id, &req.to, req.body) {
+            Ok(e) => e,
+            Err(e) => return format!("Error: {e}"),
+        };
+        route_mesh_envelope(envelope).await
+    }
+
+    #[tool(
+        description = "Broadcast a message to all agents on the mesh, optionally filtered by capability."
+    )]
+    async fn mesh_broadcast(&self, Parameters(req): Parameters<MeshBroadcastRequest>) -> String {
+        let actor_id = self.resolve_actor_id().await;
+        let envelope =
+            match mesh_tools::build_mesh_broadcast(&actor_id, req.body, req.capability_filter) {
+                Ok(e) => e,
+                Err(e) => return format!("Error: {e}"),
+            };
+        route_mesh_envelope(envelope).await
+    }
+
+    #[tool(
+        description = "Discover agents on the mesh. Optionally filter by capability or status."
+    )]
+    async fn mesh_discover(&self, Parameters(req): Parameters<MeshDiscoverRequest>) -> String {
+        let actor_id = self.resolve_actor_id().await;
+        let envelope =
+            match mesh_tools::build_mesh_discover(&actor_id, req.capability, req.status) {
+                Ok(e) => e,
+                Err(e) => return format!("Error: {e}"),
+            };
+        route_mesh_envelope(envelope).await
+    }
+
+    #[tool(description = "Update this agent's status on the mesh (active, busy, idle).")]
+    async fn mesh_status(&self, Parameters(req): Parameters<MeshStatusRequest>) -> String {
+        let actor_id = self.resolve_actor_id().await;
+        let envelope = match mesh_tools::build_mesh_status(&actor_id, &req.status) {
+            Ok(e) => e,
+            Err(e) => return format!("Error: {e}"),
+        };
+        route_mesh_envelope(envelope).await
+    }
+
     // ---- Events ----
 
     #[tool(
@@ -602,6 +694,73 @@ impl ShipServer {
             Err(e) => return e,
         };
         adr::create_adr(&project_dir, &req.title, &req.decision)
+    }
+}
+
+// ---- Mesh service helpers ----
+
+/// Guards a single MeshService spawn across all MCP connections in this process.
+static MESH_SERVICE_SPAWNED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+
+/// Spawn the MeshService into the global KernelRouter if not already present.
+///
+/// Idempotent — safe to call on every MCP connection, only runs once per process.
+/// Also spawns a feedback task that drains the mesh's outbox and routes
+/// each response event back through the kernel (directed delivery).
+async fn spawn_mesh_service_once(kr: &std::sync::Arc<tokio::sync::Mutex<runtime::events::KernelRouter>>) {
+    if MESH_SERVICE_SPAWNED.set(()).is_err() {
+        return; // Already spawned by another connection.
+    }
+
+    let (outbox_tx, mut outbox_rx) = tokio::sync::mpsc::unbounded_channel::<runtime::events::EventEnvelope>();
+    let mesh_config = runtime::events::ActorConfig {
+        namespace: "service.mesh".to_string(),
+        write_namespaces: vec!["mesh.".to_string()],
+        read_namespaces: vec!["mesh.".to_string()],
+        subscribe_namespaces: vec!["mesh.".to_string()],
+    };
+    let handler: Box<dyn runtime::services::ServiceHandler> =
+        Box::new(runtime::services::mesh::MeshService::new(outbox_tx));
+
+    match runtime::services::spawn_service(&mut *kr.lock().await, "service.mesh", mesh_config, handler) {
+        Ok(_) => {}
+        Err(e) => {
+            tracing::warn!("failed to spawn MeshService: {e}");
+            return;
+        }
+    }
+
+    // Drain mesh outbox → kernel router (directed delivery).
+    let kr_clone = kr.clone();
+    tokio::spawn(async move {
+        let ctx = runtime::events::EmitContext {
+            caller_kind: runtime::events::CallerKind::Mcp,
+            skill_id: None,
+            workspace_id: None,
+            session_id: None,
+        };
+        while let Some(event) = outbox_rx.recv().await {
+            if let Err(e) = kr_clone.lock().await.route(event, &ctx).await {
+                tracing::warn!("mesh outbox routing error: {e}");
+            }
+        }
+    });
+}
+
+/// Route a mesh EventEnvelope through the global KernelRouter.
+async fn route_mesh_envelope(envelope: runtime::events::EventEnvelope) -> String {
+    let Some(kr) = runtime::events::kernel_router() else {
+        return "Error: KernelRouter not initialized".to_string();
+    };
+    let ctx = runtime::events::EmitContext {
+        caller_kind: runtime::events::CallerKind::Mcp,
+        skill_id: None,
+        workspace_id: None,
+        session_id: None,
+    };
+    match kr.lock().await.route(envelope.clone(), &ctx).await {
+        Ok(()) => format!("ok: routed {}", envelope.event_type),
+        Err(e) => format!("Error routing {}: {e}", envelope.event_type),
     }
 }
 
