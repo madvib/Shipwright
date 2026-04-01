@@ -316,6 +316,7 @@ fn make_agent_profile(id: &str, description: &str) -> AgentProfile {
         plugins: PluginRefs::default(),
         permissions: ProfilePermissions::default(),
         rules: ProfileRules::default(),
+        apps: Default::default(),
         provider_settings: Default::default(),
     }
 }
@@ -336,6 +337,7 @@ fn runtime_agents_injected_into_skill_template() {
         content: "{% for a in runtime.agents %}- {{ a.id }}\n{% endfor %}".to_string(),
         source: Default::default(),
         vars: Default::default(),
+        artifacts: vec![],
     };
 
     let library = ProjectLibrary {
@@ -381,6 +383,7 @@ fn runtime_providers_injected_into_skill_template() {
         content: "{% for p in runtime.providers %}{{ p }} {% endfor %}".to_string(),
         source: Default::default(),
         vars: Default::default(),
+        artifacts: vec![],
     };
 
     let library = ProjectLibrary {
@@ -418,6 +421,7 @@ fn runtime_skills_injected_into_skill_template() {
         content: "{% for s in runtime.skills %}{{ s.id }} {% endfor %}".to_string(),
         source: Default::default(),
         vars: Default::default(),
+        artifacts: vec![],
     };
 
     let library = ProjectLibrary {
