@@ -35,6 +35,8 @@ pub mod sync;
 mod mesh_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod integration_tests;
 
 /// Trait implemented by headless service actors.
 ///

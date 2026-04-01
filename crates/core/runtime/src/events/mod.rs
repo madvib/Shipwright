@@ -42,6 +42,8 @@ mod scoped_delivery_tests;
 mod directed_delivery_tests;
 #[cfg(test)]
 mod cursor_tests;
+#[cfg(test)]
+mod integration_tests;
 
 pub use actor_store::ActorStore;
 pub use envelope::EventEnvelope;
