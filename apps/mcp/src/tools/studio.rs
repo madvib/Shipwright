@@ -1,4 +1,4 @@
-use compiler::{ListAgentsResponse, PullAgent, PullMcpServer, PullProfile, PullRule, PullSkill};
+use compiler::{ArtifactType, ListAgentsResponse, PullAgent, PullMcpServer, PullProfile, PullRule, PullSkill};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -263,6 +263,7 @@ fn resolve_skills(ship_dir: &Path, refs: &[String]) -> Vec<PullSkill> {
                 stable_id: fm.stable_id,
                 tags: fm.tags,
                 authors: fm.authors,
+                artifacts: fm.artifacts,
                 vars_schema,
                 files,
                 reference_docs,
@@ -328,6 +329,8 @@ pub(crate) struct SkillFrontmatter {
     pub(crate) stable_id: Option<String>,
     pub(crate) tags: Vec<String>,
     pub(crate) authors: Vec<String>,
+    /// Artifact types this skill produces (Ship smart-skills extension).
+    pub(crate) artifacts: Vec<ArtifactType>,
 }
 
 pub(crate) fn parse_skill_frontmatter(content: &str) -> SkillFrontmatter {
@@ -337,6 +340,7 @@ pub(crate) fn parse_skill_frontmatter(content: &str) -> SkillFrontmatter {
         stable_id: None,
         tags: Vec::new(),
         authors: Vec::new(),
+        artifacts: Vec::new(),
     };
 
     if !content.starts_with("---") {
@@ -359,9 +363,29 @@ pub(crate) fn parse_skill_frontmatter(content: &str) -> SkillFrontmatter {
             fm.tags = parse_inline_array(v.trim());
         } else if let Some(v) = line.strip_prefix("authors:") {
             fm.authors = parse_inline_array(v.trim());
+        } else if let Some(v) = line.strip_prefix("artifacts:") {
+            fm.artifacts = parse_artifact_array(v.trim());
         }
     }
     fm
+}
+
+/// Parse `[html, markdown]` into `Vec<ArtifactType>`, silently skipping unknown values.
+fn parse_artifact_array(s: &str) -> Vec<ArtifactType> {
+    parse_inline_array(s)
+        .into_iter()
+        .filter_map(|v| match v.as_str() {
+            "html" => Some(ArtifactType::Html),
+            "markdown" => Some(ArtifactType::Markdown),
+            "image" => Some(ArtifactType::Image),
+            "json" => Some(ArtifactType::Json),
+            "svg" => Some(ArtifactType::Svg),
+            other => {
+                tracing::warn!("unknown artifact type: {other}");
+                None
+            }
+        })
+        .collect()
 }
 
 /// Parse `[a, b, c]` into `vec!["a", "b", "c"]`.

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://getship.dev/schemas/vars.schema.json",
+  "host": {
+    "type": "string",
+    "default": "127.0.0.1",
+    "storage-hint": "project",
+    "label": "Bind host",
+    "description": "Address the dev server listens on. Use 0.0.0.0 inside Docker/Podman containers so port mappings work."
+  },
+  "port": {
+    "type": "string",
+    "default": "5173",
+    "storage-hint": "project",
+    "label": "Dev server port",
+    "description": "Port your Vite dev server runs on. The inspect UI is always at /__inspect/ on the same port."
+  },
+  "package_manager": {
+    "type": "enum",
+    "default": "npm",
+    "storage-hint": "project",
+    "values": ["npm", "pnpm", "yarn"],
+    "label": "Package manager",
+    "description": "Controls which install and run commands are shown."
+  }
+}

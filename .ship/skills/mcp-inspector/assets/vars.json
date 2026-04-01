@@ -1,0 +1,17 @@
+{
+  "$schema": "https://getship.dev/schemas/vars.schema.json",
+  "host": {
+    "type": "string",
+    "default": "127.0.0.1",
+    "storage-hint": "global",
+    "label": "Bind host",
+    "description": "Address the server listens on. Use 0.0.0.0 inside Docker/Podman containers so port mappings work."
+  },
+  "port": {
+    "type": "string",
+    "default": "6274",
+    "storage-hint": "global",
+    "label": "Port",
+    "description": "Port for the MCP Inspector UI. Global since it's a personal dev tool not tied to a specific project."
+  }
+}

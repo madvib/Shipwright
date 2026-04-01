@@ -1,6 +1,20 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+// ── Skill artifact types (Ship smart-skills extension) ───────────────────
+
+/// Artifact types a skill can produce. Used by Studio to filter and display skills.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[serde(rename_all = "lowercase")]
+pub enum ArtifactType {
+    Html,
+    Markdown,
+    Image,
+    Json,
+    Svg,
+}
+
 // ── Push: Studio → CLI ──────────────────────────────────────────────────
 
 /// Bundle sent from Studio to the local CLI via MCP push_bundle tool.
@@ -156,6 +170,9 @@ pub struct PullSkill {
     /// Authors from frontmatter `authors: [ship]`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub authors: Vec<String>,
+    /// Artifact types produced by this skill (Ship smart-skills extension).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub artifacts: Vec<ArtifactType>,
     /// Raw `assets/vars.json` content (unparsed JSON). `None` if absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vars_schema: Option<serde_json::Value>,

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://getship.dev/schemas/vars.schema.json",
+  "host": {
+    "type": "string",
+    "default": "127.0.0.1",
+    "storage-hint": "project",
+    "label": "Bind host",
+    "description": "Address the server listens on. Use 0.0.0.0 inside Docker/Podman containers so port mappings work."
+  },
+  "port": {
+    "type": "string",
+    "default": "6006",
+    "storage-hint": "project",
+    "label": "Port",
+    "description": "Port for the Storybook dev server."
+  },
+  "config_dir": {
+    "type": "string",
+    "default": ".storybook",
+    "storage-hint": "project",
+    "label": "Config directory",
+    "description": "Path to the Storybook config directory. Change for monorepos or non-standard setups."
+  },
+  "framework": {
+    "type": "enum",
+    "default": "react",
+    "storage-hint": "project",
+    "values": ["react", "vue", "svelte", "angular", "other"],
+    "label": "Framework",
+    "description": "UI framework. Controls which story format examples are shown."
+  }
+}

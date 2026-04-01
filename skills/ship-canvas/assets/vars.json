@@ -1,0 +1,26 @@
+{
+  "$schema": "https://getship.dev/schemas/vars.schema.json",
+  "density": {
+    "type": "enum",
+    "default": "focused",
+    "storage-hint": "project",
+    "values": ["focused", "rich"],
+    "label": "Layout Density",
+    "description": "focused: one concept, 2-3 sections, strong whitespace. rich: comprehensive layouts, full dashboards, multiple data sections. Default is focused to prevent over-engineering."
+  },
+  "style": {
+    "type": "enum",
+    "default": "ship",
+    "storage-hint": "project",
+    "values": ["ship", "neutral", "bare"],
+    "label": "Visual Style",
+    "description": "ship: full Ship design tokens, looks native in Studio. neutral: Ship layout/typography with muted neutral palette, use when impersonating another product's visual language. bare: no Ship tokens, write all styles from scratch."
+  },
+  "animate": {
+    "type": "bool",
+    "default": true,
+    "storage-hint": "project",
+    "label": "Animations",
+    "description": "Whether to include GSAP entrance animations. Disable for static reference canvases or when animation would distract from the content."
+  }
+}

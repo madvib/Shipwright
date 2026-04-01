@@ -108,6 +108,31 @@ SKILL.md is rendered as a MiniJinja template (Jinja2-compatible). The engine run
 
 Undefined variables render as empty string. The engine uses MiniJinja's chainable undefined behavior, so accessing a field on an undefined value also returns empty rather than erroring. Template syntax errors cause the engine to fall back to the original unresolved content with a warning to stderr.
 
+## Runtime variables
+
+In addition to user-configured vars, the compiler automatically injects a `runtime` object into every skill template at compile time. These are read-only — derived from project state, not user-settable, and do not appear in `vars.json`.
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `runtime.agents` | `[{id, name, description}]` | Agent profiles from `.ship/agents/*.toml` |
+| `runtime.providers` | `string[]` | Active provider IDs, e.g. `["claude", "cursor"]` |
+| `runtime.model` | `string` | Configured model override; empty string if not set |
+| `runtime.skills` | `[{id, name, description}]` | All skills active in this compile |
+
+`description` fields can be `null` — guard before rendering:
+
+```
+{% for a in runtime.agents %}
+- **{{ a.id }}**{% if a.description %} — {{ a.description }}{% endif %}
+{% endfor %}
+
+{% if runtime.model %}
+Model in use: {{ runtime.model }}
+{% endif %}
+```
+
+Runtime variables follow the same template rules as user vars: undefined keys render as empty string, dot-path access on null returns empty rather than erroring.
+
 ## CLI commands
 
 The `ship vars` CLI reads and writes variable state with type validation.

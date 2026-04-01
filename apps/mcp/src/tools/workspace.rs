@@ -38,21 +38,7 @@ pub fn list_workspaces(project_dir: &Path, req: ListWorkspacesRequest) -> String
     } else {
         workspaces
     };
-    if filtered.is_empty() {
-        return "No workspaces found.".to_string();
-    }
-    let mut out = String::from("Workspaces:\n");
-    for w in &filtered {
-        out.push_str(&format!(
-            "- {} [{:?}] status={:?}",
-            w.branch, w.workspace_type, w.status
-        ));
-        if let Some(ref mode) = w.active_agent {
-            out.push_str(&format!(" mode={}", mode));
-        }
-        out.push('\n');
-    }
-    out
+    serde_json::to_string(&filtered).unwrap_or_else(|e| format!("Error serializing workspaces: {}", e))
 }
 
 pub fn create_workspace(project_dir: &Path, req: CreateWorkspaceRequest) -> String {

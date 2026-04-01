@@ -80,9 +80,12 @@ impl StudioServer {
     /// Called from `on_initialized`. The studio actor writes `studio.*` events
     /// and subscribes to `studio.*` and `agent.*` for cross-actor delivery.
     pub async fn spawn_studio_actor(&self) {
-        let project_dir = match self.get_effective_project_dir().await {
-            Ok(d) => d,
-            Err(_) => return,
+        let ship_dir = match dirs::home_dir() {
+            Some(h) => h.join(".ship"),
+            None => {
+                tracing::warn!("studio: cannot resolve home directory");
+                return;
+            }
         };
 
         let global_dir = match runtime::project::get_global_dir() {
@@ -117,7 +120,11 @@ impl StudioServer {
             subscribe_namespaces,
         };
 
-        match kr.lock().await.spawn_actor("studio", config) {
+        let mut kr_guard = kr.lock().await;
+        // On reconnect the actor already exists — stop it so the old relay's
+        // mailbox sender is dropped (relay task exits) then respawn fresh.
+        let _ = kr_guard.stop_actor("studio");
+        match kr_guard.spawn_actor("studio", config) {
             Ok((store, mailbox)) => {
                 *self.actor_store.lock().await = Some(store);
                 *self.actor_mailbox.lock().await = Some(mailbox);

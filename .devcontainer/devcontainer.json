@@ -32,12 +32,18 @@
     "NPM_CONFIG_STORE_DIR": "/home/vscode/.local/share/pnpm/store"
   },
 
-  "forwardPorts": [3000, 3001, 3002, 7701, 51741],
+  "forwardPorts": [3000, 3001, 3002, 4321, 4983, 5173, 6006, 6274, 7701, 51204, 51741],
   "portsAttributes": {
     "3000": { "label": "Ship Studio", "onAutoForward": "openBrowser" },
     "3001": { "label": "Ship Studio (alt)", "onAutoForward": "openBrowser" },
     "3002": { "label": "Vite HMR", "onAutoForward": "silent" },
+    "4321": { "label": "Astro Docs", "onAutoForward": "silent" },
+    "4983": { "label": "Drizzle Studio", "onAutoForward": "silent" },
+    "5173": { "label": "Vite Dev Server", "onAutoForward": "silent" },
+    "6006": { "label": "Storybook", "onAutoForward": "silent" },
+    "6274": { "label": "MCP Inspector", "onAutoForward": "silent" },
     "7701": { "label": "Ship Server", "onAutoForward": "silent" },
+    "51204": { "label": "Vitest UI", "onAutoForward": "silent" },
     "51741": { "label": "Ship MCP", "onAutoForward": "silent" }
   },
 

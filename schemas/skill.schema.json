@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://getship.dev/schemas/skill.schema.json",
+  "title": "SKILL.md Frontmatter Schema",
+  "description": "YAML frontmatter fields for a Ship smart skill (SKILL.md). Fields marked 'ship' are Ship-specific extensions beyond the agentskills.io base spec.",
+  "type": "object",
+  "required": ["name", "description"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$",
+      "maxLength": 64,
+      "description": "Skill id. Lowercase alphanumeric with hyphens. No leading/trailing/consecutive hyphens. Used as the skill id when no stable-id is set."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "description": "One sentence describing when to use this skill. Start with 'Use when...' for reliable trigger matching."
+    },
+    "stable-id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "description": "[Ship] Stable storage key for variable state. Survives directory renames. Defaults to the directory name if absent."
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "[Ship] Category labels for discovery on getship.dev."
+    },
+    "authors": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "[Ship] Skill authors. Free-form strings."
+    },
+    "license": {
+      "type": "string",
+      "description": "SPDX license identifier (e.g. MIT, Apache-2.0)."
+    },
+    "compatibility": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Comma-separated provider names this skill is compatible with. Omit for universal compatibility."
+    },
+    "allowed-tools": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "MCP tool names the skill requires. Space-delimited in YAML, array in JSON."
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["html", "pdf", "markdown", "image", "adr", "note", "json", "url", "svg"]
+      },
+      "description": "[Ship] Artifact types this skill produces. The platform infers rendering and interaction capabilities from these types."
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Arbitrary key-value string metadata."
+    }
+  }
+}

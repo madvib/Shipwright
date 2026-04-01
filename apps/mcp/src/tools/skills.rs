@@ -128,6 +128,7 @@ fn read_skill_from_dir(id: &str, skill_dir: &Path) -> Option<PullSkill> {
         stable_id: fm.stable_id,
         tags: fm.tags,
         authors: fm.authors,
+        artifacts: fm.artifacts,
         vars_schema,
         files,
         reference_docs,

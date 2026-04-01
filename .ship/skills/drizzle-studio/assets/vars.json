@@ -1,0 +1,32 @@
+{
+  "$schema": "https://getship.dev/schemas/vars.schema.json",
+  "host": {
+    "type": "string",
+    "default": "127.0.0.1",
+    "storage-hint": "project",
+    "label": "Bind host",
+    "description": "Address the server listens on. Use 0.0.0.0 inside Docker/Podman containers so port mappings work."
+  },
+  "port": {
+    "type": "string",
+    "default": "4983",
+    "storage-hint": "project",
+    "label": "Port",
+    "description": "Port for Drizzle Studio."
+  },
+  "config": {
+    "type": "string",
+    "default": "drizzle.config.ts",
+    "storage-hint": "project",
+    "label": "Config file",
+    "description": "Path to your drizzle.config.ts. Change for monorepos or custom config locations."
+  },
+  "dialect": {
+    "type": "enum",
+    "default": "sqlite",
+    "storage-hint": "project",
+    "values": ["sqlite", "postgres", "mysql"],
+    "label": "Database dialect",
+    "description": "Database type. Controls connection guidance shown in the skill."
+  }
+}
