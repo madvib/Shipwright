@@ -138,6 +138,23 @@ pub enum VarsCommands {
 }
 
 #[derive(Subcommand, Debug)]
+pub enum NetworkCommands {
+    /// Start the cross-agent communication daemon (blocking)
+    Serve {
+        /// HTTP port for the network daemon
+        #[arg(long, default_value_t = 9315)]
+        port: u16,
+        /// Host address to bind
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+    },
+    /// Show network daemon status
+    Status,
+    /// Stop the running daemon (sends SIGTERM via pid file)
+    Stop,
+}
+
+#[derive(Subcommand, Debug)]
 pub enum McpCommands {
     /// Run the Ship MCP server (stdio by default; --http for HTTP daemon)
     Serve {

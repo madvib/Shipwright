@@ -21,6 +21,7 @@ mod loader;
 mod logging;
 mod mcp;
 mod mcp_serve;
+mod network_serve;
 mod paths;
 mod profile;
 mod publish;
@@ -29,7 +30,7 @@ mod validate;
 mod vars;
 
 use anyhow::Result;
-use cli::{AgentCommands, Cli, Commands, ConfigCommands, HookCommands, McpCommands, SkillCommands, VarsCommands};
+use cli::{AgentCommands, Cli, Commands, ConfigCommands, HookCommands, McpCommands, NetworkCommands, SkillCommands, VarsCommands};
 #[cfg(feature = "unstable")]
 use cli::EventsCommands;
 use std::path::PathBuf;
@@ -121,6 +122,7 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             #[cfg(feature = "unstable")]
             Commands::Events { action } => dispatch_events(action),
             Commands::Hook { action } => dispatch_hook(action),
+            Commands::Network { action } => dispatch_network(action),
             Commands::Studio { port, open } => run_studio(port, open),
             Commands::Help => {
                 use clap::CommandFactory;
@@ -397,6 +399,16 @@ fn dispatch_mcp(action: McpCommands) -> Result<()> {
             ..
         } => mcp::add_stdio(&id, name, &command, args),
         McpCommands::Remove { id } => mcp::remove(&id),
+    }
+}
+
+// ── Network ───────────────────────────────────────────────────────────────────
+
+fn dispatch_network(action: NetworkCommands) -> Result<()> {
+    match action {
+        NetworkCommands::Serve { port, host } => network_serve::run(host, port),
+        NetworkCommands::Status => network_serve::status(),
+        NetworkCommands::Stop => network_serve::stop(),
     }
 }
 

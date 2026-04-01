@@ -6,6 +6,7 @@ members = [
     "crates/core/runtime",
     "crates/xtask",
     "apps/mcp",
+    "apps/ship-network",
     "apps/ship-studio-cli",
 ]
 resolver = "2"

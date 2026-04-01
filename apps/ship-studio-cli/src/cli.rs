@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-pub use crate::commands::{AgentCommands, HookCommands, McpCommands, SkillCommands, VarsCommands};
+pub use crate::commands::{AgentCommands, HookCommands, McpCommands, NetworkCommands, SkillCommands, VarsCommands};
 #[cfg(feature = "unstable")]
 pub use crate::commands::EventsCommands;
 
@@ -215,6 +215,12 @@ pub enum Commands {
     Hook {
         #[command(subcommand)]
         action: HookCommands,
+    },
+
+    /// Manage the Ship network daemon for cross-agent communication
+    Network {
+        #[command(subcommand)]
+        action: NetworkCommands,
     },
 
     /// Launch Ship Studio -- visual IDE for skills and agents
