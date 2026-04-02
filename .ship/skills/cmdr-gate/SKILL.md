@@ -118,11 +118,27 @@ cat <worktree>/.mcp.json
 
 Must exist and contain `ship mcp serve`. An agent without MCP cannot have logged progress properly.
 
-## Worktree Cleanup (on PASS)
+## Land Step (on PASS)
 
-After commander merges:
+Gate owns the merge. Commander never touches git.
 
 ```bash
+# 1. Stage only files within file_scope
+git -C <worktree-path> add <file1> <file2> ...
+
+# 2. Commit with message derived from spec Goal
+git -C <worktree-path> commit -m "<type>: <goal summary>"
+
+# 3. Merge into target branch (default: v0.2.0)
+git checkout <target-branch>
+git merge --no-ff job/<slug> -m "merge: job/<slug>"
+
+# 4. Clean up worktree and branch
 git worktree remove <worktree-path>
 git branch -d job/<slug>
 ```
+
+Report back to commander: `LANDED: <commit-hash>`
+
+If any step fails, report `LAND FAILED: <reason>` — do not leave partial state.
+Commander does not retry the land; human decides next action.
