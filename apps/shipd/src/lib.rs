@@ -5,6 +5,7 @@
 
 mod connections;
 mod handler;
+pub mod human_webhook;
 pub mod rest_api;
 pub mod runtime_api;
 mod server;
@@ -33,6 +34,7 @@ pub async fn run_network(host: String, port: u16) -> Result<()> {
         .map_err(|e| anyhow!("failed to initialize KernelRouter: {e}"))?;
 
     let mesh_registry = connections::spawn_mesh_service(&kernel).await?;
+    spawn_human_gateway(&kernel).await;
 
     write_port_file(&global_dir, port)?;
     write_pid_file(&global_dir)?;
@@ -64,6 +66,13 @@ pub async fn run_network(host: String, port: u16) -> Result<()> {
             std::collections::HashMap::new(),
         )),
     };
+    let webhook_routes = axum::Router::new()
+        .route(
+            "/webhook/telegram",
+            axum::routing::post(human_webhook::telegram_webhook),
+        )
+        .with_state(kernel.clone());
+
     let api_routes = axum::Router::new()
         .route("/mesh/register", axum::routing::post(rest_api::mesh_register))
         .route("/mesh/send", axum::routing::post(rest_api::mesh_send))
@@ -82,6 +91,7 @@ pub async fn run_network(host: String, port: u16) -> Result<()> {
 
     let app = Router::new()
         .nest("/api", api_routes)
+        .nest("/api", webhook_routes)
         .nest("/api/runtime", runtime_routes)
         .nest_service("/mcp", service)
         .layer(axum::middleware::from_fn(cors_middleware));
@@ -133,6 +143,63 @@ pub fn network_stop() -> Result<()> {
     #[cfg(not(unix))]
     anyhow::bail!("shipd stop is not supported on this platform");
     Ok(())
+}
+
+/// Spawn `HumanGatewayService` if Telegram env vars are present.
+/// Silently skips if `SHIP_TELEGRAM_TOKEN` or `SHIP_TELEGRAM_CHAT_ID` is absent.
+async fn spawn_human_gateway(
+    kernel: &Arc<tokio::sync::Mutex<runtime::events::KernelRouter>>,
+) {
+    use runtime::services::human_gateway::{HumanGatewayService, TelegramAdapter};
+    use runtime::services::spawn_service;
+    use runtime::events::ActorConfig;
+    use std::sync::Arc as StdArc;
+
+    let adapter = match TelegramAdapter::from_env() {
+        Some(a) => a,
+        None => {
+            tracing::info!("shipd: SHIP_TELEGRAM_TOKEN/CHAT_ID not set — human gateway disabled");
+            return;
+        }
+    };
+
+    let (outbox_tx, mut outbox_rx) =
+        tokio::sync::mpsc::unbounded_channel::<runtime::events::EventEnvelope>();
+
+    let config = ActorConfig {
+        namespace: "service.human-gateway".to_string(),
+        write_namespaces: vec!["human.".to_string()],
+        read_namespaces: vec!["job.".to_string()],
+        subscribe_namespaces: vec!["job.".to_string()],
+    };
+
+    let handler: Box<dyn runtime::services::ServiceHandler> = Box::new(
+        HumanGatewayService::new(StdArc::new(adapter), outbox_tx),
+    );
+
+    match spawn_service(&mut *kernel.lock().await, "service.human-gateway", config, handler) {
+        Ok(_) => tracing::info!("shipd: human gateway service started (telegram)"),
+        Err(e) => {
+            tracing::warn!("shipd: failed to spawn human gateway: {e}");
+            return;
+        }
+    }
+
+    // Drain outbox → kernel (currently unused, reserved for future adapter replies)
+    let kr = kernel.clone();
+    tokio::spawn(async move {
+        let ctx = runtime::events::EmitContext {
+            caller_kind: runtime::events::CallerKind::Mcp,
+            skill_id: None,
+            workspace_id: None,
+            session_id: None,
+        };
+        while let Some(event) = outbox_rx.recv().await {
+            if let Err(e) = kr.lock().await.route(event, &ctx).await {
+                tracing::warn!("human-gateway outbox routing error: {e}");
+            }
+        }
+    });
 }
 
 fn write_port_file(global_dir: &Path, port: u16) -> Result<()> {
