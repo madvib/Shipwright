@@ -15,7 +15,7 @@ fn ship_dir() -> Result<PathBuf> {
 }
 
 fn pid_file() -> Result<PathBuf> {
-    Ok(ship_dir()?.join("shipd.pid"))
+    Ok(ship_dir()?.join("network.pid"))
 }
 
 fn log_file() -> Result<PathBuf> {
@@ -194,7 +194,7 @@ mod tests {
     #[test]
     fn test_write_and_read_pid() {
         let dir = TempDir::new().unwrap();
-        let pid_path = dir.path().join("shipd.pid");
+        let pid_path = dir.path().join("network.pid");
 
         write_pid(&pid_path, 12345).unwrap();
         assert!(pid_path.exists());
@@ -206,7 +206,7 @@ mod tests {
     #[test]
     fn test_read_pid_missing_file() {
         let dir = TempDir::new().unwrap();
-        let pid_path = dir.path().join("shipd.pid");
+        let pid_path = dir.path().join("network.pid");
         let pid = read_pid(&pid_path).unwrap();
         assert_eq!(pid, None);
     }
@@ -214,7 +214,7 @@ mod tests {
     #[test]
     fn test_read_pid_invalid_content() {
         let dir = TempDir::new().unwrap();
-        let pid_path = dir.path().join("shipd.pid");
+        let pid_path = dir.path().join("network.pid");
         std::fs::write(&pid_path, "not-a-number\n").unwrap();
         assert!(read_pid(&pid_path).is_err());
     }
@@ -222,7 +222,7 @@ mod tests {
     #[test]
     fn test_write_pid_creates_parent_dirs() {
         let dir = TempDir::new().unwrap();
-        let pid_path = dir.path().join("nested").join("dirs").join("shipd.pid");
+        let pid_path = dir.path().join("nested").join("dirs").join("network.pid");
         write_pid(&pid_path, 99).unwrap();
         let pid = read_pid(&pid_path).unwrap();
         assert_eq!(pid, Some(99));
