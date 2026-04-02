@@ -15,17 +15,29 @@ watch:
 
 # ── Build ──────────────────────────────────────────────────────────────────────
 
-# Build CLI + MCP (unstable dev build — default for development)
+# Build CLI + MCP + shipd (unstable dev build — default for development)
 build:
-    cargo build --features unstable -p ship-studio-cli -p mcp
+    cargo build --features unstable -p ship-studio-cli -p mcp -p shipd
 
 # Build release binary (stable — no unstable features, what users get)
 build-release:
-    cargo build --release -p ship-studio-cli -p mcp
+    cargo build --release -p ship-studio-cli -p mcp -p shipd
+
+# Install dev binaries to ~/.local/bin (ship + shipd)
+install-dev: build
+    cp -f target/debug/ship ~/.local/bin/ship.new && mv ~/.local/bin/ship.new ~/.local/bin/ship
+    cp -f target/debug/shipd ~/.local/bin/shipd
+    @echo "Installed: ship + shipd → ~/.local/bin"
 
 # Install stable binary to ~/.cargo/bin
 install: build-release
     cargo install --path apps/ship-studio-cli
+    cp -f target/release/shipd ~/.local/bin/shipd
+
+# Restart shipd with the latest dev build (build → install → daemon restart)
+daemon-restart: install-dev
+    -ship daemon stop 2>/dev/null; true
+    ship daemon start
 
 # Rebuild WASM compiler (requires build-essential)
 wasm:
