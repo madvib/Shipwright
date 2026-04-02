@@ -50,6 +50,7 @@ pub use config::{
 pub use events::{
     EventEnvelope, list_events_since, query_events_since, read_events, read_recent_events,
 };
+pub use projections::job::{JobRecord, JobStatus, load_jobs, project as project_jobs};
 pub use hooks::{DefaultRuntimeHooks, RuntimeHooks};
 pub use log::{LogEntry, log_action, log_action_by, read_log, read_log_entries};
 pub use permissions::{
@@ -97,6 +98,21 @@ pub use workspace::{
     set_workspace_active_agent, start_workspace_session, sync_workspace,
     transition_workspace_status, validate_workspace_transition,
 };
+
+/// Generate a monotonic ULID string. Thread-safe via thread-local generator.
+pub fn gen_ulid() -> String {
+    use std::cell::RefCell;
+    use std::time::SystemTime;
+    thread_local! {
+        static GEN: RefCell<ulid::Generator> = RefCell::new(ulid::Generator::new());
+    }
+    GEN.with(|g| {
+        g.borrow_mut()
+            .generate_from_datetime(SystemTime::now())
+            .expect("ULID generation failed")
+            .to_string()
+    })
+}
 
 pub fn gen_nanoid() -> String {
     let alphabet: [char; 56] = [

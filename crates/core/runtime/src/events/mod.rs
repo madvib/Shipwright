@@ -2,6 +2,7 @@ pub mod actor_store;
 pub mod artifact_events;
 pub mod envelope;
 pub mod filter;
+pub mod job;
 pub mod kernel_router;
 pub mod mailbox;
 pub mod snapshot;
