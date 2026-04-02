@@ -1,6 +1,6 @@
 import { Globe, FolderOpen, User, Unplug } from 'lucide-react'
 import type { JsonValue } from '@ship/ui'
-import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
+import { useDaemon } from '#/features/studio/hooks/useDaemon'
 import { useSkillVars, useSetSkillVar } from '#/features/studio/mcp-queries'
 import type { LibrarySkill } from './useSkillsLibrary'
 import { BoolEditor, EnumEditor, StringEditor, ArrayEditor } from './var-editors'
@@ -195,8 +195,7 @@ function ReadOnlyValue({ varType, def }: { varType: string; def: VarDef }) {
 }
 
 export function VarsTab({ skill, onAddVars }: { skill: LibrarySkill; onAddVars?: () => void }) {
-  const mcp = useLocalMcpContext()
-  const isConnected = mcp?.status === 'connected'
+  const { connected: isConnected } = useDaemon()
   const skillId = skill.stableId ?? skill.id
   const varsQuery = useSkillVars(isConnected ? skillId : null)
   const setVar = useSetSkillVar()
@@ -230,7 +229,7 @@ export function VarsTab({ skill, onAddVars }: { skill: LibrarySkill; onAddVars?:
       {!isConnected && (
         <div className="flex items-center gap-1.5 px-2 py-1.5 rounded bg-muted/60 border border-border text-[11px] text-muted-foreground">
           <Unplug className="size-3 shrink-0" />
-          <span>Connect to CLI to edit variables</span>
+          <span>Connect to daemon to edit variables</span>
         </div>
       )}
 
@@ -240,7 +239,7 @@ export function VarsTab({ skill, onAddVars }: { skill: LibrarySkill; onAddVars?:
           varKey={key}
           def={vars[key]}
           currentValue={mergedValues[key]}
-          isConnected={isConnected ?? false}
+          isConnected={isConnected}
           onSave={(valueJson) => setVar.mutate({ skillId, key, valueJson })}
           isPending={setVar.isPending}
         />

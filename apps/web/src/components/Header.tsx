@@ -3,9 +3,8 @@ import { LogOut, Settings, Users, Zap, Server, Upload, Layers, ChevronDown } fro
 import { useEffect, useState, useRef } from 'react'
 import { ThemeToggle } from '@ship/primitives'
 import { authClient } from '#/lib/auth-client'
-import { CliStatusPopover } from '#/features/studio/CliStatusPopover'
+import { DAEMON_BASE_URL } from '#/lib/daemon-config'
 import { useDaemon } from '#/features/studio/hooks/useDaemon'
-import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
 
 function NavDropdown({ label, href, items, isActive }: {
   label: string
@@ -163,7 +162,6 @@ const REGISTRY_ITEMS = [
 
 function WorkspacePicker() {
   const { connected, workspaces, agents } = useDaemon()
-  const mcp = useLocalMcpContext()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -186,7 +184,7 @@ function WorkspacePicker() {
 
   const activate = (branch: string) => {
     setOpen(false)
-    if (mcp) void mcp.callTool('activate_workspace', { branch })
+    void fetch(`${DAEMON_BASE_URL}/api/workspaces/${encodeURIComponent(branch)}/activate`, { method: 'POST' })
   }
 
   return (
@@ -288,7 +286,6 @@ export default function Header() {
         </div>
 
         <div className="flex items-center gap-2">
-          {isStudio && <CliStatusPopover onAddSkill={() => {}} />}
           {user && <UserMenu user={{ name: user.name, email: user.email, image: user.image }} />}
           <ThemeToggle variant="icon" />
         </div>
