@@ -2678,6 +2678,7 @@ dependencies = [
  "async-trait",
  "axum",
  "futures",
+ "http-body-util",
  "rmcp",
  "runtime",
  "serde",

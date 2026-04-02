@@ -6,6 +6,7 @@
 mod connections;
 mod handler;
 pub mod rest_api;
+pub mod runtime_api;
 mod server;
 
 pub use server::NetworkServer;
@@ -70,10 +71,18 @@ pub async fn run_network(host: String, port: u16) -> Result<()> {
         .route("/mesh/discover", axum::routing::get(rest_api::mesh_discover))
         .route("/mesh/status", axum::routing::post(rest_api::mesh_status_update))
         .route("/mesh/events/{agent_id}", axum::routing::get(rest_api::mesh_events))
+        .with_state(api_state.clone());
+
+    let runtime_routes = axum::Router::new()
+        .route("/workspaces", axum::routing::get(runtime_api::list_workspaces))
+        .route("/sessions", axum::routing::get(runtime_api::list_sessions))
+        .route("/agents", axum::routing::get(runtime_api::list_agents))
+        .route("/events", axum::routing::get(runtime_api::event_stream))
         .with_state(api_state);
 
     let app = Router::new()
         .nest("/api", api_routes)
+        .nest("/api/runtime", runtime_routes)
         .nest_service("/mcp", service)
         .layer(axum::middleware::from_fn(cors_middleware));
 
