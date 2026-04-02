@@ -13,7 +13,7 @@ use super::helpers::*;
 use super::lifecycle_actors::ensure_actor_for_workspace;
 use super::types::*;
 use super::types_session::*;
-use crate::db::workspace_state::set_workspace_tmux_session_db;
+use crate::db::workspace_state::{set_workspace_started_db, set_workspace_tmux_session_db};
 
 /// Create or update a workspace record without requiring a git checkout.
 /// This is the runtime-native entrypoint for workspace lifecycle management.
@@ -213,6 +213,24 @@ pub fn set_workspace_tmux_session(
     set_workspace_tmux_session_db(branch, session_name)?;
     get_workspace(ship_dir, branch)?
         .ok_or_else(|| anyhow::anyhow!("Workspace not found after tmux session update"))
+}
+
+/// Write worktree_path and tmux_session_name to the workspace record.
+/// Idempotent — safe to call multiple times with the same values.
+pub fn set_workspace_started(
+    ship_dir: &Path,
+    branch: &str,
+    worktree_path: &Path,
+    tmux_session: &str,
+) -> Result<()> {
+    let branch = ensure_branch_key(branch)?;
+    get_workspace(ship_dir, branch)?
+        .ok_or_else(|| anyhow::anyhow!("Workspace not found for branch '{}'", branch))?;
+    let path_str = worktree_path
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("worktree_path contains non-UTF-8 characters"))?;
+    set_workspace_started_db(branch, path_str, tmux_session)?;
+    Ok(())
 }
 
 /// Create the default service workspace ("ship") if it doesn't already exist.

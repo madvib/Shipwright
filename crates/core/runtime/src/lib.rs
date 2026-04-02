@@ -95,7 +95,7 @@ pub use workspace::{
     create_workspace, delete_workspace, end_workspace_session, get_active_workspace_session,
     get_workspace, get_workspace_provider_matrix, get_workspace_session_record,
     list_workspace_sessions, list_workspaces, record_workspace_session_progress, repair_workspace,
-    set_workspace_active_agent, start_workspace_session, sync_workspace,
+    set_workspace_active_agent, set_workspace_started, start_workspace_session, sync_workspace,
     transition_workspace_status, validate_workspace_transition,
 };
 

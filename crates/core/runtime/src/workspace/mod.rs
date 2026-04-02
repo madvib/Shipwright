@@ -53,7 +53,7 @@ pub use event_upserts::{
 pub use helpers::validate_workspace_transition;
 pub use lifecycle::{
     activate_workspace, create_workspace, get_active_workspace_type, seed_service_workspace,
-    set_workspace_active_agent, set_workspace_tmux_session, sync_workspace,
+    set_workspace_active_agent, set_workspace_started, set_workspace_tmux_session, sync_workspace,
     transition_workspace_status,
 };
 pub use session::{
