@@ -191,33 +191,45 @@ function WorkspacePicker() {
     <div ref={ref} className="flex items-center gap-2">
       <span
         className={`w-2 h-2 rounded-full shrink-0 ${connected ? 'bg-emerald-500' : 'bg-red-500'}`}
-        title={connected ? 'Daemon connected' : 'Daemon offline'}
+        title={connected ? 'Daemon connected' : 'Daemon offline — run `ship daemon start`'}
       />
       <div className="relative">
         <button
           onClick={() => setOpen((p) => !p)}
           className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors font-mono"
         >
-          <span>{activeWorkspace?.branch ?? '--'}</span>
+          <span>{activeWorkspace?.branch ?? (connected ? 'no workspace' : 'offline')}</span>
           <ChevronDown className="size-3 opacity-50" />
         </button>
-        {open && workspaces.length > 0 && (
-          <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1.5 w-56 rounded-xl border border-border/60 bg-card shadow-lg py-1 z-50 animate-in fade-in slide-in-from-top-1 duration-150">
-            {workspaces.map((ws) => (
-              <button
-                key={ws.branch}
-                onClick={() => activate(ws.branch)}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-muted transition-colors"
-              >
-                <span
-                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${ws.status === 'active' ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`}
-                />
-                <span className="font-mono truncate flex-1 text-foreground/80">{ws.branch}</span>
-                {ws.active_agent && (
-                  <span className="text-[9px] text-muted-foreground/50 truncate max-w-[60px]">{ws.active_agent}</span>
-                )}
-              </button>
-            ))}
+        {open && (
+          <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1.5 w-64 rounded-xl border border-border/60 bg-card shadow-lg py-1 z-50 animate-in fade-in slide-in-from-top-1 duration-150">
+            {!connected ? (
+              <div className="px-3 py-3 text-xs text-muted-foreground">
+                <p className="font-medium text-foreground/70 mb-1">Daemon offline</p>
+                <p className="font-mono">ship daemon start</p>
+              </div>
+            ) : workspaces.length === 0 ? (
+              <div className="px-3 py-3 text-xs text-muted-foreground">
+                <p className="font-medium text-foreground/70 mb-1">No workspaces</p>
+                <p className="font-mono">ship use &lt;agent&gt;</p>
+              </div>
+            ) : (
+              workspaces.map((ws) => (
+                <button
+                  key={ws.branch}
+                  onClick={() => activate(ws.branch)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-muted transition-colors"
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${ws.status === 'active' ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`}
+                  />
+                  <span className="font-mono truncate flex-1 text-foreground/80">{ws.branch}</span>
+                  {ws.active_agent && (
+                    <span className="text-[9px] text-muted-foreground/50 truncate max-w-[60px]">{ws.active_agent}</span>
+                  )}
+                </button>
+              ))
+            )}
           </div>
         )}
       </div>

@@ -133,6 +133,7 @@ impl StudioServer {
                 tracing::warn!("studio: failed to spawn actor: {e}");
             }
         }
+
     }
 
     /// Start a relay task that forwards cross-actor events (from the studio
