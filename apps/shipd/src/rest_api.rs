@@ -57,7 +57,7 @@ pub struct MeshStatusReq {
     pub status: String,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct MeshResponse {
     pub ok: bool,
     pub data: serde_json::Value,
