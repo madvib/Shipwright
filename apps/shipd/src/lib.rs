@@ -12,20 +12,17 @@ pub use server::NetworkServer;
 
 use anyhow::{Result, anyhow};
 use axum::{
-    Json, Router,
+    Router,
     body::Body,
-    extract::State,
-    http::{Request, StatusCode},
+    http::Request,
     middleware::Next,
     response::Response,
 };
 use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
 };
-use serde::Deserialize;
 use std::path::Path;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 /// Start the network daemon and block until shutdown (SIGINT/SIGTERM).
@@ -78,8 +75,6 @@ pub async fn run_network(host: String, port: u16) -> Result<()> {
     let app = Router::new()
         .nest("/api", api_routes)
         .nest_service("/mcp", service)
-        .route("/api/mesh/broadcast", axum::routing::post(api_mesh_broadcast))
-        .with_state(kernel.clone())
         .layer(axum::middleware::from_fn(cors_middleware));
 
     let addr = format!("{host}:{port}");
@@ -129,41 +124,6 @@ pub fn network_stop() -> Result<()> {
     #[cfg(not(unix))]
     anyhow::bail!("shipd stop is not supported on this platform");
     Ok(())
-}
-
-// ── REST API ──────────────────────────────────────────────────────────────────
-
-#[derive(Deserialize)]
-struct MeshBroadcastBody {
-    event_type: String,
-    from_agent_id: String,
-    payload: serde_json::Value,
-}
-
-async fn api_mesh_broadcast(
-    State(kernel): State<Arc<Mutex<runtime::events::KernelRouter>>>,
-    Json(body): Json<MeshBroadcastBody>,
-) -> StatusCode {
-    let envelope = match runtime::events::EventEnvelope::new(
-        &body.event_type,
-        &body.from_agent_id,
-        &body.payload,
-    )
-    .map(|e| e.with_actor_id(&body.from_agent_id))
-    {
-        Ok(e) => e,
-        Err(_) => return StatusCode::BAD_REQUEST,
-    };
-    let ctx = runtime::events::EmitContext {
-        caller_kind: runtime::events::CallerKind::Mcp,
-        skill_id: None,
-        workspace_id: None,
-        session_id: None,
-    };
-    match kernel.lock().await.route(envelope, &ctx).await {
-        Ok(()) => StatusCode::OK,
-        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
-    }
 }
 
 fn write_port_file(global_dir: &Path, port: u16) -> Result<()> {
