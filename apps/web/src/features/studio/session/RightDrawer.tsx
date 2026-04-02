@@ -1,12 +1,14 @@
-// Right-side drawer: Chat + Events tabs.
+// Right-side drawer: Chat + Events + Terminal tabs.
 // Opens/closes with a toggle button at the right edge. State persisted to localStorage.
 // Width: 320px (w-80). Canvas reflows in a flex layout — not fixed positioned.
 
 import { useState, useCallback } from 'react'
-import { MessageSquare, Activity, PanelRightClose, PanelRightOpen } from 'lucide-react'
+import { MessageSquare, Activity, PanelRightClose, PanelRightOpen, TerminalIcon } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ship/primitives'
 import { ChatTab } from './ChatTab'
 import { EventStreamPanel } from '../events/EventStreamPanel'
+import { TerminalTab } from './TerminalTab'
+import { useDaemon } from '#/features/studio/hooks/useDaemon'
 import type { StagedAnnotation } from './types'
 
 const LS_KEY = 'ship-studio:right-drawer-open'
@@ -36,6 +38,10 @@ export function RightDrawer({
   disabled = false,
 }: Props) {
   const [open, setOpen] = useState<boolean>(readInitialOpen)
+  const [activeTab, setActiveTab] = useState<string>('chat')
+  const { workspaces } = useDaemon()
+
+  const activeWorkspaceId = workspaces.find((w) => w.status === 'active')?.id ?? null
 
   const toggle = useCallback(() => {
     setOpen((prev) => {
@@ -62,7 +68,7 @@ export function RightDrawer({
 
       {open && (
         <div className="w-80 shrink-0 flex flex-col border-l border-border bg-card/30 min-h-0 overflow-hidden">
-          <Tabs defaultValue="chat" className="flex flex-col flex-1 min-h-0 gap-0">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1 min-h-0 gap-0">
             <TabsList className="h-9 w-full rounded-none border-b border-border bg-transparent p-0 justify-start gap-0 shrink-0">
               <TabsTrigger
                 value="chat"
@@ -83,6 +89,13 @@ export function RightDrawer({
                 <Activity className="size-3" />
                 Events
               </TabsTrigger>
+              <TabsTrigger
+                value="terminal"
+                className="flex items-center gap-1.5 flex-1 h-full rounded-none border-b-2 text-[11px] font-medium data-[active]:border-primary data-[active]:text-primary border-transparent text-muted-foreground"
+              >
+                <TerminalIcon className="size-3" />
+                Terminal
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="chat" className="flex flex-col flex-1 min-h-0 mt-0">
@@ -97,6 +110,13 @@ export function RightDrawer({
 
             <TabsContent value="events" className="flex flex-col flex-1 min-h-0 mt-0">
               <EventStreamPanel />
+            </TabsContent>
+
+            <TabsContent value="terminal" className="flex flex-col flex-1 min-h-0 mt-0">
+              <TerminalTab
+                workspaceId={activeWorkspaceId}
+                visible={activeTab === 'terminal'}
+              />
             </TabsContent>
           </Tabs>
         </div>
