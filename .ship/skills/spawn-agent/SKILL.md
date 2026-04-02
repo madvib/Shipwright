@@ -13,7 +13,7 @@ Launch a specialist agent in a git worktree to execute a job. One command does e
 ## Usage
 
 ```bash
-bash scripts/dispatch.sh \
+bash .ship/skills/spawn-agent/scripts/dispatch.sh \
   --slug <name> \
   --agent <agent> \
   --spec <path-to-spec>
@@ -25,8 +25,23 @@ bash scripts/dispatch.sh \
 | `--agent <agent>` | Ship agent profile (required) |
 | `--spec <file>` | Path to job spec (required) |
 | `--base <branch>` | Branch to fork from (default: current branch) |
+| `--model <id>` | Override model for the spawned agent |
 | `--no-open` | Print launch command instead of opening terminal |
 | `--dry-run` | Show what would happen |
+| `--confirm` | Show spec and ask y/n before launching |
+
+### Environment variables
+
+These are personal configuration — set in your shell profile, not in project files.
+
+| Variable | What |
+|----------|------|
+| `SHIP_DEFAULT_TERMINAL` | Force terminal: `tmux`, `wt`, `iterm`, `vscode`, `warp`, `manual` |
+| `SHIP_WORKTREE_DIR` | Base directory for worktrees (default: `~/dev/ship-worktrees`) |
+| `SHIP_GLOBAL_DIR` | Ship global data dir (default: `~/.ship`) |
+| `SHIP_AGENT_MODEL` | Default model for spawned agents |
+| `SHIP_DISPATCH_CONFIRM` | Set to `1` to always prompt before dispatch |
+| `SHIP_PROVIDER_CLI` | Override provider binary: `claude`, `codex`, `gemini`, `opencode` |
 
 ## Workflow
 
@@ -75,11 +90,11 @@ For feature work, dispatch as two sequential jobs:
 
 ```bash
 # Job 1: tests only
-bash scripts/dispatch.sh --slug auth-tests --agent test-writer \
+bash .ship/skills/spawn-agent/scripts/dispatch.sh --slug auth-tests --agent test-writer \
   --spec .ship-session/job-spec-auth-tests.md
 
 # Job 2: implementation (after tests complete and gate passes)
-bash scripts/dispatch.sh --slug auth-impl --agent rust-runtime \
+bash .ship/skills/spawn-agent/scripts/dispatch.sh --slug auth-impl --agent rust-runtime \
   --spec .ship-session/job-spec-auth-impl.md
 ```
 

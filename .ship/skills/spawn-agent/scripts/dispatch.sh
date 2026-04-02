@@ -13,6 +13,7 @@ CONFIRM="${SHIP_DISPATCH_CONFIRM:-}"
 SLUG=""
 AGENT=""
 SPEC_FILE=""
+SHIP_AGENT_MODEL="${SHIP_AGENT_MODEL:-}"
 
 # ── Parse args ────────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -22,6 +23,7 @@ while [[ $# -gt 0 ]]; do
     --spec)     SPEC_FILE="$2"; shift 2 ;;
     --base)     BASE_BRANCH="$2"; shift 2 ;;
     --dir)      WORKTREE_BASE="$2"; shift 2 ;;
+    --model)    SHIP_AGENT_MODEL="$2"; shift 2 ;;
     --no-open)  NO_OPEN=true; shift ;;
     --dry-run)  DRY_RUN=true; shift ;;
     --confirm)  CONFIRM=1; shift ;;
@@ -154,7 +156,18 @@ if [[ -z "$PROVIDER_CLI" ]]; then
 fi
 
 # ── Open terminal ─────────────────────────────────────────────────────────────
-LAUNCH_CMD="cd ${WORKTREE_PATH} && ${PROVIDER_CLI}"
+# Build launch command with provider-specific flags
+LAUNCH_FLAGS=""
+MODEL_FLAG=""
+if [[ -n "${SHIP_AGENT_MODEL:-}" ]]; then
+  MODEL_FLAG="--model ${SHIP_AGENT_MODEL}"
+fi
+if [[ "$PROVIDER_CLI" == "claude" ]]; then
+  LAUNCH_FLAGS="--dangerously-skip-permissions --dangerously-load-development-channels server:ship ${MODEL_FLAG}"
+elif [[ "$PROVIDER_CLI" == "codex" ]]; then
+  LAUNCH_FLAGS="${MODEL_FLAG}"
+fi
+LAUNCH_CMD="cd ${WORKTREE_PATH} && ${PROVIDER_CLI} ${LAUNCH_FLAGS}"
 
 if $NO_OPEN; then
   echo ""
@@ -177,13 +190,33 @@ case "$TERMINAL" in
       end tell" 2>/dev/null || echo "iTerm2 AppleScript failed. Launch manually: $LAUNCH_CMD"
     ;;
   tmux)
-    tmux new-window -n "$SLUG" "$LAUNCH_CMD" 2>/dev/null || echo "tmux failed. Launch manually: $LAUNCH_CMD"
+    tmux new-window -d -n "$SLUG" "$LAUNCH_CMD" 2>/dev/null || { echo "tmux failed. Launch manually: $LAUNCH_CMD"; exit 1; }
+    # Wait for channel confirmation prompt and accept it, then kick job autostart.
+    # Loops up to 15s waiting for the prompt before giving up.
+    (
+      for i in $(seq 1 15); do
+        sleep 1
+        if tmux capture-pane -t "$SLUG" -p 2>/dev/null | grep -q "I am using this for local development"; then
+          tmux send-keys -t "$SLUG" Enter
+          sleep 1
+          tmux send-keys -t "$SLUG" "Read .ship-session/job-spec.md and execute it autonomously." Enter
+          exit 0
+        fi
+      done
+      # No channel prompt found — still kick autostart (no-channels path)
+      tmux send-keys -t "$SLUG" "Read .ship-session/job-spec.md and execute it autonomously." Enter
+    ) &
     ;;
   warp)
     open -a Warp --args --working-directory "$WORKTREE_PATH" 2>/dev/null || echo "Warp launch failed. Launch manually: $LAUNCH_CMD"
     ;;
   vscode)
     code "$WORKTREE_PATH" 2>/dev/null || echo "VS Code launch failed. Launch manually: $LAUNCH_CMD"
+    ;;
+  wt)
+    # From WSL: wt.exe -w 0 nt opens a new tab in the current WT window
+    wt.exe -w 0 nt --title "$SLUG" -- wsl.exe bash -i -c "$LAUNCH_CMD" 2>/dev/null || \
+    echo "Windows Terminal launch failed. Launch manually: $LAUNCH_CMD"
     ;;
   *)
     echo ""
