@@ -4,7 +4,8 @@
 # Usage: bash .ship/skills/setup-workspace/scripts/setup.sh [--pod <file>] [--dry-run]
 set -euo pipefail
 
-WORKTREE_BASE="${SHIP_WORKTREE_DIR:-${HOME}/dev/ship-worktrees}"
+WORKTREE_BASE="{{ worktree_dir | default: env.SHIP_WORKTREE_DIR | default: '~/dev/ship-worktrees' }}"
+WORKTREE_BASE="${WORKTREE_BASE/#\~/$HOME}"
 POD_FILE=".ship-session/pod.md"
 DRY_RUN=false
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
@@ -19,7 +20,8 @@ done
 
 # ── Detect terminal ────────────────────────────────────────────────────────────
 detect_terminal() {
-  local term="${SHIP_DEFAULT_TERMINAL:-}"
+  local term="{{ terminal | default: '' }}"
+  if [[ -z "$term" ]]; then term="${SHIP_DEFAULT_TERMINAL:-}"; fi
   if [[ -n "$term" ]]; then echo "$term"; return; fi
   if [[ -n "${TMUX:-}" ]]; then echo "tmux"; return; fi
   if [[ -n "${WT_SESSION:-}" ]]; then echo "wt"; return; fi

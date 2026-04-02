@@ -45,14 +45,19 @@ agents:
 
 Save the file once, reuse every session.
 
-## Environment variables
+## Configuration
 
-Set in your shell profile — personal config, not project files.
+```bash
+ship vars set setup-workspace terminal tmux        # force terminal type
+ship vars set setup-workspace worktree_dir ~/dev/ship-worktrees
+```
 
-| Variable | What |
-|----------|------|
-| `SHIP_DEFAULT_TERMINAL` | Force terminal: `tmux`, `wt`, `iterm`, `vscode`, `warp`, `manual` |
-| `SHIP_WORKTREE_DIR` | Base directory for worktrees (default: `~/dev/ship-worktrees`) |
+Falls back to `SHIP_DEFAULT_TERMINAL` / `SHIP_WORKTREE_DIR` env vars if vars are not set.
+
+| Var | Default | What |
+|-----|---------|------|
+| `terminal` | auto-detected | `tmux`, `wt`, `iterm`, `warp`, `manual` |
+| `worktree_dir` | `~/dev/ship-worktrees` | Base path for agent worktrees |
 
 ## Terminal support
 
