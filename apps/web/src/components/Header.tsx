@@ -1,9 +1,11 @@
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
-import { LogOut, Settings, Users, Zap, Server, Upload, Layers } from 'lucide-react'
+import { LogOut, Settings, Users, Zap, Server, Upload, Layers, ChevronDown } from 'lucide-react'
 import { useEffect, useState, useRef } from 'react'
 import { ThemeToggle } from '@ship/primitives'
 import { authClient } from '#/lib/auth-client'
 import { CliStatusPopover } from '#/features/studio/CliStatusPopover'
+import { useDaemon } from '#/features/studio/hooks/useDaemon'
+import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
 
 function NavDropdown({ label, href, items, isActive }: {
   label: string
@@ -159,6 +161,75 @@ const REGISTRY_ITEMS = [
   { icon: Upload, label: 'Publish', href: '/registry', desc: 'Share your packages' },
 ]
 
+function WorkspacePicker() {
+  const { connected, workspaces, agents } = useDaemon()
+  const mcp = useLocalMcpContext()
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  const activeWorkspace = workspaces.find((w) => w.status === 'active')
+  const activeAgentCount = agents.length
+
+  useEffect(() => {
+    if (!open) return
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', handleClick)
+    document.addEventListener('keydown', handleEsc)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      document.removeEventListener('keydown', handleEsc)
+    }
+  }, [open])
+
+  const activate = (branch: string) => {
+    setOpen(false)
+    if (mcp) void mcp.callTool('activate_workspace', { branch })
+  }
+
+  return (
+    <div ref={ref} className="flex items-center gap-2">
+      <span
+        className={`w-2 h-2 rounded-full shrink-0 ${connected ? 'bg-emerald-500' : 'bg-red-500'}`}
+        title={connected ? 'Daemon connected' : 'Daemon offline'}
+      />
+      <div className="relative">
+        <button
+          onClick={() => setOpen((p) => !p)}
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors font-mono"
+        >
+          <span>{activeWorkspace?.branch ?? '--'}</span>
+          <ChevronDown className="size-3 opacity-50" />
+        </button>
+        {open && workspaces.length > 0 && (
+          <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1.5 w-56 rounded-xl border border-border/60 bg-card shadow-lg py-1 z-50 animate-in fade-in slide-in-from-top-1 duration-150">
+            {workspaces.map((ws) => (
+              <button
+                key={ws.branch}
+                onClick={() => activate(ws.branch)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-muted transition-colors"
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${ws.status === 'active' ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`}
+                />
+                <span className="font-mono truncate flex-1 text-foreground/80">{ws.branch}</span>
+                {ws.active_agent && (
+                  <span className="text-[9px] text-muted-foreground/50 truncate max-w-[60px]">{ws.active_agent}</span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      {connected && activeAgentCount > 0 && (
+        <span className="text-[10px] text-muted-foreground/50 tabular-nums">{activeAgentCount} active</span>
+      )}
+    </div>
+  )
+}
+
 export default function Header() {
   const { data: session } = authClient.useSession()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
@@ -203,7 +274,8 @@ export default function Header() {
         <div className="flex-1" />
 
         {isStudio && (
-          <div className="hidden sm:flex items-center">
+          <div className="hidden sm:flex items-center gap-4">
+            <WorkspacePicker />
             <StudioNav pathname={pathname} />
           </div>
         )}
