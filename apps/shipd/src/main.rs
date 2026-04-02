@@ -10,7 +10,7 @@ fn main() -> anyhow::Result<()> {
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
-    rt.block_on(ship_network::run_network(host, port))
+    rt.block_on(shipd::run_network(host, port))
 }
 
 fn extract_u16_arg(args: &[String], flag: &str) -> Option<u16> {
