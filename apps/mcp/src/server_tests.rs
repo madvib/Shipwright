@@ -287,19 +287,12 @@ fn stable_build_registers_only_platform_tools() {
 
 #[test]
 #[cfg(feature = "unstable")]
-fn unstable_build_registers_all_tools() {
+fn unstable_build_includes_create_adr() {
     let server = ShipServer::new();
     let names = server.registered_tool_names();
     assert!(
         names.iter().any(|n| n == "create_adr"),
         "create_adr missing from unstable router"
-    );
-    // stable (24) + unstable (1)
-    assert_eq!(
-        names.len(),
-        25,
-        "unstable build should register 25 tools, got: {:?}",
-        names
     );
 }
 

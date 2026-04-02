@@ -5,6 +5,7 @@ pub mod agent;
 pub mod dispatch;
 pub mod event;
 pub mod git_info;
+pub mod job;
 pub mod mesh;
 pub mod project;
 pub mod session;

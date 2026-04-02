@@ -13,7 +13,7 @@ use std::path::PathBuf;
 
 use crate::requests::*;
 use crate::tools::{
-    agent, event, project, session, session_files, skills, workspace,
+    agent, event, job as job_tools, project, session, session_files, skills, workspace,
     workspace_ops,
 };
 use skills::{
@@ -713,6 +713,39 @@ impl ShipServer {
             Ok(result) => result,
             Err(e) => format!("Error: {e}"),
         }
+    }
+
+    // ---- Jobs ----
+
+    #[tool(
+        description = "Create a new job. Emits job.created and returns {job_id}. \
+        Jobs are event-sourced — state is derived from the event log, not stored directly."
+    )]
+    async fn create_job(&self, Parameters(req): Parameters<CreateJobRequest>) -> String {
+        job_tools::create_job(req)
+    }
+
+    #[tool(
+        description = "Advance a job to the next status by emitting the appropriate event. \
+        status: dispatched (requires worktree), gate_requested (requires gate_agent), \
+        gate_passed, gate_failed (requires error), blocked (requires blocker), merged, \
+        failed (requires error)."
+    )]
+    async fn update_job(&self, Parameters(req): Parameters<UpdateJobRequest>) -> String {
+        job_tools::update_job(req)
+    }
+
+    #[tool(
+        description = "List all jobs. Optionally filter by status: \
+        pending | dispatched | gate_pending | blocked | merged | failed."
+    )]
+    async fn list_jobs(&self, Parameters(req): Parameters<ListJobsRequest>) -> String {
+        job_tools::list_jobs(req)
+    }
+
+    #[tool(description = "Get a single job record by job_id. Returns JSON or an error.")]
+    async fn get_job(&self, Parameters(req): Parameters<GetJobRequest>) -> String {
+        job_tools::get_job(req)
     }
 
     // ---- Events ----
