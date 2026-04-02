@@ -253,12 +253,49 @@ async fn shutdown_signal() {
     let _ = tokio::signal::ctrl_c().await;
 }
 
+/// Allowed origins for CORS. Localhost ports (dev) and getship.dev (production).
+/// Wildcard is intentionally excluded — only known clients may connect.
+const ALLOWED_ORIGINS: &[&str] = &[
+    "https://getship.dev",
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:4321",
+];
+
 async fn cors_middleware(req: Request<Body>, next: Next) -> Response {
     use axum::http::{HeaderValue, Method};
+
+    let origin = req
+        .headers()
+        .get("origin")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    let allowed = ALLOWED_ORIGINS.contains(&origin)
+        || origin.starts_with("http://localhost:")
+        || origin.starts_with("http://127.0.0.1:");
+
+    if !allowed && !origin.is_empty() {
+        tracing::warn!("shipd: rejected CORS request from origin: {origin}");
+    }
+
+    let origin_header = if allowed && !origin.is_empty() {
+        origin.to_string()
+    } else {
+        // Non-browser clients (curl, CLI) send no Origin — allow through without ACAO header.
+        // Browsers with a disallowed origin are rejected by the browser itself.
+        String::new()
+    };
+
     if req.method() == Method::OPTIONS {
         let mut res = Response::new(Body::empty());
         let h = res.headers_mut();
-        h.insert("access-control-allow-origin", HeaderValue::from_static("*"));
+        if !origin_header.is_empty() {
+            h.insert(
+                "access-control-allow-origin",
+                HeaderValue::from_str(&origin_header).unwrap(),
+            );
+        }
         h.insert(
             "access-control-allow-methods",
             HeaderValue::from_static("GET, POST, DELETE, OPTIONS"),
@@ -273,9 +310,15 @@ async fn cors_middleware(req: Request<Body>, next: Next) -> Response {
         );
         return res;
     }
+
     let mut res = next.run(req).await;
     let h = res.headers_mut();
-    h.insert("access-control-allow-origin", HeaderValue::from_static("*"));
+    if !origin_header.is_empty() {
+        h.insert(
+            "access-control-allow-origin",
+            HeaderValue::from_str(&origin_header).unwrap(),
+        );
+    }
     h.insert(
         "access-control-expose-headers",
         HeaderValue::from_static("mcp-session-id"),
