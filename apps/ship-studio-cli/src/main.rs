@@ -10,6 +10,7 @@ mod commands;
 mod compile;
 mod config;
 mod convert;
+mod daemon;
 mod dep_skills;
 #[cfg(feature = "unstable")]
 mod events_cmd;
@@ -129,6 +130,16 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             Commands::Hook { action } => dispatch_hook(action),
             Commands::Network { action } => dispatch_network(action),
             Commands::Studio { port, open } => run_studio(port, open),
+            Commands::Daemon { action } => {
+                use cli::DaemonCommands;
+                use daemon::{DaemonCommand, run_daemon};
+                let cmd = match action {
+                    DaemonCommands::Start => DaemonCommand::Start,
+                    DaemonCommands::Stop => DaemonCommand::Stop,
+                    DaemonCommands::Status => DaemonCommand::Status,
+                };
+                run_daemon(cmd)
+            }
             Commands::Help => {
                 use clap::CommandFactory;
                 Cli::command().print_help()?;

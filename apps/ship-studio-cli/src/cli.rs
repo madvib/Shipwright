@@ -241,8 +241,24 @@ pub enum Commands {
     #[cfg(feature = "unstable")]
     Top,
 
+    /// Manage the Ship daemon (shipd) background process
+    Daemon {
+        #[command(subcommand)]
+        action: DaemonCommands,
+    },
+
     /// Show help — same as --help
     Help,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum DaemonCommands {
+    /// Start shipd in the background
+    Start,
+    /// Stop the running shipd process
+    Stop,
+    /// Show daemon status
+    Status,
 }
 
 #[derive(Subcommand, Debug)]
