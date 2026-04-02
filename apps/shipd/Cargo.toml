@@ -1,15 +1,15 @@
 [package]
-name = "ship-network"
+name = "shipd"
 version = "0.1.0"
 edition = "2024"
 publish = false
 
 [lib]
-name = "ship_network"
+name = "shipd"
 path = "src/lib.rs"
 
 [[bin]]
-name = "ship-network"
+name = "shipd"
 path = "src/main.rs"
 
 [dependencies]

@@ -1,4 +1,4 @@
-//! Ship Network daemon library.
+//! Ship daemon (shipd) library.
 //!
 //! Exposes `run_network` for starting the HTTP/SSE MCP daemon and
 //! `network_status` / `network_stop` for CLI subcommands.
@@ -53,8 +53,8 @@ pub async fn run_network(host: String, port: u16) -> Result<()> {
         .layer(axum::middleware::from_fn(cors_middleware));
 
     let addr = format!("{host}:{port}");
-    eprintln!("ship network: listening on http://{addr}/mcp");
-    tracing::info!("ship network: listening on http://{addr}/mcp");
+    eprintln!("shipd: listening on http://{addr}/mcp");
+    tracing::info!("shipd: listening on http://{addr}/mcp");
 
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
@@ -67,7 +67,7 @@ pub async fn run_network(host: String, port: u16) -> Result<()> {
 
     let _ = std::fs::remove_file(global_dir.join("network.port"));
     let _ = std::fs::remove_file(global_dir.join("network.pid"));
-    tracing::info!("ship network: shutdown complete");
+    tracing::info!("shipd: shutdown complete");
     Ok(())
 }
 
@@ -75,8 +75,8 @@ pub async fn run_network(host: String, port: u16) -> Result<()> {
 pub fn network_status() -> Result<()> {
     let global_dir = runtime::project::get_global_dir()?;
     match std::fs::read_to_string(global_dir.join("network.port")) {
-        Ok(port) => println!("ship network: running on port {}", port.trim()),
-        Err(_) => println!("ship network: not running"),
+        Ok(port) => println!("shipd: running on port {}", port.trim()),
+        Err(_) => println!("shipd: not running"),
     }
     Ok(())
 }
@@ -86,7 +86,7 @@ pub fn network_stop() -> Result<()> {
     let global_dir = runtime::project::get_global_dir()?;
     let pid_file = global_dir.join("network.pid");
     let pid_str = std::fs::read_to_string(&pid_file)
-        .map_err(|_| anyhow!("ship network is not running (no pid file)"))?;
+        .map_err(|_| anyhow!("shipd is not running (no pid file)"))?;
     let pid = pid_str.trim().to_string();
     #[cfg(unix)]
     {
@@ -94,10 +94,10 @@ pub fn network_stop() -> Result<()> {
             .args(["-TERM", &pid])
             .status()
             .map_err(|e| anyhow!("failed to send SIGTERM to pid {pid}: {e}"))?;
-        println!("ship network: sent SIGTERM to pid {pid}");
+        println!("shipd: sent SIGTERM to pid {pid}");
     }
     #[cfg(not(unix))]
-    anyhow::bail!("ship network stop is not supported on this platform");
+    anyhow::bail!("shipd stop is not supported on this platform");
     Ok(())
 }
 

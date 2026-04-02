@@ -2456,24 +2456,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ship-network"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "axum",
- "rmcp",
- "runtime",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "ship-studio-cli"
 version = "0.1.0"
 dependencies = [
@@ -2497,7 +2479,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "ship-network",
+ "shipd",
  "tempfile",
  "tokio",
  "tokio-util",
@@ -2506,6 +2488,24 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "ureq",
+]
+
+[[package]]
+name = "shipd"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "rmcp",
+ "runtime",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
