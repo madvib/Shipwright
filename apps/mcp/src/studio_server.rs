@@ -11,7 +11,7 @@ use rmcp::{
 use std::path::PathBuf;
 
 use crate::requests::*;
-use crate::tools::{git_info, project, session_files, skills, studio};
+use crate::tools::{git_info, project, session_files, skills, studio, studio_inbox};
 use skills::{
     delete_skill_file, get_skill_vars_tool, list_project_skills, list_skill_vars_tool,
     set_skill_var_tool, write_skill_file,
@@ -448,6 +448,22 @@ impl StudioServer {
         };
         if let Err(e) = kr.lock().await.route(envelope.clone(), &ctx).await {
             return format!("Error routing studio event: {}", e);
+        }
+
+        // Write to .ship-session/inbox/ so connected Claude Code sessions can
+        // read the event via read_session_file. Failure is non-fatal.
+        match studio_inbox::write_inbox_file(
+            &project_dir,
+            &req.event_type,
+            &req.payload,
+            &envelope.id,
+        ) {
+            Ok(_) => {
+                self.notify_resources_changed().await;
+            }
+            Err(e) => {
+                tracing::warn!("studio: inbox write failed (non-fatal): {e}");
+            }
         }
 
         format!("{{\"id\":\"{}\"}}", envelope.id)

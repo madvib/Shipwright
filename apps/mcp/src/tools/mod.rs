@@ -12,6 +12,7 @@ pub mod session;
 pub mod session_files;
 pub mod skills;
 pub mod studio;
+pub mod studio_inbox;
 pub mod studio_push;
 pub mod workspace;
 pub mod workspace_ops;
