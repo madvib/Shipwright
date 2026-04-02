@@ -93,14 +93,14 @@ pub async fn run_network(host: String, port: u16) -> Result<()> {
         .route("/agents", axum::routing::get(runtime_api::list_agents))
         .route("/events", axum::routing::get(runtime_api::event_stream))
         .route(
-            "/workspaces/:id/pty",
+            "/workspaces/{id}/pty",
             axum::routing::get(pty_handler::workspace_pty),
         )
         .with_state(api_state.clone());
 
     let supervisor_routes = axum::Router::new()
         .route(
-            "/supervisor/workspaces/:id/start",
+            "/supervisor/workspaces/{id}/start",
             axum::routing::post(supervisor::start_workspace),
         )
         .with_state(api_state);
