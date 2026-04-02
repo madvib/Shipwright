@@ -1,5 +1,5 @@
 ---
-name: dispatch
+name: spawn-agent
 stable-id: spawn-agent
 description: Dispatch a job to a specialist agent in a git worktree. Write the spec, create the worktree, launch the agent.
 tags: [commander, dispatch, worktree]
@@ -58,6 +58,7 @@ These are personal configuration — set in your shell profile, not in project f
 **Branch:** job/<slug>
 **Agent:** <agent>
 **Mode:** autonomous
+**Commander workspace:** <your workspace_id — gate uses this to signal you on completion>
 
 ## Goal
 
@@ -82,6 +83,11 @@ These are personal configuration — set in your shell profile, not in project f
 ---
 > If you notice a bug or problem outside your file scope, log it via
 > `mcp__ship__log_progress` and continue your work.
+>
+> **When all acceptance criteria are met:**
+> 1. Call `mcp__ship__complete_workspace` with a one-paragraph summary of what changed.
+> 2. Call `mcp__ship__mesh_broadcast` with `{ "topic": "job.completed", "workspace_id": "<id>", "summary": "<same summary>" }`.
+>    This notifies commander. If shipd is not running, skip step 2 — step 1 is sufficient.
 ```
 
 ## Test/Impl Split

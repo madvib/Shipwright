@@ -35,6 +35,7 @@ async fn pty_returns_404_for_unknown_workspace() {
 
     let req = axum::http::Request::builder()
         .uri("/api/runtime/workspaces/nonexistent/pty")
+        .header("host", "localhost")
         .header("connection", "upgrade")
         .header("upgrade", "websocket")
         .header("sec-websocket-version", "13")
@@ -44,7 +45,7 @@ async fn pty_returns_404_for_unknown_workspace() {
 
     let app = axum::Router::new()
         .route(
-            "/api/runtime/workspaces/:id/pty",
+            "/api/runtime/workspaces/{id}/pty",
             axum::routing::get(workspace_pty),
         )
         .with_state(state);
@@ -79,6 +80,7 @@ async fn pty_returns_404_when_no_tmux_session() {
 
     let req = axum::http::Request::builder()
         .uri(format!("/api/runtime/workspaces/{ws_id}/pty"))
+        .header("host", "localhost")
         .header("connection", "upgrade")
         .header("upgrade", "websocket")
         .header("sec-websocket-version", "13")
@@ -88,7 +90,7 @@ async fn pty_returns_404_when_no_tmux_session() {
 
     let app = axum::Router::new()
         .route(
-            "/api/runtime/workspaces/:id/pty",
+            "/api/runtime/workspaces/{id}/pty",
             axum::routing::get(workspace_pty),
         )
         .with_state(state);
@@ -136,6 +138,7 @@ async fn pty_returns_429_when_over_connection_limit() {
 
     let req = axum::http::Request::builder()
         .uri(format!("/api/runtime/workspaces/{ws_id}/pty"))
+        .header("host", "localhost")
         .header("connection", "upgrade")
         .header("upgrade", "websocket")
         .header("sec-websocket-version", "13")
@@ -145,7 +148,7 @@ async fn pty_returns_429_when_over_connection_limit() {
 
     let app = axum::Router::new()
         .route(
-            "/api/runtime/workspaces/:id/pty",
+            "/api/runtime/workspaces/{id}/pty",
             axum::routing::get(workspace_pty),
         )
         .with_state(state);

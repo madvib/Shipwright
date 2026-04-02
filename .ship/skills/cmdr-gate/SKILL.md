@@ -1,5 +1,5 @@
 ---
-name: gate
+name: cmdr-gate
 stable-id: cmdr-gate
 description: Review a completed job branch against acceptance criteria. Returns pass/fail with evidence. Run as subagent or inline.
 tags: [gate, review, quality]
@@ -142,3 +142,23 @@ Report back to commander: `LANDED: <commit-hash>`
 
 If any step fails, report `LAND FAILED: <reason>` — do not leave partial state.
 Commander does not retry the land; human decides next action.
+
+## Signal commander on completion
+
+After every verdict (PASS+land or FAIL), notify commander so it can act without human relay:
+
+1. Call `mcp__ship__mesh_broadcast` with:
+   ```json
+   { "topic": "gate.result", "verdict": "LANDED|GATE FAIL", "slug": "<slug>", "detail": "<one line>" }
+   ```
+2. If the job spec includes a `commander_workspace_id` field, also call `mcp__ship__emit_studio_event` with:
+   ```json
+   {
+     "event_type": "studio.gate.result",
+     "target_workspace_id": "<commander_workspace_id>",
+     "payload": { "verdict": "LANDED|GATE FAIL", "slug": "<slug>", "detail": "<one line>" }
+   }
+   ```
+   This writes to the commander workspace's inbox and triggers the MCP resource notification that wakes the commander session.
+
+If shipd is not running, skip step 1. Step 2 is best-effort — never block on it.

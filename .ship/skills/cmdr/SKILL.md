@@ -78,7 +78,7 @@ This prevents agents from writing brittle tests or changing them to match broken
 
 Mesh events push to you via channel notifications. React to:
 
-- **Agent completes** → dispatch gate subagent
+- **`job.completed` on mesh** → read the summary, dispatch gate subagent for that workspace
 - **Agent blocked** → read the blocker. Route to another agent, escalate to human, or unblock directly
 - **Cross-agent request** → create a job and dispatch. Agents don't call each other; you route.
 - **Stale agents** → no heartbeat > 30min? Check tmux pane, investigate
@@ -111,5 +111,5 @@ On **FAIL**: surface specific failures. File follow-on job or send back to agent
 | Cloudflare Workers / infra | `cloudflare` |
 | Auth / Better Auth | `better-auth` |
 | Tests only (no impl) | `test-writer` |
-| Code review / gate | `reviewer` |
+| Code review / gate | `gatekeeper` |
 | Default / mixed | `default` |

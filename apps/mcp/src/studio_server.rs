@@ -454,7 +454,10 @@ impl StudioServer {
         // read the event via read_session_file.  When the active workspace
         // lives in a git worktree the inbox must land in that worktree's
         // .ship-session/, not the main project root.  Failure is non-fatal.
-        let inbox_root = resolve_inbox_root(&project_dir, &workspace_id);
+        // target_workspace_id overrides the caller's workspace — used by agents
+        // (e.g. gate) that need to notify a different session (e.g. commander).
+        let inbox_workspace = req.target_workspace_id.as_deref().unwrap_or(&workspace_id);
+        let inbox_root = resolve_inbox_root(&project_dir, inbox_workspace);
         match studio_inbox::write_inbox_file(
             &inbox_root,
             &req.event_type,

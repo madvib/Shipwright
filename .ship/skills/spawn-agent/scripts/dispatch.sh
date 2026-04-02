@@ -155,7 +155,43 @@ if [[ -z "$PROVIDER_CLI" ]]; then
   fi
 fi
 
+# ── Auto-kickstart via tmux ───────────────────────────────────────────────────
+# Polls a named tmux session for the Claude channels confirmation prompt, accepts
+# it, then sends the job autostart message. No-op for other providers (no prompt).
+# Runs in background — never blocks dispatch.
+auto_kickstart_tmux() {
+  local session="$1"
+  (
+    for i in $(seq 1 15); do
+      sleep 1
+      if tmux capture-pane -t "$session" -p 2>/dev/null | grep -q "I am using this for local development"; then
+        tmux send-keys -t "$session" Enter
+        sleep 1
+        tmux send-keys -t "$session" "Read .ship-session/job-spec.md and execute it autonomously." Enter
+        exit 0
+      fi
+    done
+    # Prompt not found (non-claude provider or --dangerously-skip-permissions accepted it) —
+    # still send the autostart message.
+    tmux send-keys -t "$session" "Read .ship-session/job-spec.md and execute it autonomously." Enter
+  ) &
+}
+
 # ── Open terminal ─────────────────────────────────────────────────────────────
+# Support matrix (terminal × provider):
+#
+#   Strategy  | Auto-accept channels | Auto-kickstart | Notes
+#   ----------|----------------------|----------------|-----------------------------
+#   tmux      | yes (send-keys)      | yes            | Fully automated
+#   wt        | yes (send-keys)      | yes            | WSL + Windows Terminal only
+#   iterm     | no (AppleScript)     | no             | User must accept + start
+#   vscode    | no (opens folder)    | no             | User must run provider CLI
+#   warp      | no (opens folder)    | no             | User must run provider CLI
+#   manual    | no                   | no             | Prints launch command only
+#
+#   Non-claude providers (codex, gemini, opencode): no channels prompt, auto-kickstart
+#   message still sent on tmux/wt strategies.
+#
 # Build launch command with provider-specific flags
 LAUNCH_FLAGS=""
 MODEL_FLAG=""
@@ -191,21 +227,7 @@ case "$TERMINAL" in
     ;;
   tmux)
     tmux new-window -d -n "$SLUG" "$LAUNCH_CMD" 2>/dev/null || { echo "tmux failed. Launch manually: $LAUNCH_CMD"; exit 1; }
-    # Wait for channel confirmation prompt and accept it, then kick job autostart.
-    # Loops up to 15s waiting for the prompt before giving up.
-    (
-      for i in $(seq 1 15); do
-        sleep 1
-        if tmux capture-pane -t "$SLUG" -p 2>/dev/null | grep -q "I am using this for local development"; then
-          tmux send-keys -t "$SLUG" Enter
-          sleep 1
-          tmux send-keys -t "$SLUG" "Read .ship-session/job-spec.md and execute it autonomously." Enter
-          exit 0
-        fi
-      done
-      # No channel prompt found — still kick autostart (no-channels path)
-      tmux send-keys -t "$SLUG" "Read .ship-session/job-spec.md and execute it autonomously." Enter
-    ) &
+    auto_kickstart_tmux "$SLUG"
     ;;
   warp)
     open -a Warp --args --working-directory "$WORKTREE_PATH" 2>/dev/null || echo "Warp launch failed. Launch manually: $LAUNCH_CMD"
@@ -214,12 +236,15 @@ case "$TERMINAL" in
     code "$WORKTREE_PATH" 2>/dev/null || echo "VS Code launch failed. Launch manually: $LAUNCH_CMD"
     ;;
   wt)
-    # From WSL: wt.exe new-tab opens a new tab in the current WT window.
-    # Use bash --login so ~/.bash_profile is sourced (PATH includes ~/.local/bin etc).
-    # Detect the running WSL distro name rather than hardcoding.
+    # From WSL: create a named tmux session so auto_kickstart_tmux can interact
+    # with it via send-keys, then open a wt tab that attaches to it.
+    # bash --login ensures ~/.bash_profile is sourced (PATH includes ~/.local/bin).
     WSL_DISTRO="${WSL_DISTRO_NAME:-Ubuntu}"
-    wt.exe new-tab --title "$SLUG" -- wsl.exe -d "$WSL_DISTRO" bash --login -c "$LAUNCH_CMD" 2>/dev/null || \
-    echo "Windows Terminal launch failed. Launch manually: $LAUNCH_CMD"
+    tmux new-session -d -s "$SLUG" -c "$WORKTREE_PATH" 2>/dev/null || true
+    tmux send-keys -t "$SLUG" "$PROVIDER_CLI $LAUNCH_FLAGS" Enter
+    wt.exe new-tab --title "$SLUG" -- wsl.exe -d "$WSL_DISTRO" bash --login -c "tmux attach-session -t $SLUG" 2>/dev/null || \
+      echo "Windows Terminal launch failed. Attach manually: tmux attach-session -t $SLUG"
+    auto_kickstart_tmux "$SLUG"
     ;;
   *)
     echo ""

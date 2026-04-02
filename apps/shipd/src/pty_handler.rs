@@ -9,7 +9,7 @@ use axum::{
     Json,
     extract::{
         ws::{WebSocket, WebSocketUpgrade},
-        Path, State,
+        FromRequestParts, Path, Request, State,
     },
     http::StatusCode,
     response::{IntoResponse, Response},
@@ -29,10 +29,13 @@ const MAX_PTY_CONNECTIONS: usize = 5;
 /// GET /api/runtime/workspaces/:id/pty
 ///
 /// Upgrades to WebSocket or returns 404/429 before the upgrade.
+/// WebSocketUpgrade is extracted manually after validation so tests can reach
+/// the 404/429 paths without a live HTTP connection (which axum requires for
+/// upgrade state — without it the extractor returns 426 before the handler runs).
 pub async fn workspace_pty(
     Path(workspace_id): Path<String>,
     State(state): State<ApiState>,
-    ws: WebSocketUpgrade,
+    request: Request,
 ) -> Response {
     // Resolve workspace and tmux session name.
     let ship_dir = match runtime::project::get_global_dir() {
@@ -91,6 +94,14 @@ pub async fn workspace_pty(
 
     let pty_connections = state.pty_connections.clone();
     let ws_id = workspace_id.clone();
+
+    // Extract WebSocketUpgrade now that validation has passed.
+    let (mut parts, body) = request.into_parts();
+    let ws = match WebSocketUpgrade::from_request_parts(&mut parts, &()).await {
+        Ok(ws) => ws,
+        Err(e) => return e.into_response(),
+    };
+    drop(body);
 
     ws.on_upgrade(move |socket| async move {
         handle_pty_socket(socket, session_name, pty_connections, ws_id).await;

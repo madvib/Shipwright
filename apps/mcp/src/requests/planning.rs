@@ -18,4 +18,7 @@ pub struct EmitStudioEventRequest {
     pub event_type: String,
     /// Arbitrary JSON payload. Must be self-contained — agents receive this directly.
     pub payload: serde_json::Value,
+    /// Route the inbox write to this workspace instead of the caller's workspace.
+    /// Use when an agent (e.g. gate) needs to notify a different session (e.g. commander).
+    pub target_workspace_id: Option<String>,
 }
