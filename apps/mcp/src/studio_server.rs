@@ -440,7 +440,7 @@ impl StudioServer {
         let ctx = runtime::events::EmitContext {
             caller_kind: runtime::events::CallerKind::Mcp,
             skill_id: None,
-            workspace_id: Some(workspace_id),
+            workspace_id: Some(workspace_id.clone()),
             session_id: None,
         };
         let Some(kr) = runtime::events::kernel_router() else {
@@ -451,9 +451,12 @@ impl StudioServer {
         }
 
         // Write to .ship-session/inbox/ so connected Claude Code sessions can
-        // read the event via read_session_file. Failure is non-fatal.
+        // read the event via read_session_file.  When the active workspace
+        // lives in a git worktree the inbox must land in that worktree's
+        // .ship-session/, not the main project root.  Failure is non-fatal.
+        let inbox_root = resolve_inbox_root(&project_dir, &workspace_id);
         match studio_inbox::write_inbox_file(
-            &project_dir,
+            &inbox_root,
             &req.event_type,
             &req.payload,
             &envelope.id,
@@ -471,6 +474,51 @@ impl StudioServer {
 }
 
 // ---- Helpers ----
+
+/// Resolve the directory that should contain `.ship-session/inbox/` for the
+/// given workspace.
+///
+/// If the workspace record has a non-null `worktree_path`, the agent running
+/// in that worktree reads its inbox from that path.  Otherwise the main
+/// project directory is the workspace root.
+///
+/// Lookup failure (workspace not found, DB error) is non-fatal: we fall back
+/// to `project_dir` so that inbox writes always have a valid destination.
+fn resolve_inbox_root(project_dir: &std::path::Path, workspace_id: &str) -> std::path::PathBuf {
+    let ship_dir = project_dir.join(".ship");
+    match runtime::get_workspace(&ship_dir, workspace_id) {
+        Ok(Some(ws)) => {
+            if let Some(ref wt_path) = ws.worktree_path {
+                let p = std::path::PathBuf::from(wt_path);
+                if p.is_dir() {
+                    return p;
+                }
+                tracing::warn!(
+                    "studio: worktree_path '{}' for workspace '{}' does not exist — \
+                     falling back to project_dir",
+                    wt_path,
+                    workspace_id
+                );
+            }
+            project_dir.to_path_buf()
+        }
+        Ok(None) => {
+            tracing::debug!(
+                "studio: workspace '{}' not found in DB — using project_dir as inbox root",
+                workspace_id
+            );
+            project_dir.to_path_buf()
+        }
+        Err(e) => {
+            tracing::warn!(
+                "studio: workspace lookup failed for '{}': {} — using project_dir as inbox root",
+                workspace_id,
+                e
+            );
+            project_dir.to_path_buf()
+        }
+    }
+}
 
 fn current_git_branch(project_dir: &std::path::Path) -> anyhow::Result<String> {
     let root = project_dir;
@@ -542,3 +590,7 @@ impl ServerHandler for StudioServer {
 #[cfg(test)]
 #[path = "studio_server_tests.rs"]
 mod studio_server_tests;
+
+#[cfg(test)]
+#[path = "inbox_routing_tests.rs"]
+mod inbox_routing_tests;

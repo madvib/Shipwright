@@ -2,18 +2,23 @@ use std::path::{Path, PathBuf};
 
 /// Write an event payload to `.ship-session/inbox/<unix_ms>.json`.
 ///
+/// `inbox_root` is the directory that contains `.ship-session/`. Pass the
+/// active workspace's `worktree_path` when the workspace lives in a git
+/// worktree; otherwise pass the main project root. The caller is responsible
+/// for this resolution — see `studio_server::resolve_inbox_root`.
+///
 /// The file contains the merged payload fields plus `type`, `timestamp`, and
 /// `event_id`. If a file for the current millisecond already exists a `_1`,
 /// `_2`, … suffix is appended to avoid collisions.
 ///
 /// Returns the path of the file written.
 pub fn write_inbox_file(
-    project_dir: &Path,
+    inbox_root: &Path,
     event_type: &str,
     payload: &serde_json::Value,
     event_id: &str,
 ) -> anyhow::Result<PathBuf> {
-    let inbox_dir = project_dir.join(".ship-session").join("inbox");
+    let inbox_dir = inbox_root.join(".ship-session").join("inbox");
     std::fs::create_dir_all(&inbox_dir)?;
 
     let ts_ms = std::time::SystemTime::now()
