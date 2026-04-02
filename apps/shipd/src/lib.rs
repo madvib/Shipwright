@@ -5,6 +5,7 @@
 
 mod connections;
 mod handler;
+pub mod rest_api;
 mod server;
 
 pub use server::NetworkServer;
@@ -23,7 +24,7 @@ pub async fn run_network(host: String, port: u16) -> Result<()> {
     let kernel = runtime::events::init_kernel_router(global_dir.clone())
         .map_err(|e| anyhow!("failed to initialize KernelRouter: {e}"))?;
 
-    connections::spawn_mesh_service(&kernel).await?;
+    let mesh_registry = connections::spawn_mesh_service(&kernel).await?;
 
     write_port_file(&global_dir, port)?;
     write_pid_file(&global_dir)?;
@@ -48,7 +49,24 @@ pub async fn run_network(host: String, port: u16) -> Result<()> {
             },
         );
 
+    let api_state = rest_api::ApiState {
+        kernel: kernel.clone(),
+        mesh_registry: mesh_registry.clone(),
+        agent_mailboxes: std::sync::Arc::new(tokio::sync::Mutex::new(
+            std::collections::HashMap::new(),
+        )),
+    };
+    let api_routes = axum::Router::new()
+        .route("/mesh/register", axum::routing::post(rest_api::mesh_register))
+        .route("/mesh/send", axum::routing::post(rest_api::mesh_send))
+        .route("/mesh/broadcast", axum::routing::post(rest_api::mesh_broadcast))
+        .route("/mesh/discover", axum::routing::get(rest_api::mesh_discover))
+        .route("/mesh/status", axum::routing::post(rest_api::mesh_status_update))
+        .route("/mesh/events/{agent_id}", axum::routing::get(rest_api::mesh_events))
+        .with_state(api_state);
+
     let app = Router::new()
+        .nest("/api", api_routes)
         .nest_service("/mcp", service)
         .layer(axum::middleware::from_fn(cors_middleware));
 

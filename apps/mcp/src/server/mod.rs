@@ -1,4 +1,3 @@
-pub mod event_sink;
 mod handler;
 pub mod notification_relay;
 mod tool_gate;
@@ -14,7 +13,7 @@ use std::path::PathBuf;
 
 use crate::requests::*;
 use crate::tools::{
-    agent, event, mesh as mesh_tools, project, session, session_files, skills, workspace,
+    agent, event, project, session, session_files, skills, workspace,
     workspace_ops,
 };
 use skills::{
@@ -48,6 +47,10 @@ pub struct ShipServer {
     pub actor_store: std::sync::Arc<tokio::sync::Mutex<Option<runtime::events::ActorStore>>>,
     /// Mailbox for this connection's actor. Taken once by start_event_relay.
     pub actor_mailbox: std::sync::Arc<tokio::sync::Mutex<Option<runtime::events::Mailbox>>>,
+    /// MCP provider name from clientInfo (e.g. "claude-code", "cursor").
+    pub mcp_provider: std::sync::Arc<tokio::sync::Mutex<Option<String>>>,
+    /// Active session ID for this connection (set by auto_session_start).
+    pub session_id: std::sync::Arc<tokio::sync::Mutex<Option<String>>>,
 }
 
 impl std::fmt::Debug for ShipServer {
@@ -92,6 +95,8 @@ impl ShipServer {
             })),
             actor_store: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
             actor_mailbox: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+            mcp_provider: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+            session_id: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
 
@@ -103,7 +108,8 @@ impl ShipServer {
         *self.notification_peer.lock().await = Some(peer);
     }
 
-    /// Spawn an actor for this connection using the global KernelRouter.
+    /// Register this agent actor with the local KernelRouter.
+    /// Session/workspace events stay local. Mesh operations forward to ship-network daemon.
     ///
     /// Called from `on_initialized`. Derives the actor_id from the active agent
     /// profile, falling back to `"agent.mcp"`.
@@ -113,7 +119,7 @@ impl ShipServer {
             Err(_) => return,
         };
 
-        // Initialize KernelRouter with the global ~/.ship/ dir — never the project's .ship/.
+        // Initialize local KernelRouter for session/workspace events (per-session, not per-agent).
         let global_dir = match runtime::project::get_global_dir() {
             Ok(d) => d,
             Err(e) => {
@@ -129,14 +135,7 @@ impl ShipServer {
             }
         };
 
-        let actor_id = runtime::get_active_agent(Some(project_dir.clone()))
-            .ok()
-            .flatten()
-            .map(|a| format!("agent.{}", a.id))
-            .unwrap_or_else(|| "agent.mcp".to_string());
-
-        // Spawn MeshService if not already running.
-        spawn_mesh_service_once(&kr).await;
+        let actor_id = self.resolve_actor_id().await;
 
         // Compute skill-derived subscriptions: ship.* platform events + custom skill namespaces.
         let skills_list = runtime::list_skills(&project_dir).unwrap_or_default();
@@ -171,6 +170,7 @@ impl ShipServer {
 
         let mut kr_guard = kr.lock().await;
         let _ = kr_guard.stop_actor(&actor_id);
+
         match kr_guard.spawn_actor(&actor_id, config) {
             Ok((store, mailbox)) => {
                 *self.actor_store.lock().await = Some(store);
@@ -182,32 +182,16 @@ impl ShipServer {
             }
         }
 
-        // Auto-register this agent on the mesh.
+        // Auto-register this agent on the ship-network daemon.
         let capabilities: Vec<String> = skills_list.iter().map(|s| s.id.clone()).collect();
         let capabilities = if capabilities.is_empty() {
             vec!["general".to_string()]
         } else {
             capabilities
         };
-        let register_event = match runtime::events::EventEnvelope::new(
-            "mesh.register",
-            &actor_id,
-            &serde_json::json!({ "agent_id": actor_id, "capabilities": capabilities }),
-        ) {
-            Ok(e) => e.with_actor_id(&actor_id),
-            Err(e) => {
-                tracing::warn!("failed to build mesh.register event: {e}");
-                return;
-            }
-        };
-        let emit_ctx = runtime::events::EmitContext {
-            caller_kind: runtime::events::CallerKind::Mcp,
-            skill_id: None,
-            workspace_id: None,
-            session_id: None,
-        };
-        if let Err(e) = kr.lock().await.route(register_event, &emit_ctx).await {
-            tracing::warn!("failed to route mesh.register: {e}");
+        match crate::network_client::mesh_register(&actor_id, capabilities).await {
+            Ok(_) => tracing::info!(actor_id, "registered on mesh via ship-network"),
+            Err(e) => tracing::warn!(actor_id, "mesh registration failed (daemon may not be running): {e}"),
         }
     }
 
@@ -231,29 +215,151 @@ impl ShipServer {
         // Share the peers Arc so we can add/remove peers later
         relay_state.peers = relay.peers();
 
-        // Register the MCP peer as a sink if available
+        // Select push adapter based on detected provider, register as peer.
         if let Some(peer) = self.notification_peer.lock().await.clone() {
-            let sink = event_sink::McpEventSink::new(peer);
+            let provider = self.mcp_provider.lock().await.clone();
+            let adapter =
+                crate::push::select_adapter(provider.as_deref(), peer);
+            tracing::info!(adapter = adapter.adapter_name(), "push adapter selected");
             let peer_handle = notification_relay::PeerHandle {
                 id: "mcp-agent".to_string(),
                 actor_id: "mcp".to_string(),
-                sink: Box::new(sink),
+                adapter,
                 allowed_events: std::collections::HashSet::new(), // system peer
             };
             relay.add_peer(peer_handle).await;
         }
 
         relay_state.handle = Some(relay.spawn(mailbox));
+
+        // Subscribe to mesh events from ship-network daemon.
+        // These arrive via SSE and get pushed through the same relay peers.
+        let actor_id = self.resolve_actor_id().await;
+        let peers_for_mesh = relay_state.peers.clone();
+        tokio::spawn(async move {
+            let mut rx = match crate::network_client::mesh_subscribe(&actor_id) {
+                Ok(rx) => rx,
+                Err(e) => {
+                    tracing::warn!("mesh subscribe failed: {e}");
+                    return;
+                }
+            };
+            while let Some(event) = rx.recv().await {
+                let peers = peers_for_mesh.read().await;
+                for peer in peers.iter() {
+                    peer.adapter.push_event(&event).await;
+                }
+            }
+            tracing::info!("mesh event subscription ended");
+        });
     }
 
-    /// Resolve the actor_id for the current connection.
+    /// Resolve a unique actor_id for this connection.
+    ///
+    /// Format: `agent.{agent_name}.{branch}` — e.g. `agent.rust-runtime.job/fix-parser`.
+    /// Falls back to `agent.{agent_name}` if branch can't be detected, and
+    /// `agent.mcp.{branch}` if no agent config is set.
     async fn resolve_actor_id(&self) -> String {
-        self.get_effective_project_dir()
-            .await
+        let project_dir = self.get_effective_project_dir().await.ok();
+        let agent_name = project_dir
+            .as_ref()
+            .and_then(|d| runtime::get_active_agent(Some(d.clone())).ok().flatten())
+            .map(|a| a.id)
+            .unwrap_or_else(|| "mcp".to_string());
+
+        // Try project dir first, then CWD as fallback for branch detection.
+        let branch = project_dir
+            .as_ref()
+            .and_then(|d| tool_gate::current_branch(d).ok())
+            .or_else(|| {
+                std::env::current_dir()
+                    .ok()
+                    .and_then(|d| tool_gate::current_branch(&d).ok())
+            });
+
+        let id = match branch {
+            Some(b) => format!("agent.{agent_name}.{b}"),
+            None => format!("agent.{agent_name}"),
+        };
+        tracing::info!(actor_id = %id, "resolved actor ID");
+        id
+    }
+
+    /// Automatically start or resume a session on MCP connection init.
+    ///
+    /// 1. Clean up stale draining sessions (grace window expired).
+    /// 2. Resolve current workspace from git branch.
+    /// 3. If a draining session exists for this workspace+agent, resume it.
+    /// 4. Otherwise start a fresh session via the runtime.
+    /// 5. Store the session_id for tool-call counting and shutdown drain.
+    pub(crate) async fn auto_session_start(&self) {
+        use runtime::db::session_drain;
+
+        // Clean up sessions stuck draining longer than 120s.
+        let _ = session_drain::cleanup_stale_draining(120);
+
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        let project_root = project_dir.parent().unwrap_or(&project_dir);
+        let branch = match tool_gate::current_branch(project_root) {
+            Ok(b) => b,
+            Err(_) => return,
+        };
+
+        let agent_id = runtime::get_active_agent(Some(project_dir.clone()))
             .ok()
-            .and_then(|d| runtime::get_active_agent(Some(d)).ok().flatten())
-            .map(|a| format!("agent.{}", a.id))
-            .unwrap_or_else(|| "agent.mcp".to_string())
+            .flatten()
+            .map(|a| a.id.clone());
+
+        let provider = self.mcp_provider.lock().await.clone();
+
+        // Try to resume a draining session for this workspace+agent.
+        let agent_key = agent_id.as_deref().unwrap_or("mcp");
+        if let Ok(Some(draining)) = session_drain::find_draining_session(&branch, agent_key) {
+            if session_drain::resume_session(&draining.id).is_ok() {
+                tracing::info!(
+                    session_id = %draining.id,
+                    "resumed draining session"
+                );
+                *self.session_id.lock().await = Some(draining.id);
+                return;
+            }
+        }
+
+        // Start a fresh session via the runtime.
+        match runtime::start_workspace_session(
+            &project_dir,
+            &branch,
+            None,
+            agent_id,
+            provider,
+        ) {
+            Ok(session) => {
+                tracing::info!(session_id = %session.id, "auto-started session");
+                *self.session_id.lock().await = Some(session.id);
+            }
+            Err(e) => {
+                tracing::warn!("auto_session_start failed: {e}");
+            }
+        }
+    }
+
+    /// Drain the active session on MCP disconnect.
+    ///
+    /// Transitions the session to "draining" status. If another MCP connection
+    /// attaches within the grace window, `auto_session_start` will resume it.
+    /// Otherwise `cleanup_stale_draining` finalizes it.
+    pub(crate) async fn shutdown(&self) {
+        use runtime::db::session_drain;
+
+        if let Some(sid) = self.session_id.lock().await.take() {
+            match session_drain::drain_session(&sid) {
+                Ok(()) => tracing::info!(session_id = %sid, "session drained on disconnect"),
+                Err(e) => tracing::warn!(session_id = %sid, "drain failed: {e}"),
+            }
+        }
     }
 
     async fn notify_resources_changed(&self) {
@@ -571,11 +677,10 @@ impl ShipServer {
     #[tool(description = "Send a directed message to another agent on the mesh.")]
     async fn mesh_send(&self, Parameters(req): Parameters<MeshSendRequest>) -> String {
         let actor_id = self.resolve_actor_id().await;
-        let envelope = match mesh_tools::build_mesh_send(&actor_id, &req.to, req.body) {
-            Ok(e) => e,
-            Err(e) => return format!("Error: {e}"),
-        };
-        route_mesh_envelope(envelope).await
+        match crate::network_client::mesh_send(&actor_id, &req.to, req.body).await {
+            Ok(result) => result,
+            Err(e) => format!("Error: {e}"),
+        }
     }
 
     #[tool(
@@ -583,35 +688,29 @@ impl ShipServer {
     )]
     async fn mesh_broadcast(&self, Parameters(req): Parameters<MeshBroadcastRequest>) -> String {
         let actor_id = self.resolve_actor_id().await;
-        let envelope =
-            match mesh_tools::build_mesh_broadcast(&actor_id, req.body, req.capability_filter) {
-                Ok(e) => e,
-                Err(e) => return format!("Error: {e}"),
-            };
-        route_mesh_envelope(envelope).await
+        match crate::network_client::mesh_broadcast(&actor_id, req.body, req.capability_filter).await {
+            Ok(result) => result,
+            Err(e) => format!("Error: {e}"),
+        }
     }
 
     #[tool(
         description = "Discover agents on the mesh. Optionally filter by capability or status."
     )]
-    async fn mesh_discover(&self, Parameters(req): Parameters<MeshDiscoverRequest>) -> String {
-        let actor_id = self.resolve_actor_id().await;
-        let envelope =
-            match mesh_tools::build_mesh_discover(&actor_id, req.capability, req.status) {
-                Ok(e) => e,
-                Err(e) => return format!("Error: {e}"),
-            };
-        route_mesh_envelope(envelope).await
+    async fn mesh_discover(&self, Parameters(_req): Parameters<MeshDiscoverRequest>) -> String {
+        match crate::network_client::mesh_discover().await {
+            Ok(result) => result,
+            Err(e) => format!("Error: {e}"),
+        }
     }
 
     #[tool(description = "Update this agent's status on the mesh (active, busy, idle).")]
     async fn mesh_status(&self, Parameters(req): Parameters<MeshStatusRequest>) -> String {
         let actor_id = self.resolve_actor_id().await;
-        let envelope = match mesh_tools::build_mesh_status(&actor_id, &req.status) {
-            Ok(e) => e,
-            Err(e) => return format!("Error: {e}"),
-        };
-        route_mesh_envelope(envelope).await
+        match crate::network_client::mesh_status(&actor_id, &req.status).await {
+            Ok(result) => result,
+            Err(e) => format!("Error: {e}"),
+        }
     }
 
     // ---- Events ----
@@ -626,11 +725,7 @@ impl ShipServer {
             Ok(d) => d,
             Err(e) => return e,
         };
-        let actor_id = runtime::get_active_agent(Some(project_dir.clone()))
-            .ok()
-            .flatten()
-            .map(|a| format!("agent.{}", a.id))
-            .unwrap_or_else(|| "agent.mcp".to_string());
+        let actor_id = self.resolve_actor_id().await;
         let workspace_id =
             tool_gate::current_branch(project_dir.parent().unwrap_or(&project_dir))
                 .unwrap_or_else(|_| "unknown".to_string());
@@ -671,6 +766,8 @@ impl ShipServer {
             return format!("Error routing event: {}", e);
         }
 
+        self.notify_resource_updated("ship://events").await;
+
         match serde_json::to_string(&envelope) {
             Ok(json) => json,
             Err(_) => format!("Event emitted: {}", envelope.id),
@@ -699,77 +796,13 @@ impl ShipServer {
     }
 }
 
-// ---- Mesh service helpers ----
-
-/// Guards a single MeshService spawn across all MCP connections in this process.
-static MESH_SERVICE_SPAWNED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
-
-/// Spawn the MeshService into the global KernelRouter if not already present.
-///
-/// Idempotent — safe to call on every MCP connection, only runs once per process.
-/// Also spawns a feedback task that drains the mesh's outbox and routes
-/// each response event back through the kernel (directed delivery).
-async fn spawn_mesh_service_once(kr: &std::sync::Arc<tokio::sync::Mutex<runtime::events::KernelRouter>>) {
-    if MESH_SERVICE_SPAWNED.set(()).is_err() {
-        return; // Already spawned by another connection.
-    }
-
-    let (outbox_tx, mut outbox_rx) = tokio::sync::mpsc::unbounded_channel::<runtime::events::EventEnvelope>();
-    let mesh_config = runtime::events::ActorConfig {
-        namespace: "service.mesh".to_string(),
-        write_namespaces: vec!["mesh.".to_string()],
-        read_namespaces: vec!["mesh.".to_string()],
-        subscribe_namespaces: vec!["mesh.".to_string()],
-    };
-    let handler: Box<dyn runtime::services::ServiceHandler> =
-        Box::new(runtime::services::mesh::MeshService::new(outbox_tx));
-
-    match runtime::services::spawn_service(&mut *kr.lock().await, "service.mesh", mesh_config, handler) {
-        Ok(_) => {}
-        Err(e) => {
-            tracing::warn!("failed to spawn MeshService: {e}");
-            return;
-        }
-    }
-
-    // Drain mesh outbox → kernel router (directed delivery).
-    let kr_clone = kr.clone();
-    tokio::spawn(async move {
-        let ctx = runtime::events::EmitContext {
-            caller_kind: runtime::events::CallerKind::Mcp,
-            skill_id: None,
-            workspace_id: None,
-            session_id: None,
-        };
-        while let Some(event) = outbox_rx.recv().await {
-            if let Err(e) = kr_clone.lock().await.route(event, &ctx).await {
-                tracing::warn!("mesh outbox routing error: {e}");
-            }
-        }
-    });
-}
 
 /// Route a mesh EventEnvelope through the global KernelRouter.
-async fn route_mesh_envelope(envelope: runtime::events::EventEnvelope) -> String {
-    let Some(kr) = runtime::events::kernel_router() else {
-        return "Error: KernelRouter not initialized".to_string();
-    };
-    let ctx = runtime::events::EmitContext {
-        caller_kind: runtime::events::CallerKind::Mcp,
-        skill_id: None,
-        workspace_id: None,
-        session_id: None,
-    };
-    match kr.lock().await.route(envelope.clone(), &ctx).await {
-        Ok(()) => format!("ok: routed {}", envelope.event_type),
-        Err(e) => format!("Error routing {}: {e}", envelope.event_type),
-    }
-}
-
 // ---- Server entry point ----
 
 pub async fn run_server() -> Result<()> {
     let service = ShipServer::new();
+    let handle = service.clone();
     let running = service
         .serve(stdio())
         .await
@@ -778,6 +811,7 @@ pub async fn run_server() -> Result<()> {
         .waiting()
         .await
         .map_err(|e| anyhow!("MCP Server runtime error: {:?}", e))?;
+    handle.shutdown().await;
     Ok(())
 }
 

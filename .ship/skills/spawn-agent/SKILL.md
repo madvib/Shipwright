@@ -1,126 +1,120 @@
 ---
-name: spawn-agent
+name: dispatch
 stable-id: spawn-agent
-description: Dispatch a job to a specialist agent in a git worktree. Creates the worktree, compiles the agent config, writes the job spec, and gives the human a ready-to-paste launch command.
-tags: [commander, orchestration, worktree, dispatch]
+description: Dispatch a job to a specialist agent in a git worktree. Write the spec, create the worktree, launch the agent.
+tags: [commander, dispatch, worktree]
 authors: [ship]
 ---
 
-# Spawn Agent
+# Dispatch
 
-Dispatch a job to a specialist agent in a git worktree. Idempotent — safe to re-run.
+Launch a specialist agent in a git worktree to execute a job. One command does everything.
 
-## Quick dispatch (preferred)
-
-The `scripts/dispatch.sh` script does everything: creates worktree, writes job spec, compiles agent, opens terminal.
+## Usage
 
 ```bash
 bash scripts/dispatch.sh \
-  --slug jsonc-config \
-  --agent rust-compiler \
-  --spec /path/to/spec.md
+  --slug <name> \
+  --agent <agent> \
+  --spec <path-to-spec>
 ```
 
-Options:
-- `--slug <name>` — Worktree and branch name (required)
-- `--agent <agent>` — Ship agent profile (required)
-- `--spec <file>` — Path to job-spec.md (required)
-- `--base <branch>` — Branch to fork from (default: current branch)
-- `--dir <path>` — Worktree base directory (overrides configured default)
-- `--no-open` — Skip terminal auto-open, print launch command instead
-- `--confirm` — Show spec and ask y/n before launching
-- `--dry-run` — Show what would happen
+| Flag | What |
+|------|------|
+| `--slug <name>` | Worktree dir and branch name (required) |
+| `--agent <agent>` | Ship agent profile (required) |
+| `--spec <file>` | Path to job spec (required) |
+| `--base <branch>` | Branch to fork from (default: current branch) |
+| `--no-open` | Print launch command instead of opening terminal |
+| `--dry-run` | Show what would happen |
 
-{% if runtime.agents %}
-## Available agents
+## Workflow
 
-{% for a in runtime.agents %}- **{{ a.id }}**{% if a.description %} — {{ a.description }}{% endif %}
+1. Write the job spec to `.ship-session/job-spec-<slug>.md`
+2. Run dispatch: `bash scripts/dispatch.sh --slug <slug> --agent <agent> --spec <path>`
+3. Dispatch creates worktree, compiles agent config, opens terminal
+4. Agent picks up `.ship-session/job-spec.md` on start and works autonomously
 
-{% endfor %}
-{% endif %}
-## Environment setup (mandatory)
-
-Before launching any agent, dispatch verifies:
-
-1. `SHIP_GLOBAL_DIR` is set to `$HOME/.ship`
-2. `ship` CLI is on PATH — hard error if not found
-3. `ship use <agent>` runs in the worktree and exits 0
-4. `.mcp.json` exists in the worktree
-5. `.mcp.json` contains `ship mcp serve` args
-
-**If any check fails, dispatch stops and surfaces the error. The agent is not launched.**
-
-An agent without MCP cannot access the Ship runtime. This is not recoverable after the fact.
-
-## Test/impl separation for feature jobs
-
-When the spec describes new behaviour, spawn **two sequential jobs**:
-
-| Job | Slug | Input | Constraint |
-|-----|------|-------|------------|
-| 1 — tests | `<slug>-tests` | Spec + interface definition only | No implementation files in scope. Writes failing tests. |
-| 2 — impl | `<slug>-impl` | Tests as spec | `blocked_by: <slug>-tests`. Makes tests pass. Never writes tests. |
-
-Single-agent feature jobs are permitted only with `single-agent: true` in the spec and a noted reason.
-
-The impl spec must reference the test job and list the test files as its authoritative contract.
-
-## Job spec template
+## Job Spec Template
 
 ```markdown
 # Job Spec: <title>
 
-**Branch:** <branch>
+**Branch:** job/<slug>
 **Agent:** <agent>
 **Mode:** autonomous
 
 ## Goal
 
-<one-paragraph description of the outcome>
+<one-paragraph outcome>
 
 ## File scope
 
-<list the files or directories the agent is allowed to modify>
+<directories/files the agent may modify>
 
 ## What to change
 
 <specific instructions>
 
 ## Architectural context
-- Active ADRs: <list relevant ADR IDs, or "none">
-- Key constraints: <from CLAUDE.md or active ADRs, or "none">
+- Active ADRs: <relevant ADRs or "none">
+- Key constraints: <from CLAUDE.md or "none">
 
 ## Acceptance criteria
 
-<numbered list of verifiable outcomes>
+<numbered verifiable outcomes>
 
 ---
-> If you notice a bug or problem outside your file scope: append to the job log via
-> `mcp__ship__append_job_log`, describe it specifically, continue your work.
-> Never silently leave a noticed problem.
+> If you notice a bug or problem outside your file scope, log it via
+> `mcp__ship__log_progress` and continue your work.
 ```
 
-## Configuration
+## Test/Impl Split
+
+For feature work, dispatch as two sequential jobs:
+
+```bash
+# Job 1: tests only
+bash scripts/dispatch.sh --slug auth-tests --agent test-writer \
+  --spec .ship-session/job-spec-auth-tests.md
+
+# Job 2: implementation (after tests complete and gate passes)
+bash scripts/dispatch.sh --slug auth-impl --agent rust-runtime \
+  --spec .ship-session/job-spec-auth-impl.md
+```
+
+The test spec scopes to test files only. The impl spec references the test files as its contract and must not modify them.
+
+{% if runtime.agents %}
+## Available Agents
+
+{% for a in runtime.agents %}- **{{ a.id }}**{% if a.description %} — {{ a.description }}{% endif %}
+{% endfor %}
+{% endif %}
+
+## Environment
+
+Dispatch verifies before launching:
+1. `ship` CLI is on PATH
+2. `ship use <agent>` succeeds in the worktree
+3. `.mcp.json` exists with `ship mcp serve`
+
+If any check fails, the agent is not launched.
 
 {% if terminal == "auto" %}
-Terminal: auto-detected from environment (`$WT_SESSION` → wt, `$TMUX` → tmux, `$TERM_PROGRAM` → iterm/vscode, `gnome-terminal` on PATH → gnome).
+Terminal: auto-detected (`$TMUX` → tmux, `$WT_SESSION` → wt, `$TERM_PROGRAM` → iterm/vscode).
 {% else %}
 Terminal: **{{ terminal }}**
 {% endif %}
 
 Worktree base: **{{ worktree_dir }}**
 
-{% if confirm_on_dispatch %}
-Dispatch confirmation is **on** — you will be shown the job spec and prompted before launch.
-{% endif %}
-
 ```bash
-ship vars set spawn-agent terminal <auto|wt|iterm|tmux|gnome|vscode|manual>
-ship vars set spawn-agent worktree_dir <path>
-ship vars set spawn-agent confirm_on_dispatch true
+ship vars set dispatch terminal <auto|tmux|wt|iterm|vscode|manual>
+ship vars set dispatch worktree_dir <path>
 ```
 
-## Stale worktree cleanup
+## Cleanup
 
 After gate passes:
 ```bash

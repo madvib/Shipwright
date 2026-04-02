@@ -98,6 +98,10 @@ impl KernelRouter {
         self
     }
 
+    pub fn has_actor(&self, actor_id: &str) -> bool {
+        self.mailboxes.contains_key(actor_id)
+    }
+
     pub fn spawn_actor(
         &mut self,
         actor_id: &str,
@@ -263,6 +267,14 @@ impl KernelRouter {
 
     pub fn actor_count(&self) -> usize {
         self.mailboxes.len()
+    }
+
+    /// Return a snapshot of all active actor IDs and their configs.
+    pub fn list_actors(&self) -> Vec<(String, ActorConfig)> {
+        self.actor_configs
+            .iter()
+            .map(|(id, cfg)| (id.clone(), cfg.clone()))
+            .collect()
     }
 
     pub fn kernel_store_path(&self) -> &Path {

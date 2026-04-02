@@ -31,12 +31,24 @@ impl ServerHandler for ShipServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             protocol_version: ProtocolVersion::LATEST,
-            capabilities: ServerCapabilities::builder()
-                .enable_tools()
-                .enable_resources()
-                .enable_resources_list_changed()
-                .enable_resources_subscribe()
-                .build(),
+            capabilities: {
+                let mut caps = ServerCapabilities::builder()
+                    .enable_tools()
+                    .enable_resources()
+                    .enable_resources_list_changed()
+                    .enable_resources_subscribe()
+                    .build();
+                // Declare claude/channel capability for push notifications.
+                // Non-Claude providers ignore experimental capabilities they
+                // don't understand — this is safe to declare unconditionally.
+                let mut experimental = std::collections::BTreeMap::new();
+                experimental.insert(
+                    "claude/channel".to_string(),
+                    serde_json::Map::new(),
+                );
+                caps.experimental = Some(experimental);
+                caps
+            },
             server_info: Implementation {
                 name: "Ship Project Tracker".into(),
                 version: "0.2.0".into(),
@@ -57,11 +69,20 @@ impl ServerHandler for ShipServer {
     }
 
     async fn on_initialized(&self, context: NotificationContext<RoleServer>) {
+        // Capture provider from MCP handshake before moving the peer.
+        if let Some(client_info) = context.peer.peer_info() {
+            *self.mcp_provider.lock().await = Some(client_info.client_info.name.clone());
+        }
         self.store_peer(context.peer).await;
-        // Spawn actor and start relay. spawn_agent_actor initializes KernelRouter
-        // if needed and places the ActorStore + Mailbox on the server.
-        self.spawn_agent_actor().await;
-        self.start_event_relay().await;
+
+        // Spawn lifecycle tasks in background so on_initialized returns promptly.
+        // This unblocks tools/list and other requests while DB/kernel init runs.
+        let server = self.clone();
+        tokio::spawn(async move {
+            server.auto_session_start().await;
+            server.spawn_agent_actor().await;
+            server.start_event_relay().await;
+        });
     }
 
     async fn call_tool(
@@ -74,6 +95,10 @@ impl ServerHandler for ShipServer {
             && let Err(message) = Self::enforce_mode_tool_gate(&project_dir, &tool_name)
         {
             return Ok(CallToolResult::error(vec![Content::text(message)]));
+        }
+        // Increment tool call count for session analytics.
+        if let Some(sid) = self.session_id.lock().await.as_deref() {
+            let _ = runtime::db::session_drain::increment_tool_count(sid);
         }
         self.tool_router
             .call(rmcp::handler::server::tool::ToolCallContext::new(

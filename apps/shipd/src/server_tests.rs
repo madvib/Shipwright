@@ -13,7 +13,7 @@ fn make_kernel(dir: &TempDir) -> Arc<Mutex<KernelRouter>> {
 }
 
 #[test]
-fn server_registers_five_tools() {
+fn server_registers_six_tools() {
     let dir = TempDir::new().unwrap();
     let kernel = make_kernel(&dir);
     let server = NetworkServer::new(kernel);
@@ -28,7 +28,8 @@ fn server_registers_five_tools() {
     assert!(tools.contains(&"mesh_broadcast".to_string()), "missing mesh_broadcast");
     assert!(tools.contains(&"mesh_discover".to_string()), "missing mesh_discover");
     assert!(tools.contains(&"mesh_status".to_string()), "missing mesh_status");
-    assert_eq!(tools.len(), 5, "expected exactly 5 tools, got: {tools:?}");
+    assert!(tools.contains(&"mesh_inbox".to_string()), "missing mesh_inbox");
+    assert_eq!(tools.len(), 6, "expected exactly 6 tools, got: {tools:?}");
 }
 
 #[tokio::test(flavor = "multi_thread")]

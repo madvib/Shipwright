@@ -5,14 +5,19 @@
 //! them to an outbox channel. The caller drains the outbox through the kernel.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc;
+use tokio::sync::{RwLock, mpsc};
 
 use crate::events::{ActorStore, EventEnvelope};
 use crate::services::ServiceHandler;
+
+/// Shared, read-optimized view of the mesh registry.
+/// The MeshService writes; REST API and other consumers read.
+pub type SharedMeshRegistry = Arc<RwLock<HashMap<String, MeshEntry>>>;
 
 /// Status of a registered agent in the mesh.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -36,6 +41,7 @@ pub struct MeshEntry {
 /// Agent mesh service — validates and resolves agent-to-agent messaging.
 pub struct MeshService {
     agents: HashMap<String, MeshEntry>,
+    shared_registry: SharedMeshRegistry,
     outbox: mpsc::UnboundedSender<EventEnvelope>,
 }
 
@@ -43,6 +49,19 @@ impl MeshService {
     pub fn new(outbox: mpsc::UnboundedSender<EventEnvelope>) -> Self {
         Self {
             agents: HashMap::new(),
+            shared_registry: Arc::new(RwLock::new(HashMap::new())),
+            outbox,
+        }
+    }
+
+    /// Create with a pre-existing shared registry (so REST API can read it).
+    pub fn with_shared_registry(
+        outbox: mpsc::UnboundedSender<EventEnvelope>,
+        registry: SharedMeshRegistry,
+    ) -> Self {
+        Self {
+            agents: HashMap::new(),
+            shared_registry: registry,
             outbox,
         }
     }
@@ -65,16 +84,15 @@ impl MeshService {
             .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
             .unwrap_or_default();
 
-        self.agents.insert(
-            agent_id.to_string(),
-            MeshEntry {
-                agent_id: agent_id.to_string(),
-                label: agent_id.to_string(),
-                capabilities,
-                registered_at: Utc::now(),
-                status: AgentStatus::Active,
-            },
-        );
+        let entry = MeshEntry {
+            agent_id: agent_id.to_string(),
+            label: agent_id.to_string(),
+            capabilities,
+            registered_at: Utc::now(),
+            status: AgentStatus::Active,
+        };
+        self.agents.insert(agent_id.to_string(), entry.clone());
+        self.sync_shared_registry();
         Ok(())
     }
 
@@ -84,7 +102,37 @@ impl MeshService {
             .as_str()
             .ok_or_else(|| anyhow!("mesh.deregister: missing agent_id"))?;
         self.agents.remove(agent_id);
+        self.sync_shared_registry();
         Ok(())
+    }
+
+    fn handle_status(&mut self, event: &EventEnvelope) -> Result<()> {
+        let payload: serde_json::Value = serde_json::from_str(&event.payload_json)?;
+        let agent_id = payload["agent_id"]
+            .as_str()
+            .ok_or_else(|| anyhow!("mesh.status: missing agent_id"))?;
+        let status = parse_status(payload["status"].as_str())?;
+        if let Some(entry) = self.agents.get_mut(agent_id) {
+            entry.status = status;
+            self.sync_shared_registry();
+        }
+        Ok(())
+    }
+
+    /// Push current local state to the shared registry (blocking write is fine
+    /// here — called from the service event loop which is single-threaded).
+    fn sync_shared_registry(&self) {
+        let snapshot = self.agents.clone();
+        let reg = self.shared_registry.clone();
+        // Use try_write to avoid blocking; if contended, next mutation syncs.
+        if let Ok(mut guard) = reg.try_write() {
+            *guard = snapshot;
+        } else {
+            let reg = reg.clone();
+            tokio::spawn(async move {
+                *reg.write().await = snapshot;
+            });
+        }
     }
 
     fn handle_send(&self, event: &EventEnvelope) -> Result<()> {
@@ -191,17 +239,6 @@ impl MeshService {
         Ok(())
     }
 
-    fn handle_status(&mut self, event: &EventEnvelope) -> Result<()> {
-        let payload: serde_json::Value = serde_json::from_str(&event.payload_json)?;
-        let agent_id = payload["agent_id"]
-            .as_str()
-            .ok_or_else(|| anyhow!("mesh.status: missing agent_id"))?;
-        let status = parse_status(payload["status"].as_str())?;
-        if let Some(entry) = self.agents.get_mut(agent_id) {
-            entry.status = status;
-        }
-        Ok(())
-    }
 }
 
 impl ServiceHandler for MeshService {

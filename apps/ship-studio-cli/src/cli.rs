@@ -234,6 +234,10 @@ pub enum Commands {
     },
 
 
+    /// Real-time dashboard — workspaces, sessions, events (htop for Ship)
+    #[cfg(feature = "unstable")]
+    Top,
+
     /// Show help — same as --help
     Help,
 }

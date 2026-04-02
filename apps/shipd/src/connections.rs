@@ -5,9 +5,38 @@ use async_trait::async_trait;
 use rmcp::model::CustomNotification;
 use rmcp::{Peer, RoleServer, model::ServerNotification};
 use runtime::events::{EventEnvelope, Mailbox};
+use std::collections::VecDeque;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::warn;
+
+// ---- Inbox ----
+
+/// Shared inbox buffer for polling-based message retrieval.
+/// The EventRelay writes here; `mesh_inbox` drains it.
+pub struct Inbox {
+    buf: RwLock<VecDeque<EventEnvelope>>,
+}
+
+impl Inbox {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self { buf: RwLock::new(VecDeque::new()) })
+    }
+
+    pub async fn push(&self, event: EventEnvelope) {
+        let mut buf = self.buf.write().await;
+        buf.push_back(event);
+        // Cap at 256 to prevent unbounded growth
+        while buf.len() > 256 {
+            buf.pop_front();
+        }
+    }
+
+    /// Drain all pending messages.
+    pub async fn drain(&self) -> Vec<EventEnvelope> {
+        self.buf.write().await.drain(..).collect()
+    }
+}
 
 // ---- EventSink ----
 
@@ -50,14 +79,21 @@ pub struct PeerHandle {
     pub sink: Box<dyn EventSink>,
 }
 
-/// Routes events from an actor mailbox to the connected MCP peer.
+/// Routes events from an actor mailbox to the connected MCP peer and inbox buffer.
 pub struct EventRelay {
     peers: Arc<RwLock<Vec<PeerHandle>>>,
+    inbox: Option<Arc<Inbox>>,
 }
 
 impl EventRelay {
     pub fn new() -> Self {
-        Self { peers: Arc::new(RwLock::new(Vec::new())) }
+        Self { peers: Arc::new(RwLock::new(Vec::new())), inbox: None }
+    }
+
+    /// Attach an inbox so messages are buffered for polling via `mesh_inbox`.
+    pub fn with_inbox(mut self, inbox: Arc<Inbox>) -> Self {
+        self.inbox = Some(inbox);
+        self
     }
 
     pub async fn add_peer(&self, handle: PeerHandle) {
@@ -69,6 +105,11 @@ impl EventRelay {
     pub fn spawn(self, mut mailbox: Mailbox) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
             while let Some(env) = mailbox.recv().await {
+                // Buffer for polling
+                if let Some(ref inbox) = self.inbox {
+                    inbox.push(env.clone()).await;
+                }
+                // Push to SSE peers (best-effort)
                 let peers = self.peers.read().await;
                 for peer in peers.iter() {
                     peer.sink.send_event(&env).await;
@@ -132,12 +173,16 @@ impl Drop for ConnectionGuard {
 static MESH_SPAWNED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
 
 /// Spawn the MeshService into the shared kernel once for the daemon lifetime.
-/// Idempotent — safe to call multiple times.
+/// Returns the shared registry for the REST API to read.
+/// Idempotent — safe to call multiple times (returns new empty registry on re-call).
 pub async fn spawn_mesh_service(
     kernel: &Arc<tokio::sync::Mutex<runtime::events::KernelRouter>>,
-) -> Result<()> {
+) -> Result<runtime::services::mesh::SharedMeshRegistry> {
+    let registry: runtime::services::mesh::SharedMeshRegistry =
+        Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
+
     if MESH_SPAWNED.set(()).is_err() {
-        return Ok(());
+        return Ok(registry);
     }
 
     let (outbox_tx, mut outbox_rx) =
@@ -149,8 +194,12 @@ pub async fn spawn_mesh_service(
         read_namespaces: vec!["mesh.".to_string()],
         subscribe_namespaces: vec!["mesh.".to_string()],
     };
-    let handler: Box<dyn runtime::services::ServiceHandler> =
-        Box::new(runtime::services::mesh::MeshService::new(outbox_tx));
+    let handler: Box<dyn runtime::services::ServiceHandler> = Box::new(
+        runtime::services::mesh::MeshService::with_shared_registry(
+            outbox_tx,
+            registry.clone(),
+        ),
+    );
 
     runtime::services::spawn_service(
         &mut *kernel.lock().await,
@@ -176,5 +225,5 @@ pub async fn spawn_mesh_service(
         }
     });
 
-    Ok(())
+    Ok(registry)
 }

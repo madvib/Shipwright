@@ -1,21 +1,15 @@
-use async_trait::async_trait;
 use runtime::events::{EventEnvelope, Mailbox};
 use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-/// Abstraction over the MCP peer to enable testing.
-/// Sends `ship/event` custom notifications with the full event payload.
-#[async_trait]
-pub trait EventSink: Send + Sync + 'static {
-    async fn send_event(&self, event: &EventEnvelope);
-}
+use crate::push::PushAdapter;
 
 /// A connected agent peer with its allowed event types.
 pub struct PeerHandle {
     pub id: String,
     pub actor_id: String,
-    pub sink: Box<dyn EventSink>,
+    pub adapter: Box<dyn PushAdapter>,
     /// Event types this agent is allowed to receive, derived from
     /// the agent's active skills' declared `in` events.
     /// Empty = system peer, receives all (e.g. internal projections).
@@ -28,9 +22,6 @@ pub struct PeerHandle {
 /// events that match its agent's active skill declarations. This enforces
 /// least privilege — an agent without `visual-brainstorm` never sees
 /// `visual-brainstorm.annotation_created`.
-///
-/// Events are sent as `ship/event` custom MCP notifications with the full
-/// EventEnvelope payload, not as `notify_resource_updated` nudges.
 pub struct EventRelay {
     peers: Arc<RwLock<Vec<PeerHandle>>>,
 }
@@ -69,7 +60,7 @@ impl EventRelay {
         let peers = self.peers.read().await;
         for peer in peers.iter() {
             if self.peer_should_receive(peer, event) {
-                peer.sink.send_event(event).await;
+                peer.adapter.push_event(event).await;
             }
         }
     }

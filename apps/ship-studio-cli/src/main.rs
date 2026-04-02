@@ -13,6 +13,8 @@ mod convert;
 mod dep_skills;
 #[cfg(feature = "unstable")]
 mod events_cmd;
+#[cfg(feature = "unstable")]
+mod top;
 mod help_topics;
 mod hook;
 mod init;
@@ -121,6 +123,8 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
             }
             #[cfg(feature = "unstable")]
             Commands::Events { action } => dispatch_events(action),
+            #[cfg(feature = "unstable")]
+            Commands::Top => run_top(),
             Commands::Hook { action } => dispatch_hook(action),
             Commands::Network { action } => dispatch_network(action),
             Commands::Studio { port, open } => run_studio(port, open),
@@ -148,6 +152,12 @@ fn run_studio(port: u16, open: bool) -> Result<()> {
             .spawn();
     }
     mcp_serve::run_studio(port)
+}
+
+#[cfg(feature = "unstable")]
+fn run_top() -> Result<()> {
+    let ship_dir = runtime::project::get_project_dir(None)?;
+    top::run(ship_dir)
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────

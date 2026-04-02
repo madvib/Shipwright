@@ -145,12 +145,12 @@ impl StudioServer {
         let peer = self.notification_peer.lock().await.clone();
         let Some(peer) = peer else { return };
 
-        let sink = crate::server::event_sink::McpEventSink::new(peer);
+        let adapter = crate::push::mcp_notification::McpNotificationAdapter::new(peer);
         let relay = crate::server::notification_relay::EventRelay::new();
         let peer_handle = crate::server::notification_relay::PeerHandle {
             id: "studio-relay".to_string(),
             actor_id: "studio".to_string(),
-            sink: Box::new(sink),
+            adapter: Box::new(adapter),
             allowed_events: std::collections::HashSet::new(), // receive all
         };
         relay.add_peer(peer_handle).await;
@@ -457,7 +457,7 @@ impl StudioServer {
 // ---- Helpers ----
 
 fn current_git_branch(project_dir: &std::path::Path) -> anyhow::Result<String> {
-    let root = project_dir.parent().unwrap_or(project_dir);
+    let root = project_dir;
     let out = std::process::Command::new("git")
         .args(["branch", "--show-current"])
         .current_dir(root)

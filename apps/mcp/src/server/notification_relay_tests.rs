@@ -1,23 +1,28 @@
 use super::*;
+use crate::push::PushAdapter;
 use tokio::sync::Mutex;
 
 type Log = Arc<Mutex<Vec<EventEnvelope>>>;
 
-struct MockSink {
+struct MockAdapter {
     events: Log,
 }
 
-impl MockSink {
+impl MockAdapter {
     fn new() -> (Self, Log) {
         let log: Log = Arc::new(Mutex::new(Vec::new()));
         (Self { events: log.clone() }, log)
     }
 }
 
-#[async_trait]
-impl EventSink for MockSink {
-    async fn send_event(&self, event: &EventEnvelope) {
+#[async_trait::async_trait]
+impl PushAdapter for MockAdapter {
+    async fn push_event(&self, event: &EventEnvelope) {
         self.events.lock().await.push(event.clone());
+    }
+
+    fn adapter_name(&self) -> &'static str {
+        "mock"
     }
 }
 
@@ -27,20 +32,20 @@ fn envelope(event_type: &str) -> EventEnvelope {
         .with_context(Some("feature/auth"), Some("sess-1"))
 }
 
-fn system_peer(id: &str, sink: MockSink) -> PeerHandle {
+fn system_peer(id: &str, adapter: MockAdapter) -> PeerHandle {
     PeerHandle {
         id: id.into(),
         actor_id: format!("actor-{id}"),
-        sink: Box::new(sink),
+        adapter: Box::new(adapter),
         allowed_events: HashSet::new(),
     }
 }
 
-fn skill_peer(id: &str, sink: MockSink, events: Vec<&str>) -> PeerHandle {
+fn skill_peer(id: &str, adapter: MockAdapter, events: Vec<&str>) -> PeerHandle {
     PeerHandle {
         id: id.into(),
         actor_id: format!("actor-{id}"),
-        sink: Box::new(sink),
+        adapter: Box::new(adapter),
         allowed_events: events.into_iter().map(String::from).collect(),
     }
 }
@@ -62,9 +67,9 @@ async fn run_relay(relay: EventRelay, events: Vec<EventEnvelope>) {
 
 #[tokio::test]
 async fn system_peer_receives_all_events() {
-    let (sink, log) = MockSink::new();
+    let (adapter, log) = MockAdapter::new();
     let relay = EventRelay::new();
-    relay.add_peer(system_peer("p1", sink)).await;
+    relay.add_peer(system_peer("p1", adapter)).await;
     run_relay(
         relay,
         vec![
@@ -78,12 +83,12 @@ async fn system_peer_receives_all_events() {
 
 #[tokio::test]
 async fn skill_peer_receives_matching_skill_events() {
-    let (sink, log) = MockSink::new();
+    let (adapter, log) = MockAdapter::new();
     let relay = EventRelay::new();
     relay
         .add_peer(skill_peer(
             "p1",
-            sink,
+            adapter,
             vec!["visual-brainstorm.annotation_created"],
         ))
         .await;
@@ -97,10 +102,10 @@ async fn skill_peer_receives_matching_skill_events() {
 
 #[tokio::test]
 async fn skill_peer_blocked_from_unmatched_skill_events() {
-    let (sink, log) = MockSink::new();
+    let (adapter, log) = MockAdapter::new();
     let relay = EventRelay::new();
     relay
-        .add_peer(skill_peer("p1", sink, vec!["mcp-setup.server_ready"]))
+        .add_peer(skill_peer("p1", adapter, vec!["mcp-setup.server_ready"]))
         .await;
     run_relay(
         relay,
@@ -112,10 +117,10 @@ async fn skill_peer_blocked_from_unmatched_skill_events() {
 
 #[tokio::test]
 async fn skill_peer_still_receives_system_events() {
-    let (sink, log) = MockSink::new();
+    let (adapter, log) = MockAdapter::new();
     let relay = EventRelay::new();
     relay
-        .add_peer(skill_peer("p1", sink, vec!["mcp-setup.server_ready"]))
+        .add_peer(skill_peer("p1", adapter, vec!["mcp-setup.server_ready"]))
         .await;
     run_relay(relay, vec![envelope("session.started")]).await;
     assert_eq!(log.lock().await.len(), 1);
@@ -123,18 +128,18 @@ async fn skill_peer_still_receives_system_events() {
 
 #[tokio::test]
 async fn multiple_peers_filtered_independently() {
-    let (sa, la) = MockSink::new();
-    let (sb, lb) = MockSink::new();
+    let (a, la) = MockAdapter::new();
+    let (b, lb) = MockAdapter::new();
     let relay = EventRelay::new();
     relay
         .add_peer(skill_peer(
             "a",
-            sa,
+            a,
             vec!["visual-brainstorm.annotation_created"],
         ))
         .await;
     relay
-        .add_peer(skill_peer("b", sb, vec!["mcp-setup.server_ready"]))
+        .add_peer(skill_peer("b", b, vec!["mcp-setup.server_ready"]))
         .await;
     run_relay(
         relay,
@@ -147,9 +152,9 @@ async fn multiple_peers_filtered_independently() {
 
 #[tokio::test]
 async fn event_payload_delivered_intact() {
-    let (sink, log) = MockSink::new();
+    let (adapter, log) = MockAdapter::new();
     let relay = EventRelay::new();
-    relay.add_peer(system_peer("p1", sink)).await;
+    relay.add_peer(system_peer("p1", adapter)).await;
     let evt = envelope("session.started");
     let evt_id = evt.id.clone();
     run_relay(relay, vec![evt]).await;
@@ -162,11 +167,11 @@ async fn event_payload_delivered_intact() {
 
 #[tokio::test]
 async fn remove_peer_stops_delivery() {
-    let (sa, la) = MockSink::new();
-    let (sb, lb) = MockSink::new();
+    let (a, la) = MockAdapter::new();
+    let (b, lb) = MockAdapter::new();
     let relay = EventRelay::new();
-    relay.add_peer(system_peer("a", sa)).await;
-    relay.add_peer(system_peer("b", sb)).await;
+    relay.add_peer(system_peer("a", a)).await;
+    relay.add_peer(system_peer("b", b)).await;
     relay.remove_peer("a").await;
     run_relay(relay, vec![envelope("session.started")]).await;
     assert!(la.lock().await.is_empty());
@@ -205,10 +210,10 @@ async fn system_event_detection() {
 
 #[tokio::test]
 async fn studio_events_delivered_to_skill_peers_without_declaration() {
-    let (sink, log) = MockSink::new();
+    let (adapter, log) = MockAdapter::new();
     let relay = EventRelay::new();
     relay
-        .add_peer(skill_peer("p1", sink, vec!["some-skill.event"]))
+        .add_peer(skill_peer("p1", adapter, vec!["some-skill.event"]))
         .await;
     run_relay(
         relay,

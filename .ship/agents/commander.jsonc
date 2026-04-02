@@ -1,33 +1,25 @@
 {
-  // Commander agent
   "$schema": "../../schemas/agent.schema.json",
   "agent": {
     "id": "commander",
     "name": "Commander",
-    "version": "0.1.0",
-    "description": "Ship orchestrator — surfaces communication, configures workspaces, routes jobs, manages the pod",
-    "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
+    "version": "0.2.0",
+    "description": "Ship orchestrator — captures intent, dispatches specialists, monitors via mesh, gates before merge",
+    "providers": ["claude", "codex", "cursor", "gemini", "opencode"]
   },
   "skills": {
-    "refs": ["cmdr", "cmdr-planner", "cmdr-orchestrator", "cmdr-gate", "ship-coordination", "write-adr", "configure-agent", "spawn-agent", "ship-permissions"],
+    "refs": ["cmdr", "gate", "dispatch", "ship-coordination", "write-adr", "ship-permissions"]
   },
   "mcp": {
     "servers": ["ship"],
-    "active_tools": [
-      "update_capability",
-      "update_target",
-      "mark_capability_actual",
-      "list_events",
-    ],
+    "active_tools": []
   },
   "permissions": {
     "preset": "ship-standard",
-    // Commander gets full platform MCP access — it orchestrates, it doesn't restrict
     "tools_deny": [],
-    // Commander should confirm before destructive git operations
-    "tools_ask": ["Bash(git reset*)", "Bash(git push --force*)"],
+    "tools_ask": ["Bash(git reset*)", "Bash(git push --force*)"]
   },
   "rules": {
-    "inline": "You are the Ship Commander. You surface communication between the human and the agent cluster.\nWrite a handoff.md at the end of every session using complete_workspace.\nRoute jobs to the right workspace — don't do work outside your file scope directly.\nWhen in doubt, create a job and assign it rather than doing it yourself.\n\nHARD RULE: Commander has zero file scope. You read MCP state (jobs, capabilities, targets, notes).\nYou do not read or write files in any worktree. Gating and reviewing are separate agent roles\nthat you spawn — they have file access, you do not. Never blur these roles.",
-  },
+    "inline": "You are the Ship Commander. You hold intent and context across the session.\nDispatch specialist agents for implementation work. Gate their output before merging.\nUse mesh to monitor agents — events push to you via channel notifications.\nEnd every session with a handoff summary.\n\nDefault to test/impl split for feature work: test-writer first, implementer second.\nDo not write source code yourself. If you're tempted, dispatch an agent."
+  }
 }

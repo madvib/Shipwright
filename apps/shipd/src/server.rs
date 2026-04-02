@@ -15,7 +15,7 @@ use rmcp::schemars::{self, JsonSchema};
 use serde::Deserialize;
 use runtime::events::{ActorConfig, CallerKind, EmitContext, EventEnvelope};
 
-use crate::connections::{ConnectionGuard, EventRelay, McpEventSink, PeerHandle};
+use crate::connections::{ConnectionGuard, EventRelay, Inbox, McpEventSink, PeerHandle};
 
 // ---- Request types ----
 
@@ -69,6 +69,8 @@ pub struct NetworkServer {
     notification_peer: Arc<tokio::sync::Mutex<Option<Peer<RoleServer>>>>,
     /// Per-connection cleanup guard. Dropped when the last clone is gone.
     conn: Arc<ConnectionGuard>,
+    /// Per-connection inbox for polling-based message retrieval.
+    inbox: Arc<Inbox>,
 }
 
 impl std::fmt::Debug for NetworkServer {
@@ -90,6 +92,7 @@ impl NetworkServer {
             kernel,
             notification_peer: Arc::new(tokio::sync::Mutex::new(None)),
             conn,
+            inbox: Inbox::new(),
         }
     }
 
@@ -157,8 +160,8 @@ impl NetworkServer {
             Err(e) => return format!("Error: failed to spawn actor: {e}"),
         };
 
-        // Wire event relay
-        let relay = EventRelay::new();
+        // Wire event relay with inbox for polling
+        let relay = EventRelay::new().with_inbox(self.inbox.clone());
         if let Some(peer) = self.notification_peer.lock().await.clone() {
             relay.add_peer(PeerHandle {
                 sink: Box::new(McpEventSink::new(peer)),
@@ -251,6 +254,22 @@ impl NetworkServer {
                 Err(e) => return format!("Error: {e}"),
             };
         self.route(envelope).await
+    }
+
+    #[tool(description = "Check inbox for received messages. Returns all pending messages and clears the inbox.")]
+    async fn mesh_inbox(&self) -> String {
+        let Some(_) = self.actor_id().await else {
+            return "Error: not registered — call mesh_register first".to_string();
+        };
+        let messages = self.inbox.drain().await;
+        if messages.is_empty() {
+            return "no messages".to_string();
+        }
+        let items: Vec<serde_json::Value> = messages
+            .iter()
+            .filter_map(|e| serde_json::to_value(e).ok())
+            .collect();
+        serde_json::to_string_pretty(&items).unwrap_or_else(|_| "Error: serialization".into())
     }
 
     #[tool(description = "Update this agent's status on the mesh (active, busy, idle).")]

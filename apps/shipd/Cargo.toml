@@ -24,6 +24,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 axum = { version = "0.8", features = ["http1", "tokio"] }
 rmcp = { version = "0.16.0", features = ["server", "transport-streamable-http-server"] }
 async-trait = "0.1"
+async-stream = "0.3"
+futures = "0.3"
 
 [features]
 unstable = ["runtime/unstable"]

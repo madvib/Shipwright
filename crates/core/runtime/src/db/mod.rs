@@ -14,6 +14,7 @@ pub mod kv;
 pub mod managed_state;
 pub mod schema;
 pub mod session;
+pub mod session_drain;
 pub mod session_events;
 #[cfg(test)]
 pub mod session_events_testutil;

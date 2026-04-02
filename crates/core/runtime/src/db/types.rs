@@ -51,6 +51,9 @@ pub struct WorkspaceSessionDb {
     pub compiled_at: Option<String>,
     pub compile_error: Option<String>,
     pub config_generation_at_start: Option<i64>,
+    pub tool_call_count: i64,
+    pub drained_at: Option<String>,
+    pub mcp_provider: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
