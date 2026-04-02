@@ -4,7 +4,7 @@
 
 import { useMemo, useState, useEffect } from 'react'
 import { usePullAgents, useProjectSkills } from '#/features/studio/mcp-queries'
-import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
+import { useDaemon } from '#/features/studio/hooks/useDaemon'
 import { idbGet, idbSet, migrateFromLocalStorage } from '#/lib/idb-cache'
 import type { Skill, PullSkill, JsonValue } from '@ship/ui'
 
@@ -114,8 +114,7 @@ export function mergeProjectSkills(
 }
 
 export function useSkillsLibrary(): UseSkillsLibraryReturn {
-  const mcp = useLocalMcpContext()
-  const isConnected = mcp?.status === 'connected'
+  const { connected: isConnected } = useDaemon()
   const pullQuery = usePullAgents()
   const projectQuery = useProjectSkills()
   const [cachedSkills, setCachedSkills] = useState<LibrarySkill[]>([])
@@ -188,6 +187,6 @@ export function useSkillsLibrary(): UseSkillsLibraryReturn {
   return {
     skills,
     isLoading: pullQuery.isLoading,
-    isConnected: isConnected ?? false,
+    isConnected,
   }
 }

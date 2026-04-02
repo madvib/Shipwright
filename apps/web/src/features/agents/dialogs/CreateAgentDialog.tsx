@@ -8,7 +8,7 @@ import { Button } from '@ship/primitives'
 import { makeAgent } from '#/features/agents/make-agent'
 import { buildTransferBundle } from '#/features/studio/build-transfer-bundle'
 import { usePushBundle } from '#/features/studio/mcp-queries'
-import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
+import { useDaemon } from '#/features/studio/hooks/useDaemon'
 import { getFieldEnum, getFieldDescription } from '#/features/agents/schema-hints'
 import { validateAgentProfile } from '#/features/agents/schema-validation'
 import { toast } from 'sonner'
@@ -21,8 +21,7 @@ interface CreateAgentDialogProps {
 export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps) {
   const navigate = useNavigate()
   const pushBundle = usePushBundle()
-  const mcp = useLocalMcpContext()
-  const isConnected = mcp?.status === 'connected'
+  const { connected: isConnected } = useDaemon()
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -63,7 +62,7 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
         },
       })
     } else {
-      toast.error('Connect to CLI to create agents')
+      toast.error('Daemon not connected — cannot create agents')
     }
   }
 
@@ -132,7 +131,7 @@ export function CreateAgentDialog({ open, onOpenChange }: CreateAgentDialogProps
 
           {!isConnected && (
             <p className="text-[11px] text-amber-500">
-              Connect to CLI to create agents. Agents are stored in your local .ship/ directory.
+              Daemon not connected. Agents are stored in your local .ship/ directory.
             </p>
           )}
 
