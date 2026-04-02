@@ -1,10 +1,11 @@
 // Draft state management for session file editing.
 // Same IndexedDB caching pattern as the Skills IDE (useSkillsIDE.ts).
-// Drafts persist across page reloads. Save writes to MCP.
+// Drafts persist across page reloads. Save writes to daemon.
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
+import { DAEMON_BASE_URL } from '#/lib/daemon-config'
+import { useDaemon } from '#/features/studio/hooks/useDaemon'
 import { idbGet, idbSet } from '#/lib/idb-cache'
 import { sessionKeys } from './query-keys'
 
@@ -27,14 +28,15 @@ export interface UseSessionDraftsReturn {
   isDirty: (path: string) => boolean
   /** Set of all paths with unsaved changes */
   unsavedPaths: Set<string>
-  /** Save a single file to MCP */
+  /** Save a single file to daemon */
   saveFile: (path: string) => void
   /** Whether a save is in progress */
   isSaving: boolean
 }
 
 export function useSessionDrafts(): UseSessionDraftsReturn {
-  const mcp = useLocalMcpContext()
+  const { workspaces } = useDaemon()
+  const wsId = workspaces.find((w) => w.status === 'active')?.branch ?? 'v0.2.0'
   const queryClient = useQueryClient()
   const [drafts, setDrafts] = useState<Record<string, SessionDraft>>({})
   const loadedRef = useRef(false)
@@ -70,7 +72,6 @@ export function useSessionDrafts(): UseSessionDraftsReturn {
 
   const openFile = useCallback((path: string, serverContent: string) => {
     setDrafts((prev) => {
-      // Don't overwrite existing draft — it may have unsaved edits
       if (prev[path]) return prev
       return { ...prev, [path]: { content: serverContent, originalContent: serverContent } }
     })
@@ -100,20 +101,22 @@ export function useSessionDrafts(): UseSessionDraftsReturn {
     return paths
   }, [drafts])
 
-  // Save to MCP
+  // Save to daemon
   const saveMutation = useMutation({
     mutationFn: async ({ path, content }: { path: string; content: string }) => {
-      if (!mcp) throw new Error('Not connected')
-      await mcp.callTool('write_session_file', { path, content })
+      const res = await fetch(`${DAEMON_BASE_URL}/api/workspaces/${encodeURIComponent(wsId)}/session-files/${encodeURIComponent(path)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      })
+      if (!res.ok) throw new Error(`daemon: write session file ${res.status}`)
     },
     onSuccess: (_, { path }) => {
-      // Mark draft as saved
       setDrafts((prev) => {
         const draft = prev[path]
         if (!draft) return prev
         return { ...prev, [path]: { ...draft, originalContent: draft.content } }
       })
-      // Invalidate file content cache
       void queryClient.invalidateQueries({ queryKey: sessionKeys.fileContent(path) })
       void queryClient.invalidateQueries({ queryKey: sessionKeys.files() })
     },

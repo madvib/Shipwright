@@ -1,9 +1,9 @@
-// Merged agent hook: combines MCP pull data with draft overlays.
+// Merged agent hook: combines pull data with draft overlays.
 // This is the primary read path for agent data in the UI.
 
 import { useMemo, useState, useEffect } from 'react'
 import { usePullAgents } from '#/features/studio/mcp-queries'
-import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
+import { useDaemon } from '#/features/studio/hooks/useDaemon'
 import { useAgentDrafts } from './useAgentDrafts'
 import { pullAgentToResolved } from './pull-adapter'
 import { idbGet, idbSet, migrateFromLocalStorage } from '#/lib/idb-cache'
@@ -19,8 +19,7 @@ export interface UseAgentsReturn {
 }
 
 export function useAgents(): UseAgentsReturn {
-  const mcp = useLocalMcpContext()
-  const isConnected = mcp?.status === 'connected'
+  const { connected } = useDaemon()
   const pullQuery = usePullAgents()
   const { drafts } = useAgentDrafts()
   const [cachedAgents, setCachedAgents] = useState<ResolvedAgentProfile[]>([])
@@ -57,9 +56,9 @@ export function useAgents(): UseAgentsReturn {
   // Use pulled agents when available, fall back to cache when disconnected
   const baseAgents = useMemo(() => {
     if (pulledAgents.length > 0) return pulledAgents
-    if (!isConnected) return cachedAgents
+    if (!connected) return cachedAgents
     return []
-  }, [pulledAgents, isConnected, cachedAgents])
+  }, [pulledAgents, connected, cachedAgents])
 
   // Merge drafts on top of base agents
   const agents = useMemo(() => {
@@ -80,7 +79,7 @@ export function useAgents(): UseAgentsReturn {
   return {
     agents,
     isLoading: pullQuery.isLoading,
-    isConnected,
+    isConnected: connected,
     getAgent,
   }
 }
@@ -90,7 +89,6 @@ function mergeAgentWithDraft(
   draft: Partial<ResolvedAgentProfile>,
 ): ResolvedAgentProfile {
   const merged = { ...agent, ...draft }
-  // Deep merge profile if present in draft
   if (draft.profile) {
     merged.profile = { ...agent.profile, ...draft.profile }
   }

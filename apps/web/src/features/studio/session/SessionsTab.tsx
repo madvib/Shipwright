@@ -1,21 +1,21 @@
 // Sessions tab — live workspaces from the shipd daemon.
 import { GitBranch, Bot } from 'lucide-react'
+import { DAEMON_BASE_URL } from '#/lib/daemon-config'
 import { useDaemon } from '#/features/studio/hooks/useDaemon'
 import type { WorkspaceEntry } from '#/features/studio/hooks/useDaemon'
-import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
 import type { GitStatusResult } from './useGitInfo'
 
 interface SessionsTabProps {
-  isConnected: boolean
   gitStatus?: GitStatusResult | null
 }
 
-export function SessionsTab({ isConnected: _isConnected, gitStatus: _gitStatus }: SessionsTabProps) {
+export function SessionsTab({ gitStatus: _gitStatus }: SessionsTabProps) {
   const { connected, workspaces } = useDaemon()
-  const mcp = useLocalMcpContext()
 
-  const activate = (branch: string) => {
-    if (mcp) void mcp.callTool('activate_workspace', { branch })
+  const activate = async (branch: string) => {
+    await fetch(`${DAEMON_BASE_URL}/api/workspaces/${encodeURIComponent(branch)}/activate`, {
+      method: 'POST',
+    })
   }
 
   if (!connected) {

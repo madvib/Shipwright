@@ -11,8 +11,6 @@ import { CreateAgentDialog } from '#/features/agents/dialogs/CreateAgentDialog'
 import { TechIcon, TECH_STACKS } from '#/features/studio/TechIcon'
 import { AgentListSkeleton } from '#/features/studio/StudioSkeleton'
 import { StudioErrorBoundary } from '#/features/studio/StudioErrorBoundary'
-import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
-
 type SourceFilter = 'all' | 'project' | 'library'
 
 export const Route = createFileRoute('/studio/agents/')({
@@ -24,8 +22,7 @@ export const Route = createFileRoute('/studio/agents/')({
 function AgentsListPage() {
   const { agents, isConnected } = useAgents()
   const { hasDraft } = useAgentDrafts()
-  const mcp = useLocalMcpContext()
-  const localIds = mcp?.localAgentIds ?? new Set<string>()
+  const localIds = new Set<string>()
   const [filter, setFilter] = useState<SourceFilter>('all')
   const [createOpen, setCreateOpen] = useState(false)
 

@@ -8,7 +8,8 @@ import { SkillsFileExplorer } from '#/features/studio/skills-ide/SkillsFileExplo
 import { SkillsEditor } from '#/features/studio/skills-ide/SkillsEditor'
 import { SkillsPreviewPanel } from '#/features/studio/skills-ide/SkillsPreviewPanel'
 import { CreateSkillDialog } from '#/features/studio/skills-ide/CreateSkillDialog'
-import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
+import { DAEMON_BASE_URL } from '#/lib/daemon-config'
+import { useDaemon } from '#/features/studio/hooks/useDaemon'
 
 import { SkillsIdeSkeleton } from '#/features/studio/StudioSkeleton'
 
@@ -29,7 +30,8 @@ export const Route = createFileRoute('/studio/skills')({
 function SkillsIDEPage() {
   const ide = useSkillsIDE()
   const [createOpen, setCreateOpen] = useState(false)
-  const mcp = useLocalMcpContext()
+  const { workspaces } = useDaemon()
+  const wsId = workspaces.find((w) => w.status === 'active')?.branch ?? 'v0.2.0'
   const feedbackRef = useRef<SkillFeedbackEntry[]>([])
 
   // Frontmatter state — shared between editor and preview panel
@@ -61,18 +63,15 @@ function SkillsIDEPage() {
       }
       feedbackRef.current = [...feedbackRef.current, entry]
 
-      if (mcp?.status === 'connected') {
-        mcp
-          .callTool('write_session_file', {
-            path: 'skill-feedback.json',
-            content: JSON.stringify(feedbackRef.current, null, 2),
-          })
-          .catch(() => {
-            // MCP write failed; feedback is still retained in memory
-          })
-      }
+      fetch(`${DAEMON_BASE_URL}/api/workspaces/${encodeURIComponent(wsId)}/session-files/${encodeURIComponent('skill-feedback.json')}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: JSON.stringify(feedbackRef.current, null, 2) }),
+      }).catch(() => {
+        // daemon write failed; feedback is still retained in memory
+      })
     },
-    [mcp],
+    [wsId],
   )
 
   return (
