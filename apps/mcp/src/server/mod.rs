@@ -23,6 +23,8 @@ use skills::{
 
 #[cfg(feature = "unstable")]
 use crate::tools::adr;
+#[cfg(feature = "unstable")]
+use crate::tools::dispatch as dispatch_tools;
 
 // ---- Server struct ----
 
@@ -793,6 +795,48 @@ impl ShipServer {
             Err(e) => return e,
         };
         adr::create_adr(&project_dir, &req.title, &req.decision)
+    }
+
+    // ---- Dispatch ----
+
+    #[tool(
+        description = "Spawn an agent: creates a git worktree, compiles provider config via \
+        `ship use`, launches the agent process, and registers it on the mesh. \
+        Returns the agent_id for use with steer_agent, list_agents, stop_agent."
+    )]
+    async fn dispatch_agent(
+        &self,
+        Parameters(req): Parameters<DispatchAgentRequest>,
+    ) -> String {
+        let project_dir = match self.get_effective_project_dir().await {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        dispatch_tools::dispatch_agent(&project_dir, req).await
+    }
+
+    #[tool(
+        description = "List all running agents managed by the dispatch service, \
+        with provider, pid, thread_id, and started_at."
+    )]
+    async fn list_agents(&self) -> String {
+        dispatch_tools::list_agents().await
+    }
+
+    #[tool(
+        description = "Stop a running agent by agent_id. Kills the process and \
+        deregisters it from the mesh."
+    )]
+    async fn stop_agent(&self, Parameters(req): Parameters<StopAgentRequest>) -> String {
+        dispatch_tools::stop_agent(req).await
+    }
+
+    #[tool(
+        description = "Inject a message into a running agent's stdin (Claude) or \
+        via turn/steer (Codex)."
+    )]
+    async fn steer_agent(&self, Parameters(req): Parameters<SteerAgentRequest>) -> String {
+        dispatch_tools::steer_agent(req).await
     }
 }
 

@@ -53,5 +53,20 @@ pub fn run_session_end() -> Result<()> {
     let workspace = workspace_id()?;
     let event = handle_session_end(&actor, &workspace)?;
     println!("{}", serde_json::to_string(&event)?);
+    // Best-effort: broadcast session.ended via ship CLI (MCP bridge path).
+    broadcast_session_ended(&actor, &workspace);
     Ok(())
+}
+
+/// Broadcast agent.session.ended via `ship mesh broadcast` CLI.
+/// Non-fatal — if ship is not available or mesh is down this is a no-op.
+fn broadcast_session_ended(actor_id: &str, workspace_id: &str) {
+    let payload = serde_json::json!({
+        "event_type": "agent.session.ended",
+        "from_agent_id": actor_id,
+        "payload": { "workspace_id": workspace_id }
+    });
+    let _ = std::process::Command::new("ship")
+        .args(["mesh", "broadcast", &payload.to_string()])
+        .status();
 }

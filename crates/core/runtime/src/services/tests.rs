@@ -11,6 +11,7 @@ use crate::events::actor_store::init_actor_db;
 use crate::events::kernel_router::{ActorConfig, KernelRouter};
 use crate::events::{ActorStore, EventEnvelope, Mailbox};
 use crate::services::{ServiceHandle, ServiceHandler, spawn_service, run_service};
+#[cfg(feature = "unstable")]
 use crate::services::sync::{SyncConfig, SyncServiceHandler};
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -156,6 +157,7 @@ async fn spawn_service_wires_actor_and_task() {
 
 // ── SyncConfig ────────────────────────────────────────────────────────────────
 
+#[cfg(feature = "unstable")]
 #[test]
 fn sync_config_defaults() {
     let cfg = SyncConfig::default();
@@ -164,6 +166,7 @@ fn sync_config_defaults() {
     assert_eq!(cfg.endpoint, "https://api.getship.dev");
 }
 
+#[cfg(feature = "unstable")]
 #[test]
 fn sync_handler_tick_interval_from_config() {
     let cfg = SyncConfig {

@@ -1,6 +1,8 @@
 #[cfg(feature = "unstable")]
 pub mod adr;
 pub mod agent;
+#[cfg(feature = "unstable")]
+pub mod dispatch;
 pub mod event;
 pub mod git_info;
 pub mod mesh;
