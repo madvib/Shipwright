@@ -214,8 +214,11 @@ case "$TERMINAL" in
     code "$WORKTREE_PATH" 2>/dev/null || echo "VS Code launch failed. Launch manually: $LAUNCH_CMD"
     ;;
   wt)
-    # From WSL: wt.exe -w 0 nt opens a new tab in the current WT window
-    wt.exe -w 0 nt --title "$SLUG" -- wsl.exe bash -i -c "$LAUNCH_CMD" 2>/dev/null || \
+    # From WSL: wt.exe new-tab opens a new tab in the current WT window.
+    # Use bash --login so ~/.bash_profile is sourced (PATH includes ~/.local/bin etc).
+    # Detect the running WSL distro name rather than hardcoding.
+    WSL_DISTRO="${WSL_DISTRO_NAME:-Ubuntu}"
+    wt.exe new-tab --title "$SLUG" -- wsl.exe -d "$WSL_DISTRO" bash --login -c "$LAUNCH_CMD" 2>/dev/null || \
     echo "Windows Terminal launch failed. Launch manually: $LAUNCH_CMD"
     ;;
   *)
