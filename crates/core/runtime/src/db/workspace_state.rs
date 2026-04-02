@@ -207,6 +207,28 @@ pub fn set_workspace_tmux_session_db(branch: &str, session_name: Option<&str>) -
     Ok(rows_affected > 0)
 }
 
+/// Update both worktree_path and tmux_session_name for a workspace in one call.
+/// Sets is_worktree = 1 implicitly. Returns true if the workspace was found and updated.
+pub fn set_workspace_started_db(
+    branch: &str,
+    worktree_path: &str,
+    tmux_session: &str,
+) -> Result<bool> {
+    let mut conn = open_db()?;
+    let rows_affected = block_on(async {
+        sqlx::query(
+            "UPDATE workspace SET worktree_path = ?, tmux_session_name = ?, is_worktree = 1 WHERE branch = ?",
+        )
+        .bind(worktree_path)
+        .bind(tmux_session)
+        .bind(branch)
+        .execute(&mut conn)
+        .await
+    })?
+    .rows_affected();
+    Ok(rows_affected > 0)
+}
+
 /// Delete workspace state for a branch, including any session history.
 pub fn delete_workspace_db(branch: &str) -> Result<bool> {
     let mut conn = open_db()?;

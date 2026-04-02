@@ -10,6 +10,7 @@ pub mod pty_handler;
 pub mod rest_api;
 pub mod runtime_api;
 mod server;
+pub mod supervisor;
 
 pub use server::NetworkServer;
 
@@ -95,12 +96,20 @@ pub async fn run_network(host: String, port: u16) -> Result<()> {
             "/workspaces/:id/pty",
             axum::routing::get(pty_handler::workspace_pty),
         )
+        .with_state(api_state.clone());
+
+    let supervisor_routes = axum::Router::new()
+        .route(
+            "/supervisor/workspaces/:id/start",
+            axum::routing::post(supervisor::start_workspace),
+        )
         .with_state(api_state);
 
     let app = Router::new()
         .nest("/api", api_routes)
         .nest("/api", webhook_routes)
         .nest("/api/runtime", runtime_routes)
+        .nest("/api", supervisor_routes)
         .nest_service("/mcp", service)
         .layer(axum::middleware::from_fn(cors_middleware));
 
