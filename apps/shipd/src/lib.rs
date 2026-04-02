@@ -36,6 +36,7 @@ pub async fn run_network(host: String, port: u16) -> Result<()> {
         .map_err(|e| anyhow!("failed to initialize KernelRouter: {e}"))?;
 
     let mesh_registry = connections::spawn_mesh_service(&kernel).await?;
+    supervisor::subscribe_workspace_events(kernel.clone(), global_dir.clone()).await;
     spawn_human_gateway(&kernel).await;
 
     write_port_file(&global_dir, port)?;

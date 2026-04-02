@@ -76,30 +76,28 @@ export function useDaemon(): UseDaemonReturn {
     retry: false,
   })
 
-  // SSE stream — invalidate all daemon queries on any event.
+  // SSE stream — invalidate workspace queries on workspace.* events.
+  // On error: close and don't reconnect; the 5s poll fallback handles recovery.
   useEffect(() => {
-    let es: EventSource | null = null
-    let closed = false
+    const es = new EventSource(`${DAEMON_BASE_URL}/api/runtime/events`)
 
-    function open() {
-      if (closed) return
-      es = new EventSource(`${DAEMON_BASE_URL}/api/runtime/events`)
-      es.addEventListener('ship.event', () => {
-        void queryClient.invalidateQueries({ queryKey: ['daemon'] })
-      })
-      es.onerror = () => {
-        es?.close()
-        es = null
-        // Backoff before reconnecting — daemon may not be running.
-        if (!closed) setTimeout(open, 5000)
+    es.addEventListener('ship.event', (e: MessageEvent) => {
+      try {
+        const envelope = JSON.parse(e.data as string) as { event_type?: string }
+        if (envelope.event_type?.startsWith('workspace.')) {
+          void queryClient.invalidateQueries({ queryKey: daemonKeys.workspaces })
+        }
+      } catch {
+        // malformed payload — ignore
       }
+    })
+
+    es.onerror = () => {
+      es.close()
     }
 
-    open()
-
     return () => {
-      closed = true
-      es?.close()
+      es.close()
     }
   }, [queryClient])
 
