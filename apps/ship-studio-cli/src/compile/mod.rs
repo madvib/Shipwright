@@ -9,6 +9,8 @@ mod tests;
 #[cfg(test)]
 mod tests_agent;
 #[cfg(test)]
+mod tests_extra_skills;
+#[cfg(test)]
 mod tests_worktree;
 
 use anyhow::{Context, Result};
@@ -41,6 +43,9 @@ pub struct CompileOptions<'a> {
     pub dry_run: bool,
     /// Active mode id (already resolved from PathContext / ship.toml).
     pub active_agent: Option<&'a str>,
+    /// Extra skill IDs injected at compile time via `--with`. Additive on top of
+    /// the agent's declared skill refs. Each ID must exist in the loaded library.
+    pub extra_skills: Vec<String>,
 }
 
 pub fn run_compile(opts: CompileOptions<'_>) -> Result<()> {
@@ -72,6 +77,34 @@ pub fn run_compile(opts: CompileOptions<'_>) -> Result<()> {
             )
             .context("resolving dep skills from cache")?;
             library.skills.extend(dep_skills);
+        }
+    }
+
+    // 2c. Inject --with extra skills into the active mode's skill filter.
+    //     Each extra ID must exist in the loaded library (validates at inject time).
+    //     If the active mode has a non-empty skill filter, append the extra IDs so
+    //     they pass resolve's retain filter. If the filter is empty (include-all),
+    //     the skills are already present — no mode mutation needed.
+    if !opts.extra_skills.is_empty() {
+        for skill_id in &opts.extra_skills {
+            anyhow::ensure!(
+                library.skills.iter().any(|s| &s.id == skill_id),
+                "skill not found: {} — check skill_paths in ship.jsonc",
+                skill_id
+            );
+        }
+        // Find the active mode (if any) and extend its skill filter.
+        if let Some(agent_id) = opts.active_agent {
+            if let Some(mode) = library.modes.iter_mut().find(|m| m.id == agent_id) {
+                if !mode.skills.is_empty() {
+                    for skill_id in &opts.extra_skills {
+                        if !mode.skills.contains(skill_id) {
+                            mode.skills.push(skill_id.clone());
+                        }
+                    }
+                }
+                // If mode.skills is empty, all skills are included — nothing to extend.
+            }
         }
     }
 
@@ -120,7 +153,12 @@ pub fn run_compile(opts: CompileOptions<'_>) -> Result<()> {
 
     if !opts.dry_run {
         ensure_session_gitignored(output_root)?;
-        println!("✓ compiled for: {}", providers.join(", "));
+        if opts.extra_skills.is_empty() {
+            println!("✓ compiled for: {}", providers.join(", "));
+        } else {
+            let injected: Vec<String> = opts.extra_skills.iter().map(|s| format!("+{}", s)).collect();
+            println!("✓ compiled for: {} ({})", providers.join(", "), injected.join(", "));
+        }
     }
     Ok(())
 }

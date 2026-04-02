@@ -82,6 +82,9 @@ pub enum Commands {
         /// Compile immediately after activating
         #[arg(long, default_value_t = true)]
         compile: bool,
+        /// Extra skill IDs to inject at compile time (repeatable)
+        #[arg(long = "with", value_name = "SKILL_ID")]
+        with_skills: Vec<String>,
     },
 
     /// Show the active agent and compilation status

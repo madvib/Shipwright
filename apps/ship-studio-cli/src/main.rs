@@ -77,7 +77,8 @@ fn dispatch(command: Option<Commands>) -> Result<()> {
                 agent_id,
                 path,
                 compile: _,
-            } => run_use(Some(&agent_id), path),
+                with_skills,
+            } => run_use(Some(&agent_id), path, with_skills),
             Commands::Status { path } => run_status(path),
             Commands::Agents { action } => dispatch_agent(action),
             Commands::Compile {
@@ -204,7 +205,7 @@ fn dispatch_config(action: ConfigCommands) -> Result<()> {
 // ── Use ───────────────────────────────────────────────────────────────────────
 
 /// Activate an agent: load, compile, install plugins, write workspace state.
-fn run_use(agent_id: Option<&str>, path: Option<PathBuf>) -> Result<()> {
+fn run_use(agent_id: Option<&str>, path: Option<PathBuf>, extra_skills: Vec<String>) -> Result<()> {
     try_init_kernel_router();
     let ship_dir = match path {
         Some(ref p) => {
@@ -230,7 +231,7 @@ fn run_use(agent_id: Option<&str>, path: Option<PathBuf>) -> Result<()> {
         None
     };
 
-    profile::activate_agent(agent_id, &project_root, output_root.as_deref())
+    profile::activate_agent(agent_id, &project_root, output_root.as_deref(), extra_skills)
 }
 
 // ── Status ────────────────────────────────────────────────────────────────────
@@ -350,6 +351,7 @@ fn run_compile_cmd(provider: Option<&str>, dry_run: bool, path: Option<PathBuf>)
         provider,
         dry_run,
         active_agent: state.active_agent.as_deref(),
+        extra_skills: vec![],
     })
 }
 
