@@ -29,6 +29,7 @@ use crate::events::kernel_router::{ActorConfig, KernelRouter};
 use crate::events::{ActorStore, EventEnvelope, Mailbox};
 
 pub mod mesh;
+pub mod human_gateway;
 #[cfg(feature = "unstable")]
 pub mod dispatch;
 #[cfg(feature = "unstable")]
