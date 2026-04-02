@@ -10,8 +10,7 @@ import { useSessionFiles, useSessionFileContent, useUploadSessionFile, useDelete
 import { useSessionDrafts } from '#/features/studio/session/useSessionDrafts'
 import { SessionTabBar } from '#/features/studio/session/SessionTabBar'
 import { useAnnotations } from '#/features/studio/session/useAnnotations'
-import { SendVisualMessage } from '#/features/studio/session/SendVisualMessage'
-import { EventDebugPanel } from '#/features/studio/events/EventDebugPanel'
+import { RightDrawer } from '#/features/studio/session/RightDrawer'
 import { useSessionHandlers } from '#/features/studio/session/useSessionHandlers'
 import { useDiffContent } from '#/features/studio/session/useDiffContent'
 import { useGitStatus, useGitLog, useGitDiff } from '#/features/studio/session/useGitInfo'
@@ -108,7 +107,7 @@ function SessionPage() {
 
   const {
     isDragging, handleDeleteFile, handleExport, handleComment, handleDiffComment,
-    handleUploadFiles, handleShowDiff, handleSelectCommit, handleNavigateToAnnotation,
+    handleUploadFiles, handleShowDiff, handleSelectCommit,
     handleSendToAgent, handleDragOver, handleDragLeave, handleDrop,
   } = useSessionHandlers({
     mcp, isConnected: isConnected ?? false,
@@ -153,99 +152,101 @@ function SessionPage() {
           <SessionSidebar
             files={files}
             activeFile={activeTabPath}
-            stagedAnnotations={ann.allStaged}
             isConnected={isConnected ?? false}
             onSelectFile={openFile}
             onDeleteFile={handleDeleteFile}
             onUploadFiles={handleUploadFiles}
-            onNavigateToAnnotation={handleNavigateToAnnotation}
-            onDeleteAnnotation={ann.removeAnnotation}
-            onClearAnnotations={ann.clearAllAnnotations}
             onShowDiff={handleShowDiff}
             onSelectCommit={handleSelectCommit}
             gitStatus={gitStatus}
             gitLog={gitLog}
           />
 
-          <div className="flex-1 flex flex-col min-w-0 min-h-0">
-            <SessionTabBar
-              openTabs={openTabs}
-              activeTabPath={activeTabPath}
-              viewMode={viewMode}
-              unsavedPaths={drafts.unsavedPaths}
-              selectedCommitHash={selectedCommitHash}
-              onSelectTab={selectTab}
-              onCloseTab={closeTab}
-            />
+          <div className="flex-1 flex min-w-0 min-h-0">
+            <div className="flex-1 flex flex-col min-w-0 min-h-0">
+              <SessionTabBar
+                openTabs={openTabs}
+                activeTabPath={activeTabPath}
+                viewMode={viewMode}
+                unsavedPaths={drafts.unsavedPaths}
+                selectedCommitHash={selectedCommitHash}
+                onSelectTab={selectTab}
+                onCloseTab={closeTab}
+              />
 
-            {/* Content area — relative for Send FAB positioning */}
-            <div className="relative flex-1 flex flex-col min-h-0 min-w-0">
-              {showCanvas && (
-                <SessionCanvas
-                  key={activeTabPath}
-                  htmlContent={fileContent ?? ''}
-                  fileType={activeFile?.type}
-                  annotations={ann.annotations}
-                  activeId={ann.activeId}
-                  annotationMode={ann.annotationMode}
-                  openTabs={activeTabPath ? [activeTabPath] : []}
-                  activeTab={activeTabPath}
-                  onTabSelect={selectTab}
-                  onTabClose={closeTab}
-                  onAnnotationClick={ann.toggleActiveId}
-                  onDismissActive={ann.dismissActive}
-                  onRemoveAnnotation={ann.removeAnnotation}
-                  onAddClick={ann.addClickAnnotation}
-                  onAddBox={ann.addBoxAnnotation}
-                  onAddAction={ann.addActionAnnotation}
-                  onToggleAnnotationMode={() => ann.setAnnotationMode(!ann.annotationMode)}
-                  onClearAnnotations={ann.clearAnnotations}
-                  onExport={handleExport}
-                />
-              )}
-              {showArtifact && activeFile && (
-                <ArtifactViewer
-                  file={activeFile}
-                  content={fileContent ?? ''}
-                  draftContent={drafts.getDraft(activeFile.path)}
-                  isDirty={drafts.isDirty(activeFile.path)}
-                  onContentChange={drafts.updateContent}
-                  onSave={drafts.saveFile}
-                  onComment={handleComment}
-                />
-              )}
-              {showDiff && (
-                activeDiffText
-                  ? <DiffViewer diffText={activeDiffText} onComment={handleDiffComment} />
-                  : (
-                    <div className="flex items-center justify-center h-full text-muted-foreground">
-                      <div className="text-center">
-                        <p className="text-sm font-medium">No diff available</p>
-                        <p className="text-xs mt-1">
-                          {selectedCommitHash ? `Loading ${selectedCommitHash.slice(0, 7)}...` : 'No changes to show'}
-                        </p>
+              <div className="flex-1 flex flex-col min-h-0 min-w-0">
+                {showCanvas && (
+                  <SessionCanvas
+                    key={activeTabPath}
+                    htmlContent={fileContent ?? ''}
+                    fileType={activeFile?.type}
+                    annotations={ann.annotations}
+                    activeId={ann.activeId}
+                    annotationMode={ann.annotationMode}
+                    openTabs={activeTabPath ? [activeTabPath] : []}
+                    activeTab={activeTabPath}
+                    onTabSelect={selectTab}
+                    onTabClose={closeTab}
+                    onAnnotationClick={ann.toggleActiveId}
+                    onDismissActive={ann.dismissActive}
+                    onRemoveAnnotation={ann.removeAnnotation}
+                    onAddClick={ann.addClickAnnotation}
+                    onAddBox={ann.addBoxAnnotation}
+                    onAddAction={ann.addActionAnnotation}
+                    onToggleAnnotationMode={() => ann.setAnnotationMode(!ann.annotationMode)}
+                    onClearAnnotations={ann.clearAnnotations}
+                    onExport={handleExport}
+                  />
+                )}
+                {showArtifact && activeFile && (
+                  <ArtifactViewer
+                    file={activeFile}
+                    content={fileContent ?? ''}
+                    draftContent={drafts.getDraft(activeFile.path)}
+                    isDirty={drafts.isDirty(activeFile.path)}
+                    onContentChange={drafts.updateContent}
+                    onSave={drafts.saveFile}
+                    onComment={handleComment}
+                  />
+                )}
+                {showDiff && (
+                  activeDiffText
+                    ? <DiffViewer diffText={activeDiffText} onComment={handleDiffComment} />
+                    : (
+                      <div className="flex items-center justify-center h-full text-muted-foreground">
+                        <div className="text-center">
+                          <p className="text-sm font-medium">No diff available</p>
+                          <p className="text-xs mt-1">
+                            {selectedCommitHash ? `Loading ${selectedCommitHash.slice(0, 7)}...` : 'No changes to show'}
+                          </p>
+                        </div>
                       </div>
+                    )
+                )}
+                {!showCanvas && !showArtifact && !showDiff && (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                    <div className="text-center">
+                      <Layers className="size-8 mx-auto mb-3 opacity-40" />
+                      <p className="text-sm font-medium">No file open</p>
+                      <p className="text-xs mt-1">Select a file from the sidebar</p>
                     </div>
-                  )
-              )}
-              {!showCanvas && !showArtifact && !showDiff && (
-                <div className="flex items-center justify-center h-full text-muted-foreground">
-                  <div className="text-center">
-                    <Layers className="size-8 mx-auto mb-3 opacity-40" />
-                    <p className="text-sm font-medium">No file open</p>
-                    <p className="text-xs mt-1">Select a file from the sidebar</p>
                   </div>
-                </div>
-              )}
-
-              <SendVisualMessage stagedCount={ann.stagedCount} onSend={handleSendToAgent} />
+                )}
+              </div>
             </div>
+
+            <RightDrawer
+              stagedAnnotations={ann.allStaged}
+              onSend={handleSendToAgent}
+              onRemoveAnnotation={ann.removeAnnotation}
+              onUploadFiles={handleUploadFiles}
+              disabled={!isConnected}
+            />
           </div>
         </div>
 
         {isDragging && isConnected && <DropZoneOverlay />}
       </div>
-      <EventDebugPanel />
     </>
   )
 }

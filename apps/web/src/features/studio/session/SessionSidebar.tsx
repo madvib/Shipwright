@@ -9,10 +9,9 @@ import { CliStatusPopover } from '#/features/studio/CliStatusPopover'
 import { ArtifactContextMenu } from './ArtifactContextMenu'
 import { GitTab } from './GitTab'
 import { SessionsTab } from './SessionsTab'
-import { StagedAnnotationsPanel } from './StagedAnnotationsPanel'
 import { useSkillsLibrary } from '#/features/studio/skills-ide/useSkillsLibrary'
 import type { ArtifactMenuState } from './ArtifactContextMenu'
-import type { SessionFile, StagedAnnotation } from './types'
+import type { SessionFile } from './types'
 import type { GitStatusResult, GitLogEntry } from './useGitInfo'
 
 // Parse `artifacts: [...]` from SKILL.md frontmatter
@@ -29,14 +28,10 @@ const HIDDEN_FILES = new Set(['diff.txt', 'annotations.json'])
 interface SessionSidebarProps {
   files: SessionFile[]
   activeFile: string | null
-  stagedAnnotations: StagedAnnotation[]
   isConnected: boolean
   onSelectFile: (path: string) => void
   onDeleteFile: (path: string) => void
   onUploadFiles: (files: FileList) => void
-  onNavigateToAnnotation: (filePath: string, annotationId: string) => void
-  onDeleteAnnotation: (annotationId: string) => void
-  onClearAnnotations: () => void
   onShowDiff: () => void
   onSelectCommit: (hash: string) => void
   gitStatus: GitStatusResult | null | undefined
@@ -133,9 +128,8 @@ const FILE_ICONS: Record<SessionFile['type'], { icon: typeof FileText; color: st
 }
 
 export function SessionSidebar({
-  files, activeFile, stagedAnnotations, isConnected,
+  files, activeFile, isConnected,
   onSelectFile, onDeleteFile, onUploadFiles,
-  onNavigateToAnnotation, onDeleteAnnotation, onClearAnnotations,
   onShowDiff, onSelectCommit,
   gitStatus, gitLog,
 }: SessionSidebarProps) {
@@ -183,7 +177,6 @@ export function SessionSidebar({
             groups={groups}
             root={root}
             activeFile={activeFile}
-            stagedAnnotations={stagedAnnotations}
             collapsedGroups={collapsedGroups}
             isConnected={isConnected}
             fileInputRef={fileInputRef}
@@ -191,9 +184,6 @@ export function SessionSidebar({
             onUploadFiles={onUploadFiles}
             onToggleGroup={toggleGroup}
             onContextMenu={handleContextMenu}
-            onNavigateToAnnotation={onNavigateToAnnotation}
-            onDeleteAnnotation={onDeleteAnnotation}
-            onClearAnnotations={onClearAnnotations}
           />
         )}
         {tab === 'git' && (
@@ -218,12 +208,11 @@ export function SessionSidebar({
 
 // ── Files Tab ──
 
-function FilesTab({ todo, groups, root, activeFile, stagedAnnotations, collapsedGroups, isConnected, fileInputRef, onSelectFile, onUploadFiles, onToggleGroup, onContextMenu, onNavigateToAnnotation, onDeleteAnnotation, onClearAnnotations }: {
+function FilesTab({ todo, groups, root, activeFile, collapsedGroups, isConnected, fileInputRef, onSelectFile, onUploadFiles, onToggleGroup, onContextMenu }: {
   todo: SessionFile | null
   groups: NamespaceGroup[]
   root: SessionFile[]
   activeFile: string | null
-  stagedAnnotations: StagedAnnotation[]
   collapsedGroups: Set<string>
   isConnected: boolean
   fileInputRef: React.RefObject<HTMLInputElement | null>
@@ -231,9 +220,6 @@ function FilesTab({ todo, groups, root, activeFile, stagedAnnotations, collapsed
   onUploadFiles: (files: FileList) => void
   onToggleGroup: (label: string) => void
   onContextMenu: (e: React.MouseEvent, file: SessionFile) => void
-  onNavigateToAnnotation: (filePath: string, annotationId: string) => void
-  onDeleteAnnotation: (annotationId: string) => void
-  onClearAnnotations: () => void
 }) {
   const { skills } = useSkillsLibrary()
 
@@ -347,14 +333,6 @@ function FilesTab({ todo, groups, root, activeFile, stagedAnnotations, collapsed
           <span>Add files</span>
         </button>
         <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => { if (e.target.files?.length) onUploadFiles(e.target.files); e.target.value = '' }} />
-        {stagedAnnotations.length > 0 && (
-          <StagedAnnotationsPanel
-            staged={stagedAnnotations}
-            onNavigate={onNavigateToAnnotation}
-            onDelete={onDeleteAnnotation}
-            onClearAll={onClearAnnotations}
-          />
-        )}
       </div>
     </div>
   )
