@@ -6,6 +6,7 @@
 mod connections;
 mod handler;
 pub mod human_webhook;
+pub mod project_api;
 pub mod pty_handler;
 pub mod rest_api;
 pub mod runtime_api;
@@ -104,6 +105,39 @@ pub async fn run_network(host: String, port: u16) -> Result<()> {
             "/supervisor/workspaces/{id}/start",
             axum::routing::post(supervisor::start_workspace),
         )
+        .with_state(api_state.clone());
+
+    let project_routes = axum::Router::new()
+        .route(
+            "/workspaces/{id}/session-files",
+            axum::routing::get(project_api::list_session_files),
+        )
+        .route(
+            "/workspaces/{id}/session-files/*path",
+            axum::routing::get(project_api::read_session_file)
+                .put(project_api::write_session_file)
+                .delete(project_api::delete_session_file),
+        )
+        .route(
+            "/workspaces/{id}/git/status",
+            axum::routing::get(project_api::git_status),
+        )
+        .route(
+            "/workspaces/{id}/git/diff",
+            axum::routing::get(project_api::git_diff),
+        )
+        .route(
+            "/workspaces/{id}/git/log",
+            axum::routing::get(project_api::git_log),
+        )
+        .route(
+            "/workspaces/{id}/activate",
+            axum::routing::post(project_api::activate_workspace),
+        )
+        .route(
+            "/events/emit",
+            axum::routing::post(project_api::emit_event),
+        )
         .with_state(api_state);
 
     let app = Router::new()
@@ -111,6 +145,7 @@ pub async fn run_network(host: String, port: u16) -> Result<()> {
         .nest("/api", webhook_routes)
         .nest("/api/runtime", runtime_routes)
         .nest("/api", supervisor_routes)
+        .nest("/api", project_routes)
         .nest_service("/mcp", service)
         .layer(axum::middleware::from_fn(cors_middleware));
 
@@ -299,7 +334,7 @@ async fn cors_middleware(req: Request<Body>, next: Next) -> Response {
         }
         h.insert(
             "access-control-allow-methods",
-            HeaderValue::from_static("GET, POST, DELETE, OPTIONS"),
+            HeaderValue::from_static("GET, POST, PUT, DELETE, OPTIONS"),
         );
         h.insert(
             "access-control-allow-headers",
