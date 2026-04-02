@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useCallback, useEffect } from 'react'
-import { Layers, WifiOff } from 'lucide-react'
-import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
+import { Layers } from 'lucide-react'
+import { useDaemon } from '#/features/studio/hooks/useDaemon'
 import { SessionCanvas } from '#/features/studio/session/SessionCanvas'
 import { ArtifactViewer } from '#/features/studio/session/ArtifactViewer'
 import { DiffViewer } from '#/features/studio/session/DiffViewer'
@@ -27,8 +27,8 @@ type ViewMode = 'file' | 'diff'
 interface OpenTab { path: string; name: string; type: string }
 
 function SessionPage() {
-  const mcp = useLocalMcpContext()
-  const isConnected = mcp?.status === 'connected'
+  const { workspaces } = useDaemon()
+  const workspaceId = workspaces.find((w) => w.status === 'active')?.branch ?? 'v0.2.0'
 
   const { files } = useSessionFiles()
   const uploadMutation = useUploadSessionFile()
@@ -110,8 +110,8 @@ function SessionPage() {
     handleUploadFiles, handleShowDiff, handleSelectCommit,
     handleSendToAgent, handleDragOver, handleDragLeave, handleDrop,
   } = useSessionHandlers({
-    mcp, isConnected: isConnected ?? false,
-    ann, drafts, openFile, closeTab,
+    workspaceId,
+    ann, openFile, closeTab,
     setViewMode, setSelectedCommitHash,
     uploadMutate: uploadMutation.mutate,
     deleteMutate: deleteMutation.mutate,
@@ -141,18 +141,11 @@ function SessionPage() {
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        {!isConnected && (
-          <div className="flex items-center gap-2 px-4 py-1.5 border-b border-amber-500/30 bg-amber-500/10 text-[11px] text-amber-600 dark:text-amber-400 shrink-0">
-            <WifiOff className="size-3 shrink-0" />
-            CLI disconnected — session artifacts require a running CLI
-          </div>
-        )}
-
         <div className="flex flex-1 min-h-0">
           <SessionSidebar
             files={files}
             activeFile={activeTabPath}
-            isConnected={isConnected ?? false}
+            isConnected={true}
             onSelectFile={openFile}
             onDeleteFile={handleDeleteFile}
             onUploadFiles={handleUploadFiles}
@@ -240,12 +233,12 @@ function SessionPage() {
               onSend={handleSendToAgent}
               onRemoveAnnotation={ann.removeAnnotation}
               onUploadFiles={handleUploadFiles}
-              disabled={!isConnected}
+              disabled={false}
             />
           </div>
         </div>
 
-        {isDragging && isConnected && <DropZoneOverlay />}
+        {isDragging && <DropZoneOverlay />}
       </div>
     </>
   )

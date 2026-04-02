@@ -1,5 +1,8 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useLocalMcpContext } from './LocalMcpContext'
+// MCP query stubs — these previously used the MCP bridge to read/write
+// agent and skill config files. Stubbed to return empty data until daemon
+// endpoints for project config are available.
+
+import { useQuery, useMutation } from '@tanstack/react-query'
 import { mcpKeys } from '#/lib/query-keys'
 import type {
   PullResponse,
@@ -8,165 +11,99 @@ import type {
   TransferBundle,
 } from '@ship/ui'
 
-// ── Helpers ─────────────────────────────────────────────────────────────
-
-function useMcpCallTool() {
-  const mcp = useLocalMcpContext()
-  if (!mcp) {
-    return {
-      callTool: () => Promise.reject(new Error('No MCP connection')),
-      status: 'disconnected' as const,
-    }
-  }
-  return { callTool: mcp.callTool, status: mcp.status }
-}
-
 // ── Queries ─────────────────────────────────────────────────────────────
 
+// TODO: daemon endpoint
 /** Fetch local agent IDs from CLI (.ship/agents/). */
 export function useLocalAgentIds() {
-  const { callTool, status } = useMcpCallTool()
-
   return useQuery({
     queryKey: mcpKeys.agentList(),
     queryFn: async (): Promise<ListAgentsResponse> => {
-      const raw = await callTool('list_local_agents')
-      return JSON.parse(raw) as ListAgentsResponse
+      return { agents: [] } as ListAgentsResponse
     },
-    enabled: status === 'connected',
     staleTime: 5_000,
-      })
+  })
 }
 
+// TODO: daemon endpoint
 /** Pull all resolved agents from CLI (.ship/). */
 export function usePullAgents() {
-  const { callTool, status } = useMcpCallTool()
-  const isConnected = status === 'connected'
-
   return useQuery({
     queryKey: mcpKeys.pull(),
     queryFn: async (): Promise<PullResponse> => {
-      const raw = await callTool('pull_agents')
-      return JSON.parse(raw) as PullResponse
+      return { agents: [], skills: [] } as unknown as PullResponse
     },
-    enabled: isConnected,
     staleTime: 5_000,
-      })
+  })
 }
 
-/** Fetch all project skills from .ship/skills/ regardless of agent references. */
+// TODO: daemon endpoint
+/** Fetch all project skills from .ship/skills/. */
 export function useProjectSkills() {
-  const { callTool, status } = useMcpCallTool()
-
   return useQuery({
     queryKey: mcpKeys.projectSkills(),
     queryFn: async (): Promise<PullSkill[]> => {
-      const raw = await callTool('list_project_skills')
-      return JSON.parse(raw) as PullSkill[]
+      return []
     },
-    enabled: status === 'connected',
     staleTime: 5_000,
-      })
+  })
 }
 
-// ── Mutations ───────────────────────────────────────────────────────────
+// ── Mutations (no-op stubs) ────────────────────────────────────────────
 
-/** Push a transfer bundle to CLI (.ship/). Invalidates pull query on success. */
+// TODO: daemon endpoint
+/** Push a transfer bundle to CLI (.ship/). */
 export function usePushBundle() {
-  const { callTool } = useMcpCallTool()
-  const queryClient = useQueryClient()
-
   return useMutation({
-    mutationFn: async (bundle: TransferBundle): Promise<string> => {
-      return callTool('push_bundle', { bundle: JSON.stringify(bundle) })
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: mcpKeys.pull() })
-      void queryClient.invalidateQueries({ queryKey: mcpKeys.agents() })
+    mutationFn: async (_bundle: TransferBundle): Promise<string> => {
+      console.warn('usePushBundle: stubbed — daemon endpoint not yet available')
+      return ''
     },
   })
 }
 
-/** Write a single skill file to disk via CLI. Invalidates pull on success. */
+// TODO: daemon endpoint
+/** Write a single skill file to disk via CLI. */
 export function useSaveSkillFile() {
-  const { callTool } = useMcpCallTool()
-  const queryClient = useQueryClient()
-
   return useMutation({
-    mutationFn: async ({
-      skillId,
-      filePath,
-      content,
-    }: {
-      skillId: string
-      filePath: string
-      content: string
-    }): Promise<string> => {
-      return callTool('write_skill_file', {
-        skill_id: skillId,
-        file_path: filePath,
-        content,
-      })
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: mcpKeys.pull() })
+    mutationFn: async (_args: { skillId: string; filePath: string; content: string }): Promise<string> => {
+      console.warn('useSaveSkillFile: stubbed — daemon endpoint not yet available')
+      return ''
     },
   })
 }
 
-/** Get merged var values for a skill. Returns Record<string, unknown> or null. */
+// TODO: daemon endpoint
+/** Get merged var values for a skill. */
 export function useSkillVars(skillId: string | null) {
-  const { callTool, status } = useMcpCallTool()
   return useQuery({
     queryKey: mcpKeys.skillVars(skillId ?? ''),
     queryFn: async () => {
-      const raw = await callTool('get_skill_vars', { skill_id: skillId })
-      return JSON.parse(raw) as Record<string, unknown>
+      return {} as Record<string, unknown>
     },
-    enabled: status === 'connected' && skillId != null,
+    enabled: skillId != null,
     staleTime: 5_000,
   })
 }
 
-/** Set a single skill variable value. Invalidates skill vars on success. */
+// TODO: daemon endpoint
+/** Set a single skill variable value. */
 export function useSetSkillVar() {
-  const { callTool } = useMcpCallTool()
-  const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({
-      skillId,
-      key,
-      valueJson,
-    }: {
-      skillId: string
-      key: string
-      valueJson: string
-    }) => {
-      return callTool('set_skill_var', {
-        skill_id: skillId,
-        key,
-        value_json: valueJson,
-      })
-    },
-    onSuccess: (_, { skillId }) => {
-      void queryClient.invalidateQueries({
-        queryKey: mcpKeys.skillVars(skillId),
-      })
+    mutationFn: async (_args: { skillId: string; key: string; valueJson: string }) => {
+      console.warn('useSetSkillVar: stubbed — daemon endpoint not yet available')
+      return ''
     },
   })
 }
 
-/** Delete a single skill file from disk via CLI. Invalidates all MCP queries on success. */
+// TODO: daemon endpoint
+/** Delete a single skill file from disk via CLI. */
 export function useDeleteSkillFile() {
-  const { callTool } = useMcpCallTool()
-  const queryClient = useQueryClient()
-
   return useMutation({
-    mutationFn: async ({ skillId, filePath }: { skillId: string; filePath: string }) => {
-      return callTool('delete_skill_file', { skill_id: skillId, file_path: filePath })
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: mcpKeys.all })
+    mutationFn: async (_args: { skillId: string; filePath: string }) => {
+      console.warn('useDeleteSkillFile: stubbed — daemon endpoint not yet available')
+      return ''
     },
   })
 }
