@@ -4,7 +4,9 @@
 # Usage: bash .ship/skills/setup-workspace/scripts/setup.sh [--pod <file>] [--dry-run]
 set -euo pipefail
 
-WORKTREE_BASE="{{ worktree_dir | default: env.SHIP_WORKTREE_DIR | default: '~/dev/ship-worktrees' }}"
+WORKTREE_BASE="{{ worktree_dir | default: '' }}"
+if [[ -z "$WORKTREE_BASE" ]]; then WORKTREE_BASE="${SHIP_WORKTREE_DIR:-}"; fi
+if [[ -z "$WORKTREE_BASE" ]]; then echo "Error: set SHIP_WORKTREE_DIR or run: ship vars set setup-workspace worktree_dir <path>" >&2; exit 1; fi
 WORKTREE_BASE="${WORKTREE_BASE/#\~/$HOME}"
 POD_FILE=".ship-session/pod.md"
 DRY_RUN=false

@@ -71,6 +71,7 @@ pub fn run_install(project_root: &Path, frozen: bool, offline: bool) -> Result<(
         provider: None,
         dry_run: false,
         active_agent: state.active_agent.as_deref(),
+        extra_skills: vec![],
     })
     .context("compiling after install")?;
 

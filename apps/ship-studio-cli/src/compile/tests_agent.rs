@@ -28,6 +28,7 @@ deny = ["Bash(rm -rf *)"]
         provider: Some("claude"),
         dry_run: false,
         active_agent: None,
+        extra_skills: vec![],
     })
     .unwrap();
     let settings_path = tmp.path().join(".claude/settings.json");
@@ -58,6 +59,7 @@ preset = "ship-readonly"
         provider: Some("claude"),
         dry_run: false,
         active_agent: Some("readonly"),
+        extra_skills: vec![],
     })
     .unwrap();
     let v: serde_json::Value = serde_json::from_str(
@@ -89,6 +91,7 @@ inline = "Never delete files without explicit confirmation."
         provider: Some("claude"),
         dry_run: false,
         active_agent: Some("strict"),
+        extra_skills: vec![],
     })
     .unwrap();
     let content = std::fs::read_to_string(tmp.path().join("CLAUDE.md")).unwrap();
@@ -117,6 +120,7 @@ stop = "ship permissions sync"
         provider: Some("claude"),
         dry_run: false,
         active_agent: Some("commander"),
+        extra_skills: vec![],
     })
     .unwrap();
     let v: serde_json::Value = serde_json::from_str(
@@ -168,6 +172,7 @@ preset = "ship-fast"
         provider: Some("claude"),
         dry_run: false,
         active_agent: Some("fast"),
+        extra_skills: vec![],
     })
     .unwrap();
     let v: serde_json::Value = serde_json::from_str(
@@ -206,6 +211,7 @@ default_mode = "bypassPermissions"
         provider: Some("claude"),
         dry_run: false,
         active_agent: Some("autonomous"),
+        extra_skills: vec![],
     })
     .unwrap();
     let v: serde_json::Value = serde_json::from_str(

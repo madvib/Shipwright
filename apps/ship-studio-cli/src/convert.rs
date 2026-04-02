@@ -92,7 +92,7 @@ fn convert_from_url(url: &str) -> Result<()> {
     println!("  wrote {}", agent_path.display());
 
     // Activate the agent immediately
-    profile::activate_agent(Some(&agent_id), &project_root, None)?;
+    profile::activate_agent(Some(&agent_id), &project_root, None, vec![])?;
 
     println!();
     println!("Create an account to sync across machines: ship login");

@@ -42,8 +42,8 @@ pub use types_session::{
 
 // Re-export all public functions.
 pub use crud::{
-    delete_workspace, get_workspace, get_workspace_provider_matrix, list_workspaces,
-    repair_workspace,
+    delete_workspace, get_workspace, get_workspace_by_id, get_workspace_provider_matrix,
+    list_workspaces, repair_workspace,
 };
 pub use event_upserts::{
     emit_workspace_archived_event, upsert_workspace_on_activate, upsert_workspace_on_archived,
@@ -53,7 +53,8 @@ pub use event_upserts::{
 pub use helpers::validate_workspace_transition;
 pub use lifecycle::{
     activate_workspace, create_workspace, get_active_workspace_type, seed_service_workspace,
-    set_workspace_active_agent, sync_workspace, transition_workspace_status,
+    set_workspace_active_agent, set_workspace_tmux_session, sync_workspace,
+    transition_workspace_status,
 };
 pub use session::{
     get_active_workspace_session, get_workspace_session_record, list_workspace_sessions,

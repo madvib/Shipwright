@@ -6,6 +6,7 @@
 mod connections;
 mod handler;
 pub mod human_webhook;
+pub mod pty_handler;
 pub mod rest_api;
 pub mod runtime_api;
 mod server;
@@ -65,6 +66,9 @@ pub async fn run_network(host: String, port: u16) -> Result<()> {
         agent_mailboxes: std::sync::Arc::new(tokio::sync::Mutex::new(
             std::collections::HashMap::new(),
         )),
+        pty_connections: std::sync::Arc::new(tokio::sync::Mutex::new(
+            std::collections::HashMap::new(),
+        )),
     };
     let webhook_routes = axum::Router::new()
         .route(
@@ -87,6 +91,10 @@ pub async fn run_network(host: String, port: u16) -> Result<()> {
         .route("/sessions", axum::routing::get(runtime_api::list_sessions))
         .route("/agents", axum::routing::get(runtime_api::list_agents))
         .route("/events", axum::routing::get(runtime_api::event_stream))
+        .route(
+            "/workspaces/:id/pty",
+            axum::routing::get(pty_handler::workspace_pty),
+        )
         .with_state(api_state);
 
     let app = Router::new()

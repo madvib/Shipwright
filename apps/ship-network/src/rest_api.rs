@@ -17,16 +17,12 @@ pub type SharedKernel = Arc<Mutex<runtime::events::KernelRouter>>;
 /// Stashed mailboxes for remote agents, taken once by the SSE endpoint.
 pub type AgentMailboxes = Arc<Mutex<std::collections::HashMap<String, runtime::events::Mailbox>>>;
 
-/// Active PTY connection counts, keyed by workspace id.
-pub type PtyConnections = Arc<Mutex<std::collections::HashMap<String, usize>>>;
-
 /// Combined state for REST API routes.
 #[derive(Clone)]
 pub struct ApiState {
     pub kernel: SharedKernel,
     pub mesh_registry: SharedMeshRegistry,
     pub agent_mailboxes: AgentMailboxes,
-    pub pty_connections: PtyConnections,
 }
 
 // ---- Request / Response types ----

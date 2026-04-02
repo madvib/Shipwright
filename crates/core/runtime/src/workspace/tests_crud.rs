@@ -268,4 +268,57 @@ mod tests {
         assert!(second.compile_error.is_none());
         Ok(())
     }
+
+    #[test]
+    fn set_workspace_tmux_session_write_and_read_back() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
+
+        create_workspace(
+            &ship_dir,
+            CreateWorkspaceRequest {
+                branch: "feat/tmux-test".to_string(),
+                ..Default::default()
+            },
+        )?;
+
+        // Initially None.
+        let ws = get_workspace(&ship_dir, "feat/tmux-test")?.unwrap();
+        assert!(ws.tmux_session_name.is_none());
+
+        // Set a session name.
+        let updated = set_workspace_tmux_session(
+            &ship_dir,
+            "feat/tmux-test",
+            Some("my-tmux-session"),
+        )?;
+        assert_eq!(updated.tmux_session_name.as_deref(), Some("my-tmux-session"));
+
+        // Read it back.
+        let stored = get_workspace(&ship_dir, "feat/tmux-test")?.unwrap();
+        assert_eq!(stored.tmux_session_name.as_deref(), Some("my-tmux-session"));
+
+        // Clear the session name.
+        let cleared = set_workspace_tmux_session(&ship_dir, "feat/tmux-test", None)?;
+        assert!(cleared.tmux_session_name.is_none());
+
+        let stored_again = get_workspace(&ship_dir, "feat/tmux-test")?.unwrap();
+        assert!(stored_again.tmux_session_name.is_none());
+
+        Ok(())
+    }
+
+    #[test]
+    fn set_workspace_tmux_session_errors_for_missing_workspace() -> Result<()> {
+        let tmp = tempdir()?;
+        let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
+
+        let err = set_workspace_tmux_session(&ship_dir, "nonexistent", Some("session"))
+            .expect_err("expected error for nonexistent workspace");
+        assert!(
+            err.to_string().contains("Workspace not found"),
+            "unexpected error: {err}"
+        );
+        Ok(())
+    }
 }

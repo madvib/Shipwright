@@ -15,6 +15,7 @@ pub type WorkspaceDbRow = (
     i64,            // 11: config_generation
     Option<String>, // 12: compiled_at
     Option<String>, // 13: compile_error
+    Option<String>, // 14: tmux_session_name
 );
 
 pub type WorkspaceDbListRow = (
@@ -33,6 +34,7 @@ pub type WorkspaceDbListRow = (
     i64,            // 12: config_generation
     Option<String>, // 13: compiled_at
     Option<String>, // 14: compile_error
+    Option<String>, // 15: tmux_session_name
 );
 
 #[derive(Debug, Clone, PartialEq, Eq)]

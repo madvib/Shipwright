@@ -101,6 +101,7 @@ pub(crate) fn new_workspace(branch: &str, _now: DateTime<Utc>) -> Workspace {
         config_generation: 0,
         compiled_at: None,
         compile_error: None,
+        tmux_session_name: None,
     }
 }
 

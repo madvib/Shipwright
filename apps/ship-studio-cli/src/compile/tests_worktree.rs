@@ -33,6 +33,7 @@ fn compile_worktree_output_root_separates_from_project_root() {
         provider: Some("claude"),
         dry_run: false,
         active_agent: None,
+        extra_skills: vec![],
     })
     .unwrap();
 

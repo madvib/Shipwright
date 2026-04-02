@@ -13,6 +13,7 @@ use super::helpers::*;
 use super::lifecycle_actors::ensure_actor_for_workspace;
 use super::types::*;
 use super::types_session::*;
+use crate::db::workspace_state::set_workspace_tmux_session_db;
 
 /// Create or update a workspace record without requiring a git checkout.
 /// This is the runtime-native entrypoint for workspace lifecycle management.
@@ -195,6 +196,23 @@ pub fn get_active_workspace_type(ship_dir: &Path) -> Result<Option<ShipWorkspace
         .iter()
         .find(|w| w.status == WorkspaceStatus::Active)
         .map(|w| w.workspace_type))
+}
+
+/// Set (or clear) the tmux session name for a workspace.
+///
+/// `session_name = None` clears the value. Returns the updated workspace.
+/// Errors if the workspace does not exist.
+pub fn set_workspace_tmux_session(
+    ship_dir: &Path,
+    branch: &str,
+    session_name: Option<&str>,
+) -> Result<Workspace> {
+    let branch = ensure_branch_key(branch)?;
+    get_workspace(ship_dir, branch)?
+        .ok_or_else(|| anyhow::anyhow!("Workspace not found for branch '{}'", branch))?;
+    set_workspace_tmux_session_db(branch, session_name)?;
+    get_workspace(ship_dir, branch)?
+        .ok_or_else(|| anyhow::anyhow!("Workspace not found after tmux session update"))
 }
 
 /// Create the default service workspace ("ship") if it doesn't already exist.

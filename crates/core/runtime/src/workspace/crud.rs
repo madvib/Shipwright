@@ -1,5 +1,7 @@
 use crate::db::branch_context::clear_branch_link;
-use crate::db::workspace_state::{delete_workspace_db, get_workspace_db, list_workspaces_db};
+use crate::db::workspace_state::{
+    delete_workspace_db, get_workspace_by_id_db, get_workspace_db, list_workspaces_db,
+};
 use super::event_upserts::upsert_workspace_on_deleted;
 use anyhow::{Result, anyhow};
 use std::path::Path;
@@ -14,6 +16,58 @@ use super::types::*;
 use super::types_session::*;
 
 // ---- Get / list / delete ---------------------------------------------------
+
+/// Look up a workspace by its id (or branch as fallback).
+pub fn get_workspace_by_id(_ship_dir: &Path, id: &str) -> Result<Option<Workspace>> {
+    let row = get_workspace_by_id_db(id)?;
+    let Some((
+        branch,
+        (
+            ws_id,
+            workspace_type,
+            status,
+            active_agent,
+            providers,
+            mcp_servers,
+            skills,
+            is_worktree,
+            worktree_path,
+            last_activated_at,
+            context_hash,
+            config_generation,
+            compiled_at,
+            compile_error,
+            tmux_session_name,
+        ),
+    )) = row
+    else {
+        return Ok(None);
+    };
+
+    let workspace_type = parse_workspace_type_required(&workspace_type)
+        .map_err(|err| anyhow!("Workspace '{}' has invalid type value: {}", id, err))?;
+    let status = parse_workspace_status_required(&status)
+        .map_err(|err| anyhow!("Workspace '{}' has invalid status value: {}", id, err))?;
+
+    Ok(Some(Workspace {
+        id: ws_id,
+        branch,
+        workspace_type,
+        status,
+        active_agent,
+        providers,
+        mcp_servers,
+        skills,
+        last_activated_at: parse_datetime_opt(last_activated_at),
+        is_worktree,
+        worktree_path,
+        context_hash,
+        config_generation,
+        compiled_at: parse_datetime_opt(compiled_at),
+        compile_error,
+        tmux_session_name,
+    }))
+}
 
 pub fn get_workspace(_ship_dir: &Path, branch: &str) -> Result<Option<Workspace>> {
     let row = get_workspace_db(branch)?;
@@ -32,6 +86,7 @@ pub fn get_workspace(_ship_dir: &Path, branch: &str) -> Result<Option<Workspace>
         config_generation,
         compiled_at,
         compile_error,
+        tmux_session_name,
     )) = row
     else {
         return Ok(None);
@@ -58,6 +113,7 @@ pub fn get_workspace(_ship_dir: &Path, branch: &str) -> Result<Option<Workspace>
         config_generation,
         compiled_at: parse_datetime_opt(compiled_at),
         compile_error,
+        tmux_session_name,
     }))
 }
 
@@ -80,6 +136,7 @@ pub fn list_workspaces(_ship_dir: &Path) -> Result<Vec<Workspace>> {
         config_generation,
         compiled_at,
         compile_error,
+        tmux_session_name,
     ) in rows
     {
         let parsed_type = parse_workspace_type_required(&workspace_type)
@@ -103,6 +160,7 @@ pub fn list_workspaces(_ship_dir: &Path) -> Result<Vec<Workspace>> {
             config_generation,
             compiled_at: parse_datetime_opt(compiled_at),
             compile_error,
+            tmux_session_name,
         });
     }
     Ok(workspaces)

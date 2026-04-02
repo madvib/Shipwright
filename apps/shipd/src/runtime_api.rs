@@ -210,6 +210,7 @@ mod tests {
             kernel,
             mesh_registry,
             agent_mailboxes: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            pty_connections: Arc::new(Mutex::new(std::collections::HashMap::new())),
         }
     }
 

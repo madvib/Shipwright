@@ -83,6 +83,7 @@ pub fn run_add_from(url: &str) -> Result<()> {
         provider: None,
         dry_run: false,
         active_agent: state.active_agent.as_deref(),
+        extra_skills: vec![],
     })
     .ok(); // Non-fatal — user can compile manually.
 

@@ -127,6 +127,8 @@ pub struct Workspace {
     pub compiled_at: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compile_error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tmux_session_name: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]

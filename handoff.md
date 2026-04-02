@@ -1,58 +1,60 @@
-# Handoff: Artifact-to-Event Registration + KernelRouter Split-Brain Fix
+# Handoff: tmux_session_name + PTY WebSocket endpoint
 
-Branch: `job/event-registration`
+Branch: `v0.2.0`
 
 ## What was done
 
-### 1. `artifacts` field on Skill types
-Both the runtime (`crates/core/runtime/src/agents/skill.rs`) and compiler (`crates/core/compiler/src/types/skill.rs`) `Skill` structs now have `artifacts: Vec<String>`. The loader (`apps/ship-studio-cli/src/loader.rs`) and dep-skills parser (`apps/ship-studio-cli/src/dep_skills.rs`) both parse the YAML inline array format (`artifacts: [html, adr]`).
+### Migration
+`crates/core/runtime/migrations/0004_workspace_tmux.sql` — `ALTER TABLE workspace ADD COLUMN tmux_session_name TEXT;`
 
-### 2. Artifact → event mapping
-`crates/core/runtime/src/events/artifact_events.rs` — new module:
-- `events_for_artifact(artifact_type)` → platform event suffix(es)
-- `skill_event_subscriptions(skills)` → `ship.{suffix}` + `{skill.id}.` per skill, deduplicated
-- `skill_custom_namespaces(skills)` → only `{skill.id}.` namespaces
+### DB layer (`crates/core/runtime/src/db/`)
+- `types.rs` — `WorkspaceDbRow` extended to 15 elements (added `Option<String>` for `tmux_session_name`); `WorkspaceDbListRow` extended to 16 elements
+- `workspace_state.rs` — all SELECT queries include `tmux_session_name`; new `set_workspace_tmux_session_db(branch, session_name)` updates the column; new `get_workspace_by_id_db(id)` queries `WHERE id = ? OR branch = ?` for lookup by workspace ID
 
-The same mapping is duplicated in `crates/core/compiler/src/compile/skills.rs` — compiler can't depend on runtime; this is intentional.
+### Workspace module (`crates/core/runtime/src/workspace/`)
+- `types.rs` — `Workspace` struct gains `#[serde(skip_serializing_if = "Option::is_none")] pub tmux_session_name: Option<String>`
+- `helpers.rs` — `new_workspace` initializes `tmux_session_name: None`
+- `crud.rs` — all tuple destructuring updated; new `get_workspace_by_id(_ship_dir, id)` public function
+- `lifecycle.rs` — new `set_workspace_tmux_session(ship_dir, branch, session_name)` public function
+- `mod.rs` — re-exports both new functions
 
-### 3. Dynamic actor subscriptions
-`apps/mcp/src/server/mod.rs` — `spawn_agent_actor()` now loads project skills via `runtime::list_skills()` and builds subscriptions dynamically instead of hardcoding them.
+### Tests (`crates/core/runtime/src/workspace/tests_crud.rs`)
+- `set_workspace_tmux_session_write_and_read_back` — write, read, and clear cycle
+- `set_workspace_tmux_session_errors_for_missing_workspace` — failure path
 
-`apps/mcp/src/studio_server.rs` — `spawn_studio_actor()` subscribes to all skill custom namespaces.
+### shipd PTY endpoint (`apps/shipd/src/`)
+- `pty_handler.rs` — `workspace_pty` handler, `handle_pty_socket` bridge loop using `script(1)` for PTY allocation, `PtyConnectionGuard` drop guard
+- `pty_handler_tests.rs` — integration tests: 404 for unknown workspace, 404 for no tmux session, 429 over limit
+- `rest_api.rs` — `ApiState` gains `pty_connections: Arc<Mutex<HashMap<String, usize>>>`
+- `lib.rs` — module declared, route `/workspaces/:id/pty` registered, field initialized
+- `runtime_api.rs` — test helper updated
 
-### 4. Split-brain KernelRouter fix
-`apps/mcp/src/http.rs` — `build_studio_app()` now serves **two** MCP endpoints in the same process:
-- `/mcp` → `StudioServer` (web UI)
-- `/agent` → `ShipServer` (agent connections)
+### Cargo.toml (`apps/shipd/Cargo.toml`)
+- `axum` gains `ws` feature
+- `tower` added as dev-dependency
 
-Both use `init_kernel_router` (idempotent via `OnceLock`) so they share the same in-process router. Agents connect to `/agent` and their events route directly to Studio's mailbox.
+## Route summary
 
-### 5. HTTP transport when Studio is active
-`crates/core/compiler/src/types/agent_profile.rs` — added `ProfileApps { studio: bool }` to `AgentProfile`.
+```
+GET /api/runtime/workspaces/:id/pty   — WS upgrade
+  - :id is workspace id (or branch as fallback)
+  - 404 if workspace not found
+  - 404 if tmux_session_name is null or empty
+  - 429 if >= 5 concurrent connections for workspace
+  - Spawns: script -q -c "tmux attach-session -t <name>" /dev/null
+  - Bridges: WS frames ↔ process stdin/stdout
+  - Heartbeat: ping every 30s, close if no pong within 10s
+  - On close: kills attach process (not the tmux session)
+```
 
-`crates/core/compiler/src/resolve.rs` — `ResolvedConfig` gains `studio_mcp_url: Option<String>`. `resolve_library()` sets it when the active agent profile has `apps.studio = true`.
+## Workspace response change
 
-`crates/core/compiler/src/compile/mcp.rs` — `build_mcp_servers()` accepts `studio_url: Option<&str>` and emits `{"url": "http://localhost:PORT/agent"}` instead of stdio when set. Same for `gemini.rs` and `cursor.rs`.
+`GET /api/runtime/workspaces` now includes `tmux_session_name` in each workspace entry (omitted when null due to `skip_serializing_if`).
 
-### 6. `event_subscriptions` in CompileOutput
-`crates/core/compiler/src/compile/mod.rs` — `CompileOutput.event_subscriptions: Vec<String>` added. Populated from `skills::resolve_event_subscriptions()`.
+## Verification
 
-### 7. Remove REST `/studio/event` endpoint
-`apps/web/src/features/studio/useLocalMcp.ts` — removed `postStudioEvent`.
-`apps/web/src/features/studio/session/useSessionHandlers.ts` — now calls `mcp.callTool('emit_studio_event', ...)` directly.
-
-## Test status
-- `cargo test -p compiler`: 419 passed, 0 failed
-- `cargo test -p runtime`: 522 passed, 2 pre-existing failures (worktree `.ship` resolution, unrelated)
-- `just check-gates`: Both gates compile
-
-## Known pre-existing failures (not introduced here)
-- `project::tests::resolve_project_ship_dir_prefers_main_ship_over_worktree_copy`
-- `tests::test_get_project_dir_prefers_main_ship_when_worktree_has_local_copy`
-
-Both fail on `main` before this branch's changes.
-
-## What's not done (out of scope / future work)
-- Integration tests for cross-actor event delivery
-- WASM rebuild — `CompileOutput.event_subscriptions` field added; `wasm-pack build` needed before using from JS
-- `studio_port` field in `ProjectLibrary` TOML schema documentation
+```bash
+cargo test -p runtime -- workspace
+cargo test -p shipd
+just build
+```

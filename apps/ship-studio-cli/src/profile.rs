@@ -82,10 +82,12 @@ impl WorkspaceState {
 
 /// Activate an agent: compile + install plugins + persist workspace state to platform.db.
 /// If `agent_id` is None, re-runs the active agent from platform.db.
+/// `extra_skills` are injected at compile time on top of the agent's declared skill refs.
 pub fn activate_agent(
     agent_id: Option<&str>,
     project_root: &Path,
     output_root: Option<&Path>,
+    extra_skills: Vec<String>,
 ) -> Result<()> {
     let ship_dir = project_root.join(".ship");
     let mut state = WorkspaceState::load(&ship_dir);
@@ -104,6 +106,7 @@ pub fn activate_agent(
         provider: None,
         dry_run: false,
         active_agent: Some(&id),
+        extra_skills: extra_skills.clone(),
     })?;
 
     let now_plugins: Vec<String> = agent.plugins.install.clone();
@@ -114,7 +117,12 @@ pub fn activate_agent(
     state.compiled_at = Some(chrono::Utc::now().to_rfc3339());
     state.plugins_installed = now_plugins;
     state.save(&ship_dir)?;
-    println!("✓ activated agent '{}'", id);
+    if extra_skills.is_empty() {
+        println!("✓ activated agent '{}'", id);
+    } else {
+        let injected: Vec<String> = extra_skills.iter().map(|s| format!("+{}", s)).collect();
+        println!("✓ activated agent '{}' ({})", id, injected.join(", "));
+    }
     Ok(())
 }
 
