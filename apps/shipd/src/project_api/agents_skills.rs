@@ -6,7 +6,7 @@ use crate::rest_api::MeshResponse;
 
 use super::{err_response, ok_response, resolve_worktree};
 
-/// Strip JSONC comments (// and /* */) to produce valid JSON.
+/// Strip JSONC comments (// and /* */) and trailing commas to produce valid JSON.
 fn strip_jsonc_comments(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     let mut in_block_comment = false;
@@ -65,7 +65,31 @@ fn strip_jsonc_comments(input: &str) -> String {
         out.push(c);
     }
 
-    out
+    // Strip trailing commas before } or ] (JSONC allows them, JSON does not)
+    strip_trailing_commas(&out)
+}
+
+fn strip_trailing_commas(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut result = String::with_capacity(input.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b',' {
+            // Look ahead past whitespace for } or ]
+            let mut j = i + 1;
+            while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+                j += 1;
+            }
+            if j < bytes.len() && (bytes[j] == b'}' || bytes[j] == b']') {
+                // Skip the comma, keep the whitespace
+                i += 1;
+                continue;
+            }
+        }
+        result.push(bytes[i] as char);
+        i += 1;
+    }
+    result
 }
 
 /// GET /api/workspaces/{id}/agents
@@ -115,12 +139,14 @@ pub async fn list_agents(
             Err(_) => continue,
         };
 
+        // Agent config may nest under "agent" key or be flat
+        let agent_obj = parsed.get("agent").unwrap_or(&parsed);
         agents.push(serde_json::json!({
-            "id": id_str,
-            "name": parsed.get("name").and_then(|v| v.as_str()).unwrap_or(&id_str),
-            "description": parsed.get("description").and_then(|v| v.as_str()),
+            "id": agent_obj.get("id").and_then(|v| v.as_str()).unwrap_or(&id_str),
+            "name": agent_obj.get("name").and_then(|v| v.as_str()).unwrap_or(&id_str),
+            "description": agent_obj.get("description").and_then(|v| v.as_str()),
             "skills": parsed.get("skills").cloned().unwrap_or(serde_json::json!([])),
-            "providers": parsed.get("providers").cloned().unwrap_or(serde_json::json!([])),
+            "providers": agent_obj.get("providers").cloned().unwrap_or(serde_json::json!([])),
         }));
     }
 

@@ -9,6 +9,7 @@ import Footer from '../components/Footer'
 
 import TanStackQueryProvider from '../integrations/tanstack-query/root-provider'
 import { LocalMcpProvider } from '../features/studio/LocalMcpContext'
+import { DaemonEventListener } from '../features/studio/hooks/DaemonEventListener'
 
 import appCss from '../styles.css?url'
 
@@ -59,6 +60,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body className={`font-sans antialiased [overflow-wrap:anywhere] ${isStudio ? 'flex flex-col h-screen overflow-hidden' : 'min-h-screen flex flex-col'}`}>
         <TanStackQueryProvider>
+          <DaemonEventListener />
           <LocalMcpProvider>
             {!isLanding && (
               <Suspense fallback={<div className="h-12 border-b border-border/60" />}>

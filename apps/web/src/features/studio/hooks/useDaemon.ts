@@ -1,12 +1,9 @@
-// Hook for connecting to the shipd daemon REST/SSE API at port 51742.
-// Provides live workspace and agent state without going through MCP.
+// Hook for reading daemon state via TanStack Query.
+// SSE connection is handled by DaemonEventListener (mounted once in root).
 
-import { useEffect, useRef } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { DAEMON_BASE_URL } from '#/lib/daemon-config'
-import { mcpKeys } from '#/lib/query-keys'
 import type { Workspace } from '@ship/ui'
-import type { EventEnvelope } from '#/features/studio/events/useEventStream'
 
 // ---- Types derived from shipd runtime_api.rs response shapes ----
 
@@ -30,12 +27,6 @@ export const daemonKeys = {
   workspaces: ['daemon', 'workspaces'] as const,
   agents: ['daemon', 'agents'] as const,
 }
-
-// ---- Constants ----
-
-const SSE_RECONNECT_BASE_MS = 1000
-const SSE_RECONNECT_MAX_MS = 30000
-const EVENT_RING_BUFFER_SIZE = 200
 
 /** Prefixes that indicate test-leaked workspaces from integration tests. */
 const TEST_BRANCH_PREFIXES = [
@@ -68,9 +59,6 @@ async function fetchAgents(): Promise<AgentEntry[]> {
 // ---- Hook ----
 
 export function useDaemon(): UseDaemonReturn {
-  const queryClient = useQueryClient()
-  const retryDelay = useRef(SSE_RECONNECT_BASE_MS)
-
   const workspacesQuery = useQuery<Workspace[], Error>({
     queryKey: daemonKeys.workspaces,
     queryFn: fetchWorkspaces,
@@ -84,56 +72,6 @@ export function useDaemon(): UseDaemonReturn {
     refetchInterval: 5000,
     retry: false,
   })
-
-  // SSE stream — invalidate workspace queries on workspace.* events,
-  // write all events to the event ring buffer for useEventStream.
-  // Reconnects with exponential backoff on error.
-  useEffect(() => {
-    let es: EventSource | null = null
-    let timer: ReturnType<typeof setTimeout> | null = null
-    let cancelled = false
-
-    function connect() {
-      if (cancelled) return
-      es = new EventSource(`${DAEMON_BASE_URL}/api/runtime/events`)
-
-      es.addEventListener('ship.event', (e: MessageEvent) => {
-        try {
-          const envelope = JSON.parse(e.data as string) as EventEnvelope
-          if (envelope.event_type?.startsWith('workspace.')) {
-            void queryClient.invalidateQueries({ queryKey: daemonKeys.workspaces })
-          }
-          // Append to event ring buffer
-          queryClient.setQueryData<EventEnvelope[]>(mcpKeys.events(), (prev) => {
-            const next = [envelope, ...(prev ?? [])]
-            return next.length > EVENT_RING_BUFFER_SIZE ? next.slice(0, EVENT_RING_BUFFER_SIZE) : next
-          })
-        } catch {
-          // malformed payload — ignore
-        }
-      })
-
-      es.onopen = () => {
-        retryDelay.current = SSE_RECONNECT_BASE_MS
-      }
-
-      es.onerror = () => {
-        es?.close()
-        es = null
-        if (cancelled) return
-        timer = setTimeout(connect, retryDelay.current)
-        retryDelay.current = Math.min(retryDelay.current * 2, SSE_RECONNECT_MAX_MS)
-      }
-    }
-
-    connect()
-
-    return () => {
-      cancelled = true
-      if (timer) clearTimeout(timer)
-      es?.close()
-    }
-  }, [queryClient])
 
   const fetchError = workspacesQuery.error ?? agentsQuery.error ?? null
   const connected = !workspacesQuery.isError && workspacesQuery.data !== undefined
