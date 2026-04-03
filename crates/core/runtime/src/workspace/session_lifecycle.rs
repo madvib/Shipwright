@@ -1,11 +1,10 @@
-use crate::db::session::{
-    get_active_workspace_session_db, get_workspace_session_db,
-    insert_workspace_session_record_db,
-};
+use crate::db::session::{get_active_workspace_session_db, get_workspace_session_db};
 use crate::db::session_events::{
-    insert_session_with_started_event, update_session_with_ended_event,
+    insert_session_recorded_event, insert_session_with_started_event,
+    update_session_with_ended_event,
 };
-use crate::events::types::{SessionEnded, SessionStarted};
+use crate::db::workspace_state::get_workspace_config_generation_db;
+use crate::events::types::{SessionEnded, SessionRecorded, SessionStarted};
 use crate::projections::{Projection, SessionProjection};
 use anyhow::{Result, anyhow};
 use chrono::Utc;
@@ -144,6 +143,8 @@ pub fn start_workspace_session(
 
     let _providers = compile_workspace_context(ship_dir, &workspace, agent_id.as_deref())?;
 
+    let config_generation_at_start = get_workspace_config_generation_db(&workspace.id)?;
+
     let session_id = crate::gen_nanoid();
     let started_payload = SessionStarted {
         goal: normalize_optional_text(goal),
@@ -151,7 +152,7 @@ pub fn start_workspace_session(
         workspace_branch: workspace.branch.clone(),
         agent_id,
         primary_provider: Some(primary_provider),
-        config_generation_at_start: None,
+        config_generation_at_start,
         compiled_at: None,
     };
     let start_envelope = insert_session_with_started_event(&session_id, &workspace.id, &started_payload)?;
@@ -220,11 +221,9 @@ pub fn end_workspace_session(
         .ended_at
         .map(|end| (end - ended.started_at).num_seconds());
 
-    let record = crate::db::types::WorkspaceSessionRecordDb {
-        id: crate::gen_nanoid(),
-        session_id: ended.id.clone(),
-        workspace_id: ended.workspace_id.clone(),
-        workspace_branch: ended.workspace_branch.clone(),
+    let record_id = crate::gen_nanoid();
+    let recorded_payload = SessionRecorded {
+        record_id: record_id.clone(),
         summary: ended.summary.clone(),
         updated_workspace_ids: ended.updated_workspace_ids.clone(),
         duration_secs,
@@ -233,12 +232,16 @@ pub fn end_workspace_session(
         agent_id: ended.agent_id.clone(),
         files_changed: request.files_changed,
         gate_result: request.gate_result,
-        created_at: Utc::now().to_rfc3339(),
+        workspace_branch: ended.workspace_branch.clone(),
     };
-    insert_workspace_session_record_db(&record)?;
+    let recorded_envelope =
+        insert_session_recorded_event(&ended.id, &ended.workspace_id, &recorded_payload)?;
+    if let Ok(mut conn) = crate::db::open_db() {
+        let _ = SessionProjection::new().apply(&recorded_envelope, &mut conn);
+    }
 
     let mut ended = ended;
-    ended.session_record_id = Some(record.id);
+    ended.session_record_id = Some(record_id);
 
     if let Err(error) = persist_session_artifact(ship_dir, &ended, "end") {
         eprintln!("Failed to persist session artifact on end: {}", error);

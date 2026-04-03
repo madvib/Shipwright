@@ -179,6 +179,7 @@ fn apply_activated(entity_id: &str, payload_json: &str, conn: &mut SqliteConnect
 
 #[derive(serde::Deserialize)]
 struct CompiledPayload {
+    #[allow(dead_code)]
     config_generation: u32,
     #[allow(dead_code)]
     duration_ms: u64,
@@ -190,15 +191,14 @@ fn apply_compiled(
     event_time: &chrono::DateTime<chrono::Utc>,
     conn: &mut SqliteConnection,
 ) -> Result<()> {
-    let p: CompiledPayload = serde_json::from_str(payload_json)?;
+    let _p: CompiledPayload = serde_json::from_str(payload_json)?;
     let compiled_at = event_time.to_rfc3339();
     block_on(async {
         sqlx::query(
             "UPDATE workspace SET compiled_at = ?, compile_error = NULL, \
-             config_generation = ?, updated_at = ? WHERE branch = ?",
+             config_generation = config_generation + 1, updated_at = ? WHERE branch = ?",
         )
         .bind(&compiled_at)
-        .bind(p.config_generation as i64)
         .bind(&compiled_at)
         .bind(entity_id)
         .execute(conn)

@@ -14,7 +14,7 @@ use anyhow::Result;
 use crate::db::block_on_anyhow;
 use crate::events::store::EventStore;
 use crate::events::types::event_types;
-use crate::events::types::{SessionEnded, SessionProgress, SessionStarted};
+use crate::events::types::{SessionEnded, SessionProgress, SessionRecorded, SessionStarted};
 use crate::events::validator::{CallerKind, EmitContext};
 use crate::events::{EventEnvelope, SqliteEventStore};
 
@@ -109,6 +109,23 @@ pub fn update_session_with_ended_event(
 ) -> Result<EventEnvelope> {
     let envelope = session_envelope(
         event_types::SESSION_ENDED,
+        session_id,
+        workspace_id,
+        payload,
+    )?;
+    emit_session(envelope, workspace_id)
+}
+
+/// Emit `session.recorded` to platform.db via the store.
+/// Returns the envelope so callers can apply SessionProjection to write
+/// the workspace_session_record row.
+pub fn insert_session_recorded_event(
+    session_id: &str,
+    workspace_id: &str,
+    payload: &SessionRecorded,
+) -> Result<EventEnvelope> {
+    let envelope = session_envelope(
+        event_types::SESSION_RECORDED,
         session_id,
         workspace_id,
         payload,

@@ -92,6 +92,21 @@ pub struct SessionEnded {
     pub compile_error: Option<String>,
 }
 
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct SessionRecorded {
+    pub record_id: String,
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub updated_workspace_ids: Vec<String>,
+    pub duration_secs: Option<i64>,
+    pub provider: Option<String>,
+    pub model: Option<String>,
+    pub agent_id: Option<String>,
+    pub files_changed: Option<i64>,
+    pub gate_result: Option<String>,
+    pub workspace_branch: String,
+}
+
 // ── Skill aggregate ───────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -211,6 +226,7 @@ pub mod event_types {
     pub const SESSION_STARTED: &str = "session.started";
     pub const SESSION_PROGRESS: &str = "session.progress";
     pub const SESSION_ENDED: &str = "session.ended";
+    pub const SESSION_RECORDED: &str = "session.recorded";
     pub const ACTOR_CREATED: &str = "actor.created";
     pub const ACTOR_WOKE: &str = "actor.woke";
     pub const ACTOR_SLEPT: &str = "actor.slept";
@@ -243,6 +259,7 @@ pub mod event_types {
         SESSION_STARTED,
         SESSION_PROGRESS,
         SESSION_ENDED,
+        SESSION_RECORDED,
         ACTOR_CREATED,
         ACTOR_WOKE,
         ACTOR_SLEPT,
@@ -278,6 +295,6 @@ mod tests {
 
     #[test]
     fn all_constants_have_expected_count() {
-        assert_eq!(ALL.len(), 29, "exactly 29 event type constants required");
+        assert_eq!(ALL.len(), 30, "exactly 30 event type constants required");
     }
 }
