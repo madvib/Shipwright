@@ -209,6 +209,21 @@ pub fn get_workspace_tmux_session_db(id: &str) -> Result<Option<String>> {
     Ok(row_opt.flatten())
 }
 
+/// Retrieve the current config_generation for a workspace by id or branch.
+pub fn get_workspace_config_generation_db(id: &str) -> Result<Option<i64>> {
+    let mut conn = open_db()?;
+    let row_opt = block_on(async {
+        sqlx::query_scalar::<_, i64>(
+            "SELECT config_generation FROM workspace WHERE id = ? OR branch = ? LIMIT 1",
+        )
+        .bind(id)
+        .bind(id)
+        .fetch_optional(&mut conn)
+        .await
+    })?;
+    Ok(row_opt)
+}
+
 /// Mark any currently active workspace as archived except `active_branch`.
 ///
 /// Emits a `workspace.archived` event per demoted workspace.

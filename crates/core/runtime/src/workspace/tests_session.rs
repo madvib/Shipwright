@@ -275,12 +275,11 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "provider resolution always falls back to claude; need workspace-level provider deny"]
-    fn start_workspace_session_errors_when_no_valid_providers_resolve() -> Result<()> {
+    fn start_workspace_session_falls_back_to_claude_when_no_providers_configured() -> Result<()> {
         let tmp = tempdir()?;
         let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
 
-        // Ensure no providers are configured so the session start fails.
+        // Clear project-level providers so the default fallback kicks in.
         let mut config = crate::config::get_config(Some(ship_dir.clone()))?;
         config.providers = vec![];
         crate::config::save_config(&config, Some(ship_dir.clone()))?;
@@ -293,25 +292,24 @@ mod tests {
             },
         )?;
 
-        let err = start_workspace_session(
+        // Provider resolution falls back to "claude" by design (agents/config.rs
+        // resolution priority level 4). Session start should succeed.
+        let session = start_workspace_session(
             &ship_dir,
             "feature/no-provider",
-            Some("should fail".to_string()),
+            Some("fallback test".to_string()),
             None,
             None,
-        )
-        .expect_err("session start should fail when no providers resolve");
-        assert!(
-            err.to_string()
-                .contains("No providers resolved for workspace") || err.to_string().contains("No valid providers resolved for workspace"),
-            "unexpected error: {}",
-            err
+        )?;
+        assert_eq!(
+            session.primary_provider.as_deref(),
+            Some("claude"),
+            "empty project providers should fall back to claude"
         );
         Ok(())
     }
 
     #[test]
-    #[ignore = "config_generation_at_start not populated after lean workspace refactor; needs projection read"]
     fn session_stale_context_turns_true_after_recompile() -> Result<()> {
         let tmp = tempdir()?;
         let ship_dir = crate::project::init_project(tmp.path().to_path_buf())?;
@@ -338,10 +336,9 @@ mod tests {
             None,
             None,
         )?;
-        let mut updated_config = crate::config::get_config(Some(ship_dir.clone()))?;
-        updated_config.providers = vec!["codex".to_string()];
-        crate::config::save_config(&updated_config, Some(ship_dir.clone()))?;
+        assert!(started.config_generation_at_start.is_some());
 
+        // Trigger a recompile which bumps config_generation.
         let _ = set_workspace_active_agent(&ship_dir, "feature/stale-session", None)?;
 
         let active = get_active_workspace_session(&ship_dir, "feature/stale-session")?

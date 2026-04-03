@@ -1,6 +1,7 @@
 use crate::db::session::{
     get_active_workspace_session_db, get_workspace_session_record_db, list_workspace_sessions_db,
 };
+use crate::db::workspace_state::get_workspace_config_generation_db;
 use crate::db::session_events::insert_session_progress_event;
 use crate::db::types::WorkspaceSessionDb;
 use crate::events::types::SessionProgress;
@@ -82,6 +83,14 @@ pub(super) fn annotate_session_record(
     Ok(())
 }
 
+fn workspace_generation_map(workspace_id: &str, branch: &str) -> HashMap<String, i64> {
+    let mut map = HashMap::new();
+    if let Ok(Some(generation)) = get_workspace_config_generation_db(workspace_id) {
+        map.insert(branch.to_string(), generation);
+    }
+    map
+}
+
 // ---- Session artifacts -----------------------------------------------------
 
 pub(super) fn session_artifacts_dir(ship_dir: &Path, session_id: &str) -> Option<PathBuf> {
@@ -158,9 +167,10 @@ pub fn get_active_workspace_session(
         Some(workspace) => workspace,
         None => return Ok(None),
     };
+    let generation_map = workspace_generation_map(&workspace.id, branch);
     Ok(get_active_workspace_session_db(&workspace.id)?.map(|row| {
         let mut session = hydrate_workspace_session(row);
-        annotate_session_stale_state(&mut session, &HashMap::new());
+        annotate_session_stale_state(&mut session, &generation_map);
         let _ = annotate_session_record(ship_dir, &mut session);
         session
     }))
@@ -171,22 +181,24 @@ pub fn list_workspace_sessions(
     branch: Option<&str>,
     limit: usize,
 ) -> Result<Vec<WorkspaceSession>> {
-    let workspace_generation_by_branch = HashMap::new();
-    let workspace_id = if let Some(branch) = branch {
+    let (workspace_id, generation_map) = if let Some(branch) = branch {
         let branch = ensure_branch_key(branch)?;
         match get_workspace(ship_dir, branch)? {
-            Some(workspace) => Some(workspace.id),
+            Some(workspace) => {
+                let map = workspace_generation_map(&workspace.id, branch);
+                (Some(workspace.id), map)
+            }
             None => return Ok(Vec::new()),
         }
     } else {
-        None
+        (None, HashMap::new())
     };
 
     let rows = list_workspace_sessions_db(workspace_id.as_deref(), limit)?;
     let mut sessions: Vec<WorkspaceSession> =
         rows.into_iter().map(hydrate_workspace_session).collect();
     for session in &mut sessions {
-        annotate_session_stale_state(session, &workspace_generation_by_branch);
+        annotate_session_stale_state(session, &generation_map);
         annotate_session_record(ship_dir, session)?;
     }
     Ok(sessions)

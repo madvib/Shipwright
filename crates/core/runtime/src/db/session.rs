@@ -1,6 +1,6 @@
 //! Workspace session CRUD — moved from state_db.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use sqlx::Row;
 
 use super::types::{WorkspaceSessionDb, WorkspaceSessionRecordDb};
@@ -100,50 +100,6 @@ pub fn list_workspace_sessions_db(
     };
 
     Ok(rows.iter().map(parse_workspace_session_row).collect())
-}
-
-pub fn insert_workspace_session_record_db(record: &WorkspaceSessionRecordDb) -> Result<()> {
-    let mut conn = open_db()?;
-    let updated_workspace_ids_json = serde_json::to_string(&record.updated_workspace_ids)
-        .with_context(|| "Failed to serialize workspace session record updated_workspace_ids")?;
-    block_on(async {
-        sqlx::query(
-            "INSERT INTO workspace_session_record
-             (id, session_id, workspace_id, workspace_branch, summary,
-              updated_workspace_ids_json, duration_secs, provider, model,
-              agent_id, files_changed, gate_result, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT(session_id) DO UPDATE SET
-               id = excluded.id,
-               workspace_id = excluded.workspace_id,
-               workspace_branch = excluded.workspace_branch,
-               summary = excluded.summary,
-               updated_workspace_ids_json = excluded.updated_workspace_ids_json,
-               duration_secs = excluded.duration_secs,
-               provider = excluded.provider,
-               model = excluded.model,
-               agent_id = excluded.agent_id,
-               files_changed = excluded.files_changed,
-               gate_result = excluded.gate_result,
-               created_at = excluded.created_at",
-        )
-        .bind(&record.id)
-        .bind(&record.session_id)
-        .bind(&record.workspace_id)
-        .bind(&record.workspace_branch)
-        .bind(&record.summary)
-        .bind(&updated_workspace_ids_json)
-        .bind(record.duration_secs)
-        .bind(&record.provider)
-        .bind(&record.model)
-        .bind(&record.agent_id)
-        .bind(record.files_changed)
-        .bind(&record.gate_result)
-        .bind(&record.created_at)
-        .execute(&mut conn)
-        .await
-    })?;
-    Ok(())
 }
 
 pub fn get_workspace_session_record_db(
