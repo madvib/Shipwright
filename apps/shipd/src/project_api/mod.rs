@@ -146,7 +146,10 @@ pub async fn activate_workspace(
 }
 
 #[cfg(test)]
-mod tests {
+mod tests;
+
+#[cfg(test)]
+mod tests_inline {
     use super::*;
     use axum::extract::Path;
 
