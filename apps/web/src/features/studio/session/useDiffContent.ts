@@ -11,10 +11,13 @@ const DIFF_PATH = 'diff.txt'
 
 export function useDiffContent() {
   const { workspaces } = useDaemon()
-  const wsId = workspaces.find((w) => w.status === 'active')?.branch ?? ''
+  const active = workspaces
+    .filter((w) => w.status === 'active')
+    .sort((a, b) => (b.last_activated_at ?? '').localeCompare(a.last_activated_at ?? ''))
+  const wsId = active[0]?.branch ?? ''
 
   const query = useQuery({
-    queryKey: sessionKeys.diff(),
+    queryKey: sessionKeys.diff(wsId),
     enabled: wsId.length > 0,
     queryFn: async (): Promise<string | null> => {
       // Try git diff first

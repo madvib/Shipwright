@@ -17,14 +17,17 @@ function toFileType(raw: string): SessionFile['type'] {
 
 function useActiveWorkspaceId(): string {
   const { workspaces } = useDaemon()
-  return workspaces.find((w) => w.status === 'active')?.branch ?? ''
+  const active = workspaces
+    .filter((w) => w.status === 'active')
+    .sort((a, b) => (b.last_activated_at ?? '').localeCompare(a.last_activated_at ?? ''))
+  return active[0]?.branch ?? ''
 }
 
 export function useSessionFiles() {
   const wsId = useActiveWorkspaceId()
 
   const query = useQuery({
-    queryKey: sessionKeys.files(),
+    queryKey: sessionKeys.files(wsId),
     queryFn: async (): Promise<SessionFile[]> => {
       const res = await fetch(`${DAEMON_BASE_URL}/api/workspaces/${encodeURIComponent(wsId)}/session-files`)
       if (!res.ok) throw new Error(`daemon: session-files ${res.status}`)
@@ -37,6 +40,7 @@ export function useSessionFiles() {
         modifiedAt: Date.now(),
       }))
     },
+    enabled: wsId.length > 0,
     staleTime: 3_000,
     refetchInterval: 5_000,
   })
@@ -51,7 +55,7 @@ export function useSessionFileContent(filePath: string | null) {
   const wsId = useActiveWorkspaceId()
 
   return useQuery({
-    queryKey: sessionKeys.fileContent(filePath ?? ''),
+    queryKey: sessionKeys.fileContent(wsId, filePath ?? ''),
     queryFn: async (): Promise<string> => {
       if (!filePath) return ''
       const res = await fetch(`${DAEMON_BASE_URL}/api/workspaces/${encodeURIComponent(wsId)}/session-files/${encodeURIComponent(filePath)}`)
@@ -59,7 +63,7 @@ export function useSessionFileContent(filePath: string | null) {
       const body = (await res.json()) as { ok: boolean; data: { content: string } }
       return body.data.content
     },
-    enabled: filePath != null,
+    enabled: filePath != null && wsId.length > 0,
     staleTime: 3_000,
     refetchInterval: 5_000,
   })
@@ -72,13 +76,14 @@ export function useSessionTodo() {
   const queryClient = useQueryClient()
 
   const query = useQuery({
-    queryKey: sessionKeys.fileContent(TODO_PATH),
+    queryKey: sessionKeys.fileContent(wsId, TODO_PATH),
     queryFn: async (): Promise<string | null> => {
       const res = await fetch(`${DAEMON_BASE_URL}/api/workspaces/${encodeURIComponent(wsId)}/session-files/${encodeURIComponent(TODO_PATH)}`)
       if (!res.ok) return null
       const body = (await res.json()) as { ok: boolean; data: { content: string } }
       return body.data.content
     },
+    enabled: wsId.length > 0,
     staleTime: 3_000,
     refetchInterval: 10_000,
   })
@@ -93,7 +98,7 @@ export function useSessionTodo() {
       if (!res.ok) throw new Error(`daemon: write todo ${res.status}`)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: sessionKeys.fileContent(TODO_PATH) })
+      queryClient.invalidateQueries({ queryKey: sessionKeys.fileContent(wsId, TODO_PATH) })
     },
   })
 
@@ -122,7 +127,7 @@ export function useDeleteSessionFile() {
       if (!res.ok) throw new Error(`daemon: delete session file ${res.status}`)
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: sessionKeys.files() })
+      void queryClient.invalidateQueries({ queryKey: sessionKeys.files(wsId) })
     },
   })
 }
@@ -156,7 +161,7 @@ export function useUploadSessionFile() {
       return { success: true }
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: sessionKeys.files() })
+      void queryClient.invalidateQueries({ queryKey: sessionKeys.files(wsId) })
     },
   })
 }

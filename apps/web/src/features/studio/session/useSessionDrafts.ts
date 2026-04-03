@@ -36,7 +36,10 @@ export interface UseSessionDraftsReturn {
 
 export function useSessionDrafts(): UseSessionDraftsReturn {
   const { workspaces } = useDaemon()
-  const wsId = workspaces.find((w) => w.status === 'active')?.branch ?? ''
+  const active = workspaces
+    .filter((w) => w.status === 'active')
+    .sort((a, b) => (b.last_activated_at ?? '').localeCompare(a.last_activated_at ?? ''))
+  const wsId = active[0]?.branch ?? ''
   const queryClient = useQueryClient()
   const [drafts, setDrafts] = useState<Record<string, SessionDraft>>({})
   const loadedRef = useRef(false)
@@ -117,8 +120,8 @@ export function useSessionDrafts(): UseSessionDraftsReturn {
         if (!draft) return prev
         return { ...prev, [path]: { ...draft, originalContent: draft.content } }
       })
-      void queryClient.invalidateQueries({ queryKey: sessionKeys.fileContent(path) })
-      void queryClient.invalidateQueries({ queryKey: sessionKeys.files() })
+      void queryClient.invalidateQueries({ queryKey: sessionKeys.fileContent(wsId, path) })
+      void queryClient.invalidateQueries({ queryKey: sessionKeys.files(wsId) })
     },
   })
 

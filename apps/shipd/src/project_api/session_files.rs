@@ -16,6 +16,49 @@ pub(crate) fn file_type_from_ext(path: &std::path::Path) -> &'static str {
     }
 }
 
+fn collect_files_recursive(
+    base: &std::path::Path,
+    dir: &std::path::Path,
+    files: &mut Vec<serde_json::Value>,
+) -> Result<(), (StatusCode, Json<MeshResponse>)> {
+    let entries = std::fs::read_dir(dir).map_err(|e| {
+        err_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("failed to read dir: {e}"),
+        )
+    })?;
+
+    for entry in entries {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let path = entry.path();
+        if path.is_dir() {
+            collect_files_recursive(base, &path, files)?;
+            continue;
+        }
+        if !path.is_file() {
+            continue;
+        }
+        let rel_path = path
+            .strip_prefix(base)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .to_string();
+        let name = entry.file_name().to_string_lossy().to_string();
+        let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+        let file_type = file_type_from_ext(&path);
+        files.push(serde_json::json!({
+            "name": name,
+            "path": rel_path,
+            "size": size,
+            "type": file_type,
+        }));
+    }
+    Ok(())
+}
+
 /// GET /api/workspaces/{id}/session-files
 pub async fn list_session_files(
     Path(id): Path<String>,
@@ -28,32 +71,7 @@ pub async fn list_session_files(
     }
 
     let mut files = Vec::new();
-    let entries = std::fs::read_dir(&session_dir).map_err(|e| {
-        err_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            &format!("failed to read session dir: {e}"),
-        )
-    })?;
-
-    for entry in entries {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-        let name = entry.file_name().to_string_lossy().to_string();
-        let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
-        let file_type = file_type_from_ext(&path);
-        files.push(serde_json::json!({
-            "name": name,
-            "path": name,
-            "size": size,
-            "type": file_type,
-        }));
-    }
+    collect_files_recursive(&session_dir, &session_dir, &mut files)?;
 
     Ok(ok_response(serde_json::json!({ "files": files })))
 }

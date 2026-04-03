@@ -28,7 +28,10 @@ interface OpenTab { path: string; name: string; type: string }
 
 function SessionPage() {
   const { workspaces } = useDaemon()
-  const workspaceId = workspaces.find((w) => w.status === 'active')?.branch ?? 'v0.2.0'
+  const active = workspaces
+    .filter((w) => w.status === 'active')
+    .sort((a, b) => (b.last_activated_at ?? '').localeCompare(a.last_activated_at ?? ''))
+  const workspaceId = active[0]?.branch ?? ''
 
   const { files } = useSessionFiles()
   const uploadMutation = useUploadSessionFile()
