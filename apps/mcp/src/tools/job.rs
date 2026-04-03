@@ -14,7 +14,10 @@ use runtime::projections::job::{JobStatus, load_jobs};
 use crate::requests::{CreateJobRequest, GetJobRequest, ListJobsRequest, UpdateJobRequest};
 
 /// Emit `job.created` and return the new job_id as a JSON string.
-pub fn create_job(req: CreateJobRequest) -> String {
+///
+/// Persists to the event store AND routes through the KernelRouter so
+/// daemon subscribers (job-dispatch) see the event.
+pub async fn create_job(req: CreateJobRequest) -> String {
     let job_id = runtime::gen_ulid();
     let payload = JobCreatedPayload {
         job_id: job_id.clone(),
@@ -35,6 +38,20 @@ pub fn create_job(req: CreateJobRequest) -> String {
     if let Err(e) = store.append(&envelope) {
         return format!("Error persisting job.created: {e}");
     }
+
+    // Route through kernel for subscriber delivery (daemon job-dispatch).
+    if let Some(kr) = runtime::events::kernel_router() {
+        let ctx = runtime::events::EmitContext {
+            caller_kind: runtime::events::CallerKind::Mcp,
+            skill_id: None,
+            workspace_id: None,
+            session_id: None,
+        };
+        if let Err(e) = kr.lock().await.route(envelope, &ctx).await {
+            tracing::warn!("job.created kernel routing failed: {e}");
+        }
+    }
+
     serde_json::json!({"job_id": job_id}).to_string()
 }
 
