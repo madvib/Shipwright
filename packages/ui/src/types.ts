@@ -56,7 +56,6 @@ export type {
   PullRule,
   PullSkill,
   Rule,
-  ShipWorkspaceKind,
   Skill,
   SkillBundle,
   SkillRefs,
