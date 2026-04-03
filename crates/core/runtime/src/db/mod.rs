@@ -4,7 +4,7 @@
 
 pub mod actor_events;
 pub mod adrs;
-pub mod agents;
+pub mod artifact_registry;
 pub mod branch_context;
 pub mod events;
 #[cfg(test)]

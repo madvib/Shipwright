@@ -129,21 +129,6 @@ CREATE INDEX IF NOT EXISTS idx_event_job ON event_log(job_id);
 CREATE INDEX IF NOT EXISTS idx_event_entity ON event_log(entity_type, entity_id);
 "#;
 
-/// Agent runtime settings: singleton row (id=1) holding global agent config.
-pub const AGENT_RUNTIME_SETTINGS: &str = r#"
-CREATE TABLE IF NOT EXISTS agent_runtime_settings (
-  id              INTEGER PRIMARY KEY CHECK(id = 1),
-  active_agent    TEXT,
-  providers_json  TEXT NOT NULL DEFAULT '[]',
-  hooks_json      TEXT NOT NULL DEFAULT '[]',
-  statuses_json   TEXT NOT NULL DEFAULT '[]',
-  ai_json         TEXT,
-  git_json        TEXT NOT NULL DEFAULT '{}',
-  namespaces_json TEXT NOT NULL DEFAULT '[]',
-  updated_at      TEXT NOT NULL
-);
-"#;
-
 /// Agent artifact registry: content-addressed registry of compiled artifacts.
 pub const AGENT_ARTIFACT_REGISTRY: &str = r#"
 CREATE TABLE IF NOT EXISTS agent_artifact_registry (
@@ -158,24 +143,6 @@ CREATE TABLE IF NOT EXISTS agent_artifact_registry (
 );
 CREATE INDEX IF NOT EXISTS agent_artifact_kind_idx
   ON agent_artifact_registry(kind);
-"#;
-
-/// Agent config: named agent configuration profiles.
-pub const AGENT_CONFIG: &str = r#"
-CREATE TABLE IF NOT EXISTS agent_config (
-  id                 TEXT PRIMARY KEY,
-  name               TEXT NOT NULL,
-  description        TEXT,
-  active_tools_json  TEXT NOT NULL DEFAULT '[]',
-  mcp_refs_json      TEXT NOT NULL DEFAULT '[]',
-  skill_refs_json    TEXT NOT NULL DEFAULT '[]',
-  rule_refs_json     TEXT NOT NULL DEFAULT '[]',
-  prompt_id          TEXT,
-  hooks_json         TEXT NOT NULL DEFAULT '[]',
-  permissions_json   TEXT NOT NULL DEFAULT '{}',
-  target_agents_json TEXT NOT NULL DEFAULT '[]',
-  updated_at         TEXT NOT NULL
-);
 "#;
 
 /// Managed MCP state: tracks which MCP server processes Ship manages

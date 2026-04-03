@@ -2,9 +2,12 @@ use super::project::ProjectConfig;
 use super::types::{
     AiConfig, GitConfig, HookConfig, LegacyAgentsConfigFile, NamespaceConfig, StatusConfig,
 };
+use crate::db::kv;
 use anyhow::Result;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+const NS: &str = "runtime";
 
 pub(super) fn normalize_git_config(mut git: GitConfig) -> GitConfig {
     if git.commit.iter().any(|entry| entry == "agents") {
@@ -41,38 +44,46 @@ pub(super) fn get_runtime_settings(
         Option<Vec<NamespaceConfig>>,
     )>,
 > {
-    let Some(raw) = crate::db::agents::get_agent_runtime_settings_db()? else {
-        return Ok(None);
-    };
+    let providers: Vec<String> = kv::get(NS, "providers")?
+        .map(|v| serde_json::from_value(v).unwrap_or_default())
+        .unwrap_or_default();
+    let active_agent: Option<String> = kv::get(NS, "active_agent")?
+        .and_then(|v| serde_json::from_value(v).ok());
+    let hooks: Vec<HookConfig> = kv::get(NS, "hooks")?
+        .map(|v| serde_json::from_value(v).unwrap_or_default())
+        .unwrap_or_default();
 
-    let hooks: Vec<HookConfig> = serde_json::from_str(&raw.hooks_json).unwrap_or_default();
-    let statuses: Vec<StatusConfig> = serde_json::from_str(&raw.statuses_json).unwrap_or_default();
-    let statuses = if statuses.is_empty() {
-        None
-    } else {
-        Some(statuses)
-    };
-    let ai = raw
-        .ai_json
-        .as_deref()
-        .and_then(|json| serde_json::from_str::<AiConfig>(json).ok());
-    let git = if raw.git_json.trim().is_empty() || raw.git_json.trim() == "{}" {
-        None
-    } else {
-        serde_json::from_str::<GitConfig>(&raw.git_json)
-            .ok()
-            .map(normalize_git_config)
-    };
-    let namespaces: Vec<NamespaceConfig> =
-        serde_json::from_str(&raw.namespaces_json).unwrap_or_default();
-    let namespaces = if namespaces.is_empty() {
-        None
-    } else {
-        Some(namespaces)
-    };
+    // If no keys exist at all, return None (fresh project).
+    if providers.is_empty() && active_agent.is_none() && hooks.is_empty() {
+        let has_any = kv::get(NS, "providers")?.is_some()
+            || kv::get(NS, "active_agent")?.is_some()
+            || kv::get(NS, "hooks")?.is_some();
+        if !has_any {
+            return Ok(None);
+        }
+    }
+
+    let statuses: Vec<StatusConfig> = kv::get(NS, "statuses")?
+        .map(|v| serde_json::from_value(v).unwrap_or_default())
+        .unwrap_or_default();
+    let statuses = if statuses.is_empty() { None } else { Some(statuses) };
+
+    let ai: Option<AiConfig> = kv::get(NS, "ai")?
+        .and_then(|v| serde_json::from_value(v).ok());
+
+    let git_val = kv::get(NS, "git")?;
+    let git = git_val
+        .and_then(|v| serde_json::from_value::<GitConfig>(v).ok())
+        .map(normalize_git_config);
+
+    let namespaces: Vec<NamespaceConfig> = kv::get(NS, "namespaces")?
+        .map(|v| serde_json::from_value(v).unwrap_or_default())
+        .unwrap_or_default();
+    let namespaces = if namespaces.is_empty() { None } else { Some(namespaces) };
+
     Ok(Some((
-        raw.providers,
-        raw.active_agent,
+        providers,
+        active_agent,
         hooks,
         statuses,
         ai,
@@ -82,20 +93,14 @@ pub(super) fn get_runtime_settings(
 }
 
 pub(super) fn save_runtime_settings(_ship_dir: &Path, config: &ProjectConfig) -> Result<()> {
-    let hooks_json = serde_json::to_string(&config.hooks)?;
-    let statuses_json = serde_json::to_string(&config.statuses)?;
-    let ai_json = config.ai.as_ref().map(serde_json::to_string).transpose()?;
-    let git_json = serde_json::to_string(&normalize_git_config(config.git.clone()))?;
-    let namespaces_json = serde_json::to_string(&config.namespaces)?;
-    crate::db::agents::set_agent_runtime_settings_db(
-        &config.providers,
-        config.active_agent.as_deref(),
-        &hooks_json,
-        &statuses_json,
-        ai_json.as_deref(),
-        &git_json,
-        &namespaces_json,
-    )
+    kv::set(NS, "providers", &serde_json::to_value(&config.providers)?)?;
+    kv::set(NS, "active_agent", &serde_json::to_value(&config.active_agent)?)?;
+    kv::set(NS, "hooks", &serde_json::to_value(&config.hooks)?)?;
+    kv::set(NS, "statuses", &serde_json::to_value(&config.statuses)?)?;
+    kv::set(NS, "ai", &serde_json::to_value(&config.ai)?)?;
+    kv::set(NS, "git", &serde_json::to_value(&normalize_git_config(config.git.clone()))?)?;
+    kv::set(NS, "namespaces", &serde_json::to_value(&config.namespaces)?)?;
+    Ok(())
 }
 
 pub(super) fn get_legacy_agents_config(ship_dir: &Path) -> Result<Option<LegacyAgentsConfigFile>> {

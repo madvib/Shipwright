@@ -59,17 +59,6 @@ pub struct WorkspaceSessionRecordDb {
     pub created_at: String,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct AgentRuntimeSettingsDb {
-    pub providers: Vec<String>,
-    pub active_agent: Option<String>,
-    pub hooks_json: String,
-    pub statuses_json: String,
-    pub ai_json: Option<String>,
-    pub git_json: String,
-    pub namespaces_json: String,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentArtifactRegistryDb {
     pub uuid: String,
@@ -80,17 +69,3 @@ pub struct AgentArtifactRegistryDb {
     pub content_hash: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AgentConfigDb {
-    pub id: String,
-    pub name: String,
-    pub description: Option<String>,
-    pub active_tools_json: String,
-    pub mcp_refs_json: String,
-    pub skill_refs_json: String,
-    pub rule_refs_json: String,
-    pub prompt_id: Option<String>,
-    pub hooks_json: String,
-    pub permissions_json: String,
-    pub target_agents_json: String,
-}
