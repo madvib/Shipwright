@@ -5,14 +5,14 @@ description: Use when testing a web application — navigate pages, interact, sc
 tags: [qa, testing, browser, playwright]
 authors: [ship]
 license: MIT
-compatibility: Requires playwright-cli (@playwright/cli). Install: npm install -g @playwright/cli@latest
+compatibility: Requires Playwright (@playwright/test) with browsers installed, and system libs libnspr4 + libnss3 on Linux
 artifacts: [image, markdown]
-allowed-tools: Bash(playwright-cli:*) Bash(npx:*)
+allowed-tools: Bash(playwright*) Bash(npx playwright*) Bash(pnpm exec playwright*)
 ---
 
 # Web QA
 
-Systematic QA using playwright-cli. Each run is isolated in a timestamped folder under `.ship-session/{{ stable_id }}/`. Results are viewable live in Ship Studio's Session page.
+Systematic QA using Playwright. Each run is isolated in a timestamped folder under `.ship-session/{{ stable_id }}/`. Results are viewable live in Ship Studio's Session page.
 
 ## Setup
 
@@ -21,10 +21,30 @@ QA_ROOT="$(git rev-parse --show-toplevel)/.ship-session/{{ stable_id }}"
 QA_RUN="$(date -u +%Y-%m-%dT%H-%M)"
 QA_DIR="$QA_ROOT/$QA_RUN"
 mkdir -p "$QA_DIR/screenshots" "$QA_DIR/bugs"
-npx --no-install playwright-cli --version || npm install -g @playwright/cli@latest
+
+# Discover playwright — check PATH, npx, then project node_modules
+if command -v playwright &>/dev/null; then
+  PW="playwright"
+elif npx --no-install playwright --version &>/dev/null 2>&1; then
+  PW="npx playwright"
+else
+  # Walk up from repo root looking for node_modules/.bin/playwright
+  _root="$(git rev-parse --show-toplevel)"
+  _found=""
+  for _candidate in "$_root"/node_modules/.bin/playwright "$_root"/apps/*/node_modules/.bin/playwright "$_root"/packages/*/node_modules/.bin/playwright; do
+    if [ -x "$_candidate" ]; then _found="$_candidate"; break; fi
+  done
+  if [ -n "$_found" ]; then
+    PW="$_found"
+  else
+    echo "Playwright not found. Install: npm install -D @playwright/test" >&2
+    exit 1
+  fi
+fi
+$PW --version
 ```
 
-Use `$QA_DIR` for all paths. Never use relative paths — playwright-cli resolves them from its own working directory.
+Use `$PW` for all playwright commands and `$QA_DIR` for all paths. Never use relative paths — Playwright resolves them from its own working directory.
 
 ## Workflow
 
@@ -41,8 +61,8 @@ Ask for the URL. Default tier is `{{ tier }}`.
 ### 2. Inventory
 
 ```bash
-playwright-cli open --browser={{ browser }} <url>
-playwright-cli snapshot
+$PW open --browser={{ browser }} <url>
+$PW snapshot
 ```
 
 Write inventory to `$QA_DIR/inventory.md`:
@@ -60,11 +80,11 @@ Write inventory to `$QA_DIR/inventory.md`:
 Navigate, snapshot for element refs, screenshot, check diagnostics:
 
 ```bash
-playwright-cli goto <url>
-playwright-cli snapshot
-playwright-cli screenshot --filename="$QA_DIR/screenshots/<page-name>.png"
-playwright-cli console
-playwright-cli network
+$PW goto <url>
+$PW snapshot
+$PW screenshot --filename="$QA_DIR/screenshots/<page-name>.png"
+$PW console
+$PW network
 ```
 
 Screenshot naming: `landing.png`, `settings-form-empty.png`. Descriptive, no numbers.
@@ -72,10 +92,10 @@ Screenshot naming: `landing.png`, `settings-form-empty.png`. Descriptive, no num
 Test interactions using refs from snapshot:
 
 ```bash
-playwright-cli fill e3 "user@test.com"
-playwright-cli click e5
-playwright-cli snapshot
-playwright-cli screenshot --filename="$QA_DIR/screenshots/<page-name>-after.png"
+$PW fill e3 "user@test.com"
+$PW click e5
+$PW snapshot
+$PW screenshot --filename="$QA_DIR/screenshots/<page-name>-after.png"
 ```
 
 Per-page checks:
@@ -141,7 +161,7 @@ Nothing happens. No console errors.
 ### 6. Close and update TODO
 
 ```bash
-playwright-cli close
+$PW close
 ```
 
 Append to `$(git rev-parse --show-toplevel)/.ship-session/todo.md`:
@@ -157,14 +177,14 @@ Every bug needs a screenshot. Use descriptive filenames — they appear in the S
 ## Auth
 
 ```bash
-playwright-cli state-save "$QA_DIR/auth.json"
-playwright-cli state-load "$QA_DIR/auth.json"
+$PW state-save "$QA_DIR/auth.json"
+$PW state-load "$QA_DIR/auth.json"
 ```
 
 ## Cross-browser
 
 ```bash
-playwright-cli open --browser=firefox <url>
+$PW open --browser=firefox <url>
 ```
 
 Supported: `chromium`, `firefox`, `webkit`, `msedge`.
@@ -172,9 +192,9 @@ Supported: `chromium`, `firefox`, `webkit`, `msedge`.
 ## Studio trace viewer
 
 ```bash
-playwright-cli tracing-start
+$PW tracing-start
 # ... run session ...
-playwright-cli tracing-stop
-npx playwright show-trace <trace-file> --port 9323
+$PW tracing-stop
+$PW show-trace <trace-file> --port 9323
 # Studio iframes http://localhost:9323
 ```

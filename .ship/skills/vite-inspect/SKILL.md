@@ -5,6 +5,7 @@ description: Use when you need to understand your Vite bundle — inspect plugin
 tags: [vite, bundle, performance, dev-tools]
 authors: [ship]
 artifacts: [url]
+compatibility: Requires vite-plugin-inspect as a dev dependency in the Vite project
 ---
 
 # Vite Inspect

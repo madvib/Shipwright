@@ -5,6 +5,7 @@ description: Use when you want to run, filter, and watch tests visually. Starts 
 tags: [testing, vitest, ui, dev-tools]
 authors: [ship]
 artifacts: [url]
+compatibility: Requires vitest with @vitest/ui. Optional @vitest/coverage-v8 for coverage tab.
 ---
 
 # Vitest UI

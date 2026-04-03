@@ -5,6 +5,7 @@ description: Headless browser for QA testing and site verification. Navigate, in
 tags: [qa, testing, browser, screenshots, headless]
 authors: [ship, gstack]
 attribution: Based on gstack browse (MIT) by Garry Tan — github.com/garrytan/gstack
+compatibility: Requires the gstack browse binary. Install via ship add github.com/garrytan/gstack
 ---
 
 # Browse
