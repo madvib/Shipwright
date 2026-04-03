@@ -2,15 +2,20 @@
 //!
 //! When `job.created` flows through the kernel, creates a worktree, copies the
 //! job spec, runs `ship use`, and spawns a terminal. When `job.update` arrives,
-//! routes the message to the agent's mailbox via mesh.
+//! routes the message to the agent's mailbox via mesh. When `job.completed` or
+//! `job.merged` arrives, cleans up tmux/worktree/branch resources.
 
 use runtime::events::job::JobCreatedPayload;
 use runtime::events::{ActorConfig, CallerKind, EmitContext, EventEnvelope};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use super::helpers::{compile_agent_config, create_worktree, ensure_tmux_session, worktrees_dir};
+use super::helpers::{
+    compile_agent_config, create_worktree, delete_branch, ensure_tmux_session, kill_tmux_session,
+    remove_worktree, worktrees_dir,
+};
 use super::terminal_launcher;
 
 /// Subscribe to `job.*` kernel events and dispatch jobs to worktrees.
@@ -43,8 +48,9 @@ pub async fn subscribe_job_events(
     let kr = kernel.clone();
     tokio::spawn(async move {
         let mut mb = mailbox;
+        let mut pending: HashMap<String, JobCreatedPayload> = HashMap::new();
         while let Some(envelope) = mb.recv().await {
-            handle_job_event(&kr, &envelope).await;
+            handle_job_event(&kr, &envelope, &mut pending).await;
         }
         tracing::info!("job-dispatch: mailbox closed");
     });
@@ -53,10 +59,15 @@ pub async fn subscribe_job_events(
 async fn handle_job_event(
     kernel: &Arc<Mutex<runtime::events::KernelRouter>>,
     envelope: &EventEnvelope,
+    pending: &mut HashMap<String, JobCreatedPayload>,
 ) {
     match envelope.event_type.as_str() {
-        "job.created" => handle_job_created(kernel, envelope).await,
+        "job.created" => handle_job_created(kernel, envelope, pending).await,
         "job.update" => handle_job_update(kernel, envelope).await,
+        "job.completed" | "job.merged" => {
+            handle_job_cleanup(envelope).await;
+            dispatch_unblocked_jobs(kernel, envelope, pending).await;
+        }
         _ => {}
     }
 }
@@ -64,6 +75,7 @@ async fn handle_job_event(
 async fn handle_job_created(
     kernel: &Arc<Mutex<runtime::events::KernelRouter>>,
     envelope: &EventEnvelope,
+    pending: &mut HashMap<String, JobCreatedPayload>,
 ) {
     let payload: JobCreatedPayload = match serde_json::from_str(&envelope.payload_json) {
         Ok(p) => p,
@@ -73,6 +85,26 @@ async fn handle_job_created(
         }
     };
 
+    // DAG-aware: defer if dependencies are unresolved
+    if let Some(deps) = &payload.depends_on {
+        if !deps.is_empty() {
+            tracing::info!(
+                slug = payload.slug,
+                deps = ?deps,
+                "job-dispatch: deferring job until dependencies complete"
+            );
+            pending.insert(payload.slug.clone(), payload);
+            return;
+        }
+    }
+
+    dispatch_job(kernel, &payload).await;
+}
+
+async fn dispatch_job(
+    kernel: &Arc<Mutex<runtime::events::KernelRouter>>,
+    payload: &JobCreatedPayload,
+) {
     let slug = &payload.slug;
     let branch = &payload.branch;
     let agent = &payload.agent;
@@ -121,14 +153,18 @@ async fn handle_job_created(
 
     // 6. Launch terminal (respects SHIP_DEFAULT_TERMINAL)
     let (strategy, launched) = terminal_launcher::launch(&tmux_session);
-    tracing::info!(
-        slug,
-        strategy,
-        launched,
-        "job-dispatch: terminal launch attempted"
-    );
+    tracing::info!(slug, strategy, launched, "job-dispatch: terminal launch attempted");
 
     // 7. Emit job.dispatched
+    emit_job_dispatched(kernel, payload, &worktree_path, slug).await;
+}
+
+async fn emit_job_dispatched(
+    kernel: &Arc<Mutex<runtime::events::KernelRouter>>,
+    payload: &JobCreatedPayload,
+    worktree_path: &std::path::Path,
+    slug: &str,
+) {
     let dispatched_payload = runtime::events::job::JobDispatchedPayload {
         job_id: payload.job_id.clone(),
         worktree: worktree_path.to_string_lossy().into_owned(),
@@ -146,14 +182,12 @@ async fn handle_job_created(
         }
     };
 
-    // Persist to event store
     if let Ok(store) = runtime::events::SqliteEventStore::new() {
         if let Err(e) = runtime::events::EventStore::append(&store, &dispatched_envelope) {
             tracing::warn!(slug, "job-dispatch: failed to persist job.dispatched: {e}");
         }
     }
 
-    // Route through kernel
     let ctx = EmitContext {
         caller_kind: CallerKind::Mcp,
         skill_id: None,
@@ -180,190 +214,74 @@ fn spawn_agent_with_mesh_id(tmux_session: &str, slug: &str) {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use runtime::events::job::event_types;
-    use runtime::events::kernel_router::{ActorConfig, KernelRouter};
-    use runtime::events::validator::{CallerKind, EmitContext};
-    use runtime::events::EventEnvelope;
-    use runtime::projections::job::{project, JobStatus};
-    use tempfile::TempDir;
+/// Clean up worktree, tmux session, and branch for a completed/merged job.
+async fn handle_job_cleanup(envelope: &EventEnvelope) {
+    let payload: serde_json::Value = match serde_json::from_str(&envelope.payload_json) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!("job-dispatch: malformed cleanup payload: {e}");
+            return;
+        }
+    };
 
-    fn runtime_ctx() -> EmitContext {
-        EmitContext {
-            caller_kind: CallerKind::Runtime,
-            skill_id: None,
-            workspace_id: None,
-            session_id: None,
+    let job_id = payload["job_id"].as_str().unwrap_or(&envelope.entity_id);
+    let slug = payload["slug"]
+        .as_str()
+        .map(str::to_string)
+        .unwrap_or_else(|| job_id.to_string());
+
+    let tmux_session = format!("job-{slug}");
+    let worktree_path = worktrees_dir().join(&slug);
+    let branch = format!("job/{slug}");
+
+    tracing::info!(slug, "job-dispatch: cleaning up job resources");
+
+    if let Err(e) = kill_tmux_session(&tmux_session) {
+        tracing::warn!(slug, "job-dispatch: tmux cleanup failed: {e}");
+    }
+    if let Err(e) = remove_worktree(&worktree_path) {
+        tracing::warn!(slug, "job-dispatch: worktree cleanup failed: {e}");
+    }
+    if let Err(e) = delete_branch(&branch) {
+        tracing::warn!(slug, "job-dispatch: branch cleanup failed: {e}");
+    }
+
+    tracing::info!(slug, "job-dispatch: cleanup complete");
+}
+
+/// After a job completes/merges, check if any pending jobs had it as a dependency.
+/// Dispatch any that become fully unblocked.
+async fn dispatch_unblocked_jobs(
+    kernel: &Arc<Mutex<runtime::events::KernelRouter>>,
+    envelope: &EventEnvelope,
+    pending: &mut HashMap<String, JobCreatedPayload>,
+) {
+    let payload: serde_json::Value = match serde_json::from_str(&envelope.payload_json) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+
+    let completed_slug = payload["slug"]
+        .as_str()
+        .or_else(|| payload["job_id"].as_str())
+        .unwrap_or(&envelope.entity_id);
+
+    let mut ready: Vec<String> = Vec::new();
+    for (slug, job) in pending.iter_mut() {
+        if let Some(deps) = &mut job.depends_on {
+            deps.retain(|d| d != completed_slug);
+            if deps.is_empty() {
+                ready.push(slug.clone());
+            }
         }
     }
 
-    fn job_dispatch_config() -> ActorConfig {
-        ActorConfig {
-            namespace: "service.job-dispatch".to_string(),
-            write_namespaces: vec!["job.".to_string()],
-            read_namespaces: vec![],
-            subscribe_namespaces: vec!["job.".to_string()],
+    for slug in ready {
+        if let Some(mut job) = pending.remove(&slug) {
+            tracing::info!(slug, "job-dispatch: dependencies cleared, dispatching deferred job");
+            job.depends_on = None;
+            dispatch_job(kernel, &job).await;
         }
-    }
-
-    fn setup() -> (TempDir, KernelRouter) {
-        let dir = TempDir::new().unwrap();
-        let router = KernelRouter::new(dir.path().join(".ship")).unwrap();
-        (dir, router)
-    }
-
-    fn ev(event_type: &str, payload: serde_json::Value) -> EventEnvelope {
-        EventEnvelope::new(event_type, "test-entity", &payload).unwrap()
-    }
-
-    /// Kernel routing delivers `job.created` to an actor subscribed to `job.`.
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn job_created_delivered_to_subscriber() {
-        let (_dir, mut router) = setup();
-        let (_store, mut mb) = router
-            .spawn_actor("service.job-dispatch", job_dispatch_config())
-            .unwrap();
-
-        let event = ev(
-            event_types::JOB_CREATED,
-            serde_json::json!({
-                "job_id": "j-created-1",
-                "slug": "auth-tests",
-                "agent": "rust-runtime",
-                "branch": "job/auth-tests",
-                "spec_path": ".ship-session/job-spec.md",
-                "plan_id": null,
-                "model": null,
-                "provider": null,
-            }),
-        );
-
-        router.route(event.clone(), &runtime_ctx()).await.unwrap();
-
-        let received = mb
-            .try_recv()
-            .expect("job.created must be delivered to job-dispatch subscriber");
-        assert_eq!(received.id, event.id);
-        assert_eq!(received.event_type, event_types::JOB_CREATED);
-    }
-
-    /// Kernel routing delivers `job.update` with correct payload to subscriber.
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn job_update_delivered_to_subscriber() {
-        let (_dir, mut router) = setup();
-        let (_store, mut mb) = router
-            .spawn_actor("service.job-dispatch", job_dispatch_config())
-            .unwrap();
-
-        let event = ev(
-            event_types::JOB_UPDATE,
-            serde_json::json!({
-                "job_id": "j-update-1",
-                "message": "please fix the lint errors",
-                "sender": "human",
-                "slug": "auth-tests",
-            }),
-        );
-
-        router.route(event.clone(), &runtime_ctx()).await.unwrap();
-
-        let received = mb
-            .try_recv()
-            .expect("job.update must be delivered to job-dispatch subscriber");
-        assert_eq!(received.id, event.id);
-        assert_eq!(received.event_type, event_types::JOB_UPDATE);
-        let payload: serde_json::Value =
-            serde_json::from_str(&received.payload_json).unwrap();
-        assert_eq!(
-            payload["message"].as_str(),
-            Some("please fix the lint errors")
-        );
-    }
-
-    /// `workspace.activated` is not delivered to the job-dispatch subscriber.
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn non_job_events_not_delivered_to_subscriber() {
-        let (_dir, mut router) = setup();
-        let (_store, mut mb) = router
-            .spawn_actor("service.job-dispatch", job_dispatch_config())
-            .unwrap();
-
-        let event = ev(
-            "workspace.activated",
-            serde_json::json!({ "branch": "main", "worktree_path": "/tmp/test" }),
-        );
-
-        router.route(event, &runtime_ctx()).await.unwrap();
-
-        assert!(
-            mb.try_recv().is_err(),
-            "workspace.activated must not reach the job-dispatch subscriber"
-        );
-    }
-
-    /// `job.created` with model/provider in the payload projects to a valid
-    /// pending JobRecord. Fields beyond the core set are carried in the envelope
-    /// payload for downstream consumers.
-    #[test]
-    fn job_projection_handles_model_and_provider_payload() {
-        let events = vec![ev(
-            event_types::JOB_CREATED,
-            serde_json::json!({
-                "job_id": "j-model-1",
-                "slug": "typed-api",
-                "agent": "rust-runtime",
-                "branch": "job/typed-api",
-                "spec_path": ".ship-session/job-spec.md",
-                "plan_id": null,
-                "model": "claude-opus-4-5",
-                "provider": "anthropic",
-            }),
-        )];
-
-        let map = project(&events);
-        let rec = map.get("j-model-1").expect("job record must be created");
-        assert_eq!(rec.status, JobStatus::Pending);
-        assert_eq!(rec.slug, "typed-api");
-        assert_eq!(rec.agent, "rust-runtime");
-        assert_eq!(rec.branch, "job/typed-api");
-        assert_eq!(rec.spec_path, ".ship-session/job-spec.md");
-        // model/provider are in the envelope payload and accessible to
-        // subscribers that parse it; projection does not panic on extra fields.
-        let raw: serde_json::Value =
-            serde_json::from_str(&events[0].payload_json).unwrap();
-        assert_eq!(raw["model"].as_str(), Some("claude-opus-4-5"));
-        assert_eq!(raw["provider"].as_str(), Some("anthropic"));
-    }
-
-    /// When `SHIP_MESH_ID` is set in the environment it takes precedence over
-    /// the profile+branch derived actor ID. This is the logic in
-    /// `resolve_actor_id` in the MCP server, exercised directly here because
-    /// job-dispatch is the component that sets the env var for every spawned job.
-    #[test]
-    fn ship_mesh_id_env_overrides_derived_actor_id() {
-        let slug = "payments-refactor";
-
-        // Without SHIP_MESH_ID the fallback derivation is used.
-        let without = std::env::var("SHIP_MESH_ID")
-            .ok()
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "agent.rust-runtime.job/payments-refactor".to_string());
-        assert_eq!(without, "agent.rust-runtime.job/payments-refactor");
-
-        // When job-dispatch sets SHIP_MESH_ID the env var is returned directly.
-        // Safety: test binary is single-threaded for this assertion block.
-        unsafe { std::env::set_var("SHIP_MESH_ID", slug) };
-        let with_mesh_id = std::env::var("SHIP_MESH_ID")
-            .ok()
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "agent.rust-runtime.job/payments-refactor".to_string());
-        unsafe { std::env::remove_var("SHIP_MESH_ID") };
-
-        assert_eq!(
-            with_mesh_id, slug,
-            "SHIP_MESH_ID must override the derived profile+branch actor ID"
-        );
     }
 }
 
@@ -380,7 +298,6 @@ async fn handle_job_update(
         }
     };
 
-    // Forward to the agent's mailbox via mesh.send through the kernel.
     let slug = payload
         .get("slug")
         .and_then(|v| v.as_str())
@@ -417,3 +334,7 @@ async fn handle_job_update(
         Err(e) => tracing::warn!(entity_id, "job-dispatch: mesh forward failed: {e}"),
     }
 }
+
+#[cfg(test)]
+#[path = "tests_job_dispatch.rs"]
+mod tests;

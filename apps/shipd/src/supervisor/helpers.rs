@@ -129,6 +129,54 @@ pub(crate) fn send_agent_command(session_name: &str, providers: &[String]) {
     }
 }
 
+/// Kill a tmux session by name. No-op if session does not exist.
+pub(crate) fn kill_tmux_session(session_name: &str) -> Result<()> {
+    let status = std::process::Command::new("tmux")
+        .args(["kill-session", "-t", session_name])
+        .status();
+    match status {
+        Ok(s) if s.success() => Ok(()),
+        Ok(_) => Ok(()), // session may not exist — that's fine
+        Err(e) => Err(anyhow::anyhow!("failed to run tmux: {e}")),
+    }
+}
+
+/// Remove a git worktree. No-op if path does not exist.
+pub(crate) fn remove_worktree(worktree_path: &std::path::Path) -> Result<()> {
+    if !worktree_path.exists() {
+        return Ok(());
+    }
+    let path_str = worktree_path
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("worktree path is not valid UTF-8"))?;
+    let status = std::process::Command::new("git")
+        .args(["worktree", "remove", path_str, "--force"])
+        .current_dir(repo_dir())
+        .status()
+        .map_err(|e| anyhow::anyhow!("failed to run git: {e}"))?;
+    if !status.success() {
+        return Err(anyhow::anyhow!(
+            "git worktree remove failed for '{}'",
+            worktree_path.display()
+        ));
+    }
+    Ok(())
+}
+
+/// Delete a local git branch. No-op if branch does not exist.
+pub(crate) fn delete_branch(branch: &str) -> Result<()> {
+    let status = std::process::Command::new("git")
+        .args(["branch", "-D", branch])
+        .current_dir(repo_dir())
+        .status()
+        .map_err(|e| anyhow::anyhow!("failed to run git: {e}"))?;
+    if !status.success() {
+        // Branch may not exist — not an error for cleanup.
+        tracing::debug!(branch, "branch deletion returned non-zero (may not exist)");
+    }
+    Ok(())
+}
+
 pub(crate) fn provider_cli(providers: &[String]) -> Option<String> {
     for p in providers {
         match p.as_str() {

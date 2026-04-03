@@ -739,8 +739,8 @@ impl ShipServer {
     #[tool(
         description = "Advance a job to the next status by emitting the appropriate event. \
         status: dispatched (requires worktree), gate_requested (requires gate_agent), \
-        gate_passed, gate_failed (requires error), blocked (requires blocker), merged, \
-        failed (requires error)."
+        gate_passed, gate_failed (requires error), blocked (requires blocker), completed, \
+        merged, failed (requires error)."
     )]
     async fn update_job(&self, Parameters(req): Parameters<UpdateJobRequest>) -> String {
         job_tools::update_job(req)

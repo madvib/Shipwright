@@ -20,6 +20,7 @@ use crate::events::EventEnvelope;
 pub enum JobStatus {
     Pending,
     Dispatched,
+    Completed,
     GatePending,
     Blocked,
     Merged,
@@ -34,6 +35,7 @@ pub struct JobRecord {
     pub agent: String,
     pub branch: String,
     pub spec_path: String,
+    pub depends_on: Option<Vec<String>>,
     pub status: JobStatus,
     pub worktree: Option<String>,
     pub blocker: Option<String>,
@@ -68,6 +70,10 @@ pub fn apply(record: &mut JobRecord, event: &EventEnvelope) {
                 record.error = p["reason"].as_str().map(str::to_string);
             }
             record.status = JobStatus::Failed;
+            record.updated_at = ts;
+        }
+        event_types::JOB_COMPLETED => {
+            record.status = JobStatus::Completed;
             record.updated_at = ts;
         }
         event_types::JOB_BLOCKED => {
@@ -109,12 +115,20 @@ pub fn project(events: &[EventEnvelope]) -> HashMap<String, JobRecord> {
                     Some(id) => id.to_string(),
                     None => continue,
                 };
+                let depends_on = p["depends_on"]
+                    .as_array()
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(str::to_string))
+                            .collect()
+                    });
                 let record = JobRecord {
                     job_id: job_id.clone(),
                     slug: p["slug"].as_str().unwrap_or("").to_string(),
                     agent: p["agent"].as_str().unwrap_or("").to_string(),
                     branch: p["branch"].as_str().unwrap_or("").to_string(),
                     spec_path: p["spec_path"].as_str().unwrap_or("").to_string(),
+                    depends_on,
                     status: JobStatus::Pending,
                     worktree: None,
                     blocker: None,

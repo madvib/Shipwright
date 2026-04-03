@@ -121,6 +121,48 @@ fn project_failed_stores_error() {
 }
 
 #[test]
+fn project_completed_status() {
+    let events = vec![
+        created_event("j-comp"),
+        make_event(
+            event_types::JOB_COMPLETED,
+            serde_json::json!({"job_id": "j-comp", "slug": "auth-tests"}),
+        ),
+    ];
+    let map = project(&events);
+    assert_eq!(map.get("j-comp").unwrap().status, JobStatus::Completed);
+}
+
+#[test]
+fn project_depends_on_stored() {
+    let events = vec![make_event(
+        event_types::JOB_CREATED,
+        serde_json::json!({
+            "job_id": "j-dep",
+            "slug": "gated-job",
+            "agent": "rust-runtime",
+            "branch": "job/gated-job",
+            "spec_path": ".ship-session/job-spec.md",
+            "plan_id": null,
+            "depends_on": ["upstream-a", "upstream-b"]
+        }),
+    )];
+    let map = project(&events);
+    let rec = map.get("j-dep").unwrap();
+    assert_eq!(
+        rec.depends_on.as_deref(),
+        Some(&["upstream-a".to_string(), "upstream-b".to_string()][..])
+    );
+}
+
+#[test]
+fn project_depends_on_null_is_none() {
+    let events = vec![created_event("j-nodep")];
+    let map = project(&events);
+    assert!(map.get("j-nodep").unwrap().depends_on.is_none());
+}
+
+#[test]
 fn project_skips_non_job_events() {
     let events = vec![
         make_event("session.started", serde_json::json!({})),
