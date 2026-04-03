@@ -145,7 +145,6 @@ function SessionPage() {
           <SessionSidebar
             files={files}
             activeFile={activeTabPath}
-            isConnected={true}
             onSelectFile={openFile}
             onDeleteFile={handleDeleteFile}
             onUploadFiles={handleUploadFiles}

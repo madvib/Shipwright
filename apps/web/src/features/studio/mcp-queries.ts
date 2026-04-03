@@ -56,9 +56,37 @@ export function usePullAgents() {
       if (!res.ok) throw new Error(`daemon: agents ${res.status}`)
       const body = (await res.json()) as {
         ok: boolean
-        data: { agents: PullResponse['agents'] }
+        data: {
+          agents: Array<{
+            id: string
+            name: string
+            description?: string
+            skills?: Array<{ id: string; name: string; description?: string | null; content: string; source: string }>
+            providers?: string[]
+          }>
+        }
       }
-      return { agents: body.data.agents, skills: [] } as unknown as PullResponse
+      // Reshape flat daemon agents into PullAgent shape expected by pull-adapter
+      const agents = body.data.agents.map((a) => ({
+        profile: {
+          id: a.id,
+          name: a.name,
+          description: a.description ?? '',
+          providers: a.providers ?? [],
+          version: '0.0.0',
+        },
+        skills: (a.skills ?? []).map((s) => ({
+          id: s.id,
+          name: s.name,
+          description: s.description ?? null,
+          content: s.content,
+          source: s.source,
+        })),
+        mcpServers: [],
+        rules: [],
+        hooks: [],
+      }))
+      return { agents, skills: [] } as unknown as PullResponse
     },
     enabled: wsId != null,
     staleTime: 5_000,

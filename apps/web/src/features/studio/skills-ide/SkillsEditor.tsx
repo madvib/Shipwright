@@ -1,5 +1,5 @@
 import { useCallback, lazy, Suspense } from 'react'
-import { X, PanelRight, Zap, Save, WifiOff, Terminal, Plus } from 'lucide-react'
+import { X, PanelRight, Zap, Save, Plus } from 'lucide-react'
 import type { Skill } from '@ship/ui'
 import type { FrontmatterEntry } from '@ship/primitives'
 import { parseTabId } from './useSkillsIDE'
@@ -21,7 +21,6 @@ interface Props {
   activeTabId: string | null
   unsavedIds: Set<string>
   content: string
-  isConnected: boolean
   isLoading: boolean
   previewOpen?: boolean
   onTabSelect: (id: string) => void
@@ -50,7 +49,7 @@ function getScriptLang(path: string): ScriptLang {
 
 export function SkillsEditor({
   skills, openTabIds, activeTabId, unsavedIds, content,
-  isConnected, isLoading, previewOpen,
+  isLoading, previewOpen,
   onTabSelect, onTabClose, onContentChange, onSave, onTogglePreview, onCreateSkill,
   onComment: onCommentProp,
   onFrontmatterParsed: onFrontmatterParsedProp,
@@ -78,21 +77,7 @@ export function SkillsEditor({
 
   if (isLoading && skills.length === 0) return <EditorSkeleton />
 
-  if (!isConnected && skills.length === 0 && !activeTabId) {
-    return (
-      <EmptyState
-        icon={<Terminal className="size-10 opacity-50" />}
-        title="Connect to Ship CLI to manage your skills"
-        subtitle="Start the CLI server, then Studio will sync automatically."
-      >
-        <code className="mt-3 inline-block rounded-md border border-border bg-muted/50 px-3 py-1.5 text-xs font-mono text-emerald-600 dark:text-emerald-400">
-          ship studio --port 51741
-        </code>
-      </EmptyState>
-    )
-  }
-
-  if (isConnected && skills.length === 0 && !activeTabId) {
+  if (skills.length === 0 && !activeTabId) {
     return (
       <EmptyState
         icon={<Zap className="size-10 opacity-50" />}
@@ -125,17 +110,8 @@ export function SkillsEditor({
   const activeFilePath = activeTab?.filePath ?? 'SKILL.md'
   const fileType = getFileType(activeFilePath)
   const breadcrumbParts = ['skills', activeSkill.name || activeSkill.id, ...activeFilePath.split('/')]
-  const showDisconnectBanner = !isConnected && unsavedIds.size > 0
-
   return (
     <div className="flex flex-1 flex-col min-w-0" onKeyDown={handleKeyDown}>
-      {showDisconnectBanner && (
-        <div className="flex items-center gap-2 px-4 py-1 border-b border-amber-500/30 bg-amber-500/10 text-[11px] text-amber-600 dark:text-amber-400 shrink-0">
-          <WifiOff className="size-3 shrink-0" />
-          CLI disconnected — changes are saved locally
-        </div>
-      )}
-
       {/* Breadcrumb toolbar */}
       <div className="flex items-center justify-between px-4 py-1.5 border-b border-border bg-background/50 shrink-0">
         <div className="text-[11px] text-muted-foreground flex items-center gap-0.5">
