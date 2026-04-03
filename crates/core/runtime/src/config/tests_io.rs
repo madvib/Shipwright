@@ -98,27 +98,36 @@ fn save_config_keeps_ship_toml_free_of_agent_sections() -> anyhow::Result<()> {
         "legacy agents/config.toml should not be written"
     );
 
-    let runtime_settings =
-        crate::db::agents::get_agent_runtime_settings_db()?.expect("expected runtime settings row");
-    assert_eq!(
-        runtime_settings.providers,
-        vec!["claude".to_string(), "codex".to_string()]
-    );
-    assert_eq!(runtime_settings.active_agent.as_deref(), Some("planning"));
-    assert!(runtime_settings.hooks_json.contains("\"audit\""));
-    assert!(runtime_settings.statuses_json.contains("\"backlog\""));
-    assert!(
-        runtime_settings
-            .ai_json
-            .as_deref()
-            .is_some_and(|raw| raw.contains("\"codex\""))
-    );
-    assert!(runtime_settings.git_json.contains("\"ship.jsonc\""));
-    assert!(runtime_settings.namespaces_json.contains("\"project\""));
+    // Verify runtime settings stored in kv_state
+    let providers: Vec<String> = crate::db::kv::get("runtime", "providers")?
+        .map(|v| serde_json::from_value(v).unwrap())
+        .unwrap_or_default();
+    assert_eq!(providers, vec!["claude".to_string(), "codex".to_string()]);
 
-    let mode_rows = crate::db::agents::list_agent_configs_db()?;
-    assert_eq!(mode_rows.len(), 1);
-    assert_eq!(mode_rows[0].id, "planning");
+    let active_agent: Option<String> = crate::db::kv::get("runtime", "active_agent")?
+        .and_then(|v| serde_json::from_value(v).ok());
+    assert_eq!(active_agent.as_deref(), Some("planning"));
+
+    let hooks_json = crate::db::kv::get("runtime", "hooks")?.unwrap().to_string();
+    assert!(hooks_json.contains("\"audit\""));
+
+    let statuses_json = crate::db::kv::get("runtime", "statuses")?.unwrap().to_string();
+    assert!(statuses_json.contains("\"backlog\""));
+
+    let ai_json = crate::db::kv::get("runtime", "ai")?.unwrap().to_string();
+    assert!(ai_json.contains("\"codex\""));
+
+    let git_json = crate::db::kv::get("runtime", "git")?.unwrap().to_string();
+    assert!(git_json.contains("\"ship.jsonc\""));
+
+    let ns_json = crate::db::kv::get("runtime", "namespaces")?.unwrap().to_string();
+    assert!(ns_json.contains("\"project\""));
+
+    // Verify modes stored in kv_state
+    let modes_val = crate::db::kv::get("runtime", "modes")?.expect("expected modes in kv");
+    let modes: Vec<serde_json::Value> = serde_json::from_value(modes_val)?;
+    assert_eq!(modes.len(), 1);
+    assert_eq!(modes[0]["id"], "planning");
 
     let mcp_cfg = fs::read_to_string(ship_dir.join("mcp.jsonc"))?;
     assert!(mcp_cfg.contains("\"github\""));

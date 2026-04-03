@@ -71,10 +71,9 @@ pub use skill_paths::read_skill_paths;
 pub use skill_vars::{get_skill_vars, list_skill_vars, reset_skill_vars, set_skill_var};
 
 // ─── Re-exports from db (formerly state_db) ────────────────────────────────
-pub use db::agents::{
-    delete_agent_config_db, get_agent_artifact_registry_by_external_id_db,
-    get_agent_artifact_registry_by_uuid_db, get_agent_runtime_settings_db, list_agent_configs_db,
-    set_agent_runtime_settings_db, upsert_agent_artifact_registry_db, upsert_agent_config_db,
+pub use db::artifact_registry::{
+    get_agent_artifact_registry_by_external_id_db, get_agent_artifact_registry_by_uuid_db,
+    upsert_agent_artifact_registry_db,
 };
 pub use db::branch_context::{
     clear_branch_doc, clear_branch_link, get_branch_doc, get_branch_link, set_branch_doc,
@@ -83,8 +82,7 @@ pub use db::branch_context::{
 pub use db::managed_state::{get_managed_state_db, set_managed_state_db};
 pub use db::session::get_workspace_session_record_db;
 pub use db::types::{
-    AgentArtifactRegistryDb, AgentConfigDb, AgentRuntimeSettingsDb, WorkspaceSessionDb,
-    WorkspaceSessionRecordDb,
+    AgentArtifactRegistryDb, WorkspaceSessionDb, WorkspaceSessionRecordDb,
 };
 pub use db::workspace_db::{open_workspace_db, workspace_db_path};
 

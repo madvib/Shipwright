@@ -30,7 +30,7 @@ pub(super) fn sync_agent_artifact_registry(ship_dir: &Path) -> Result<()> {
             .join(&skill.id)
             .join("SKILL.md");
         let digest = stable_hash(&skill.content);
-        crate::db::agents::upsert_agent_artifact_registry_db(
+        crate::db::artifact_registry::upsert_agent_artifact_registry_db(
             ARTIFACT_KIND_SKILL,
             &skill.id,
             &skill.name,
@@ -42,7 +42,7 @@ pub(super) fn sync_agent_artifact_registry(ship_dir: &Path) -> Result<()> {
     for rule in crate::rule::list_rules(ship_dir.to_path_buf())? {
         let external_id = normalize_rule_external_id(&rule.file_name);
         let digest = stable_hash(&rule.content);
-        crate::db::agents::upsert_agent_artifact_registry_db(
+        crate::db::artifact_registry::upsert_agent_artifact_registry_db(
             ARTIFACT_KIND_RULE,
             &external_id,
             &rule.file_name,
@@ -53,7 +53,7 @@ pub(super) fn sync_agent_artifact_registry(ship_dir: &Path) -> Result<()> {
 
     for server in super::mcp::get_mcp_config(ship_dir)? {
         let digest = stable_hash(&toml::to_string(&server)?);
-        crate::db::agents::upsert_agent_artifact_registry_db(
+        crate::db::artifact_registry::upsert_agent_artifact_registry_db(
             ARTIFACT_KIND_MCP,
             &server.id,
             &server.name,
@@ -74,7 +74,7 @@ pub(super) fn resolve_refs_to_external_ids(
     let mut seen = HashSet::new();
     for reference in refs {
         if let Some(entry) =
-            crate::db::agents::get_agent_artifact_registry_by_uuid_db(kind, reference)?
+            crate::db::artifact_registry::get_agent_artifact_registry_by_uuid_db(kind, reference)?
         {
             let external_id = if kind == ARTIFACT_KIND_RULE {
                 normalize_rule_external_id(&entry.external_id)
@@ -93,7 +93,7 @@ pub(super) fn resolve_refs_to_external_ids(
             reference.clone()
         };
         if let Some(entry) =
-            crate::db::agents::get_agent_artifact_registry_by_external_id_db(kind, &lookup)?
+            crate::db::artifact_registry::get_agent_artifact_registry_by_external_id_db(kind, &lookup)?
             && seen.insert(entry.external_id.clone())
         {
             resolved.push(entry.external_id);
@@ -116,7 +116,7 @@ pub(super) fn resolve_external_ids_to_refs(
             id.clone()
         };
         if let Some(entry) =
-            crate::db::agents::get_agent_artifact_registry_by_external_id_db(kind, &lookup)?
+            crate::db::artifact_registry::get_agent_artifact_registry_by_external_id_db(kind, &lookup)?
             && seen.insert(entry.uuid.clone())
         {
             refs.push(entry.uuid);

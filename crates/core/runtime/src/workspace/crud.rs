@@ -75,8 +75,9 @@ pub fn list_workspaces(_ship_dir: &Path) -> Result<Vec<Workspace>> {
 
 pub fn delete_workspace(ship_dir: &Path, id_or_branch: &str) -> Result<()> {
     let id_or_branch = ensure_branch_key(id_or_branch)?;
-    // Resolve id to branch — the DB stores both, try id lookup first
-    let branch = match crate::db::workspace_state::get_workspace_by_id_db(id_or_branch)? {
+    // Resolve: the caller may pass a workspace id (from the API path) or a
+    // branch name.  The DB primary key is `branch`, so look up by id first.
+    let branch = match get_workspace_by_id_db(id_or_branch)? {
         Some((resolved_branch, _)) => resolved_branch,
         None => id_or_branch.to_string(),
     };

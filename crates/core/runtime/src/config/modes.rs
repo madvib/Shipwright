@@ -4,16 +4,39 @@ use super::artifact_registry::{
 };
 use super::project::AgentProfile;
 use super::types::{HookConfig, PermissionConfig};
+use crate::db::kv;
 use anyhow::Result;
-use std::collections::HashSet;
 use std::path::Path;
+
+const NS: &str = "runtime";
+const KEY: &str = "modes";
+
+/// Intermediate row stored in kv_state — mirrors the old agent_config columns.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ModeRow {
+    id: String,
+    name: String,
+    description: Option<String>,
+    active_tools_json: String,
+    mcp_refs_json: String,
+    skill_refs_json: String,
+    rule_refs_json: String,
+    prompt_id: Option<String>,
+    hooks_json: String,
+    permissions_json: String,
+    target_agents_json: String,
+}
 
 pub(super) fn get_modes_config(ship_dir: &Path) -> Result<Vec<AgentProfile>> {
     sync_agent_artifact_registry(ship_dir)?;
 
-    let mode_rows = crate::db::agents::list_agent_configs_db()?;
+    let rows: Vec<ModeRow> = match kv::get(NS, KEY)? {
+        Some(v) => serde_json::from_value(v).unwrap_or_default(),
+        None => return Ok(Vec::new()),
+    };
+
     let mut modes = Vec::new();
-    for row in mode_rows {
+    for row in rows {
         let active_tools: Vec<String> =
             serde_json::from_str(&row.active_tools_json).unwrap_or_default();
         let mcp_refs: Vec<String> = serde_json::from_str(&row.mcp_refs_json).unwrap_or_default();
@@ -47,15 +70,9 @@ pub(super) fn get_modes_config(ship_dir: &Path) -> Result<Vec<AgentProfile>> {
 pub(super) fn save_modes_config(ship_dir: &Path, modes: &[AgentProfile]) -> Result<()> {
     sync_agent_artifact_registry(ship_dir)?;
 
-    let existing_ids: HashSet<String> = crate::db::agents::list_agent_configs_db()?
-        .into_iter()
-        .map(|row| row.id)
-        .collect();
-    let mut next_ids = HashSet::new();
-
+    let mut rows = Vec::with_capacity(modes.len());
     for mode in modes {
-        next_ids.insert(mode.id.clone());
-        let db_mode = crate::db::types::AgentConfigDb {
+        rows.push(ModeRow {
             id: mode.id.clone(),
             name: mode.name.clone(),
             description: mode.description.clone(),
@@ -79,15 +96,9 @@ pub(super) fn save_modes_config(ship_dir: &Path, modes: &[AgentProfile]) -> Resu
             hooks_json: serde_json::to_string(&mode.hooks)?,
             permissions_json: serde_json::to_string(&mode.permissions)?,
             target_agents_json: serde_json::to_string(&mode.target_agents)?,
-        };
-        crate::db::agents::upsert_agent_config_db(&db_mode)?;
+        });
     }
 
-    for id in existing_ids {
-        if !next_ids.contains(&id) {
-            crate::db::agents::delete_agent_config_db(&id)?;
-        }
-    }
-
+    kv::set(NS, KEY, &serde_json::to_value(&rows)?)?;
     Ok(())
 }
