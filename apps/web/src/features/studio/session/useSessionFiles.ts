@@ -9,6 +9,12 @@ import type { SessionFile, UploadResult } from './types'
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024 // 10 MB
 
+const VALID_FILE_TYPES = new Set<string>(['html', 'image', 'markdown', 'url', 'other'])
+
+function toFileType(raw: string): SessionFile['type'] {
+  return VALID_FILE_TYPES.has(raw) ? (raw as SessionFile['type']) : 'other'
+}
+
 function useActiveWorkspaceId(): string {
   const { workspaces } = useDaemon()
   return workspaces.find((w) => w.status === 'active')?.branch ?? 'v0.2.0'
@@ -26,7 +32,7 @@ export function useSessionFiles() {
       return body.data.files.map((f) => ({
         name: f.name,
         path: f.path,
-        type: f.type as SessionFile['type'],
+        type: toFileType(f.type),
         size: f.size,
         modifiedAt: Date.now(),
       }))

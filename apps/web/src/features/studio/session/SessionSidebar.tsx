@@ -334,7 +334,7 @@ function FileEntry({ file, isActive, onClick, onContextMenu, isTodo, stripPrefix
   file: SessionFile; isActive: boolean; onClick: () => void
   onContextMenu: (e: React.MouseEvent) => void; isTodo?: boolean; stripPrefix?: string
 }) {
-  const { icon: Icon, color } = FILE_ICONS[file.type]
+  const { icon: Icon, color } = FILE_ICONS[file.type] ?? FILE_ICONS.other
   // Strip the known prefix (namespace or namespace/subgroup) so only the relevant tail shows
   const displayPath = stripPrefix ? file.path.slice(stripPrefix.length + 1) : file.path
   const lastSlash = displayPath.lastIndexOf('/')

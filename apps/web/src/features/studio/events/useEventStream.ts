@@ -1,9 +1,9 @@
 // Hook for consuming the ship/event notification stream.
-// Events are written to the TanStack Query cache by useLocalMcp's SSE listener.
+// Events are written to the TanStack Query cache by useDaemon's SSE listener.
 // This hook provides a read view + clearEvents().
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useLocalMcpContext } from '#/features/studio/LocalMcpContext'
+import { useDaemon } from '#/features/studio/hooks/useDaemon'
 import { mcpKeys } from '#/lib/query-keys'
 
 /** Shape of a ship/event MCP notification payload. */
@@ -24,12 +24,12 @@ export interface UseEventStreamReturn {
 }
 
 /**
- * Returns the live ship/event stream from the MCP notification channel.
- * Events are populated by the SSE listener in useLocalMcp — this hook only reads.
+ * Returns the live ship/event stream from the daemon SSE channel.
+ * Events are populated by the SSE listener in useDaemon — this hook only reads.
  * Ring buffer: max 200 events, most-recent-first.
  */
 export function useEventStream(): UseEventStreamReturn {
-  const mcp = useLocalMcpContext()
+  const { connected } = useDaemon()
   const queryClient = useQueryClient()
 
   const { data } = useQuery<EventEnvelope[]>({
@@ -47,7 +47,7 @@ export function useEventStream(): UseEventStreamReturn {
 
   return {
     events: data ?? [],
-    isConnected: mcp?.status === 'connected',
+    isConnected: connected,
     clearEvents,
   }
 }

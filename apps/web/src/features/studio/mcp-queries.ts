@@ -34,9 +34,9 @@ export function useLocalAgentIds() {
       if (!res.ok) throw new Error(`daemon: agents ${res.status}`)
       const body = (await res.json()) as {
         ok: boolean
-        data: { agents: ListAgentsResponse['agents'] }
+        data: { agents: Array<{ id: string }> }
       }
-      return { agents: body.data.agents } as ListAgentsResponse
+      return { agents: body.data.agents.map((a) => a.id) }
     },
     enabled: wsId != null,
     staleTime: 5_000,
@@ -81,6 +81,7 @@ export function usePullAgents() {
           description: s.description ?? null,
           content: s.content,
           source: s.source,
+          artifacts: [],
         })),
         mcpServers: [],
         rules: [],

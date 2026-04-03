@@ -54,6 +54,7 @@ function pullToLibrarySkill(
     description: ps.description ?? null,
     content: ps.content,
     source,
+    artifacts: ps.artifacts ?? [],
     vars: {},
     origin,
     usedBy,
