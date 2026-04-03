@@ -3,8 +3,8 @@
 // This hook provides a read view + clearEvents().
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useDaemon } from '#/features/studio/hooks/useDaemon'
 import { mcpKeys } from '#/lib/query-keys'
+import { useDaemon } from '#/features/studio/hooks/useDaemon'
 
 /** Shape of a ship/event MCP notification payload. */
 export interface EventEnvelope {
@@ -34,8 +34,6 @@ export function useEventStream(): UseEventStreamReturn {
 
   const { data } = useQuery<EventEnvelope[]>({
     queryKey: mcpKeys.events(),
-    // Query data is written externally by the SSE listener.
-    // Return empty array as initial value; never refetch automatically.
     queryFn: () => [],
     staleTime: Infinity,
     gcTime: Infinity,
