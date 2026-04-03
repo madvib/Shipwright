@@ -11,5 +11,6 @@ path = "src/main.rs"
 
 [dependencies]
 compiler = { path = "../core/compiler", features = ["specta"] }
+runtime = { path = "../core/runtime" }
 specta = { version = "=2.0.0-rc.22", features = ["derive", "chrono", "serde_json"] }
 specta-typescript = "0.0.9"

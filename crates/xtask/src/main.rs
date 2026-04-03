@@ -86,6 +86,38 @@ fn collect_types() -> TypeCollection {
     c.register::<compiler::PullRule>();
     c.register::<compiler::ListAgentsResponse>();
 
+    // ── Daemon / runtime types ─────────────────────────────────────────────
+
+    // projections/job.rs
+    c.register::<runtime::JobRecord>();
+    c.register::<runtime::JobStatus>();
+
+    // events/job.rs (job event payloads)
+    c.register::<runtime::events::job::JobCreatedPayload>();
+    c.register::<runtime::events::job::JobDispatchedPayload>();
+    c.register::<runtime::events::job::JobGateRequestedPayload>();
+    c.register::<runtime::events::job::JobGatePassedPayload>();
+    c.register::<runtime::events::job::JobGateFailedPayload>();
+    c.register::<runtime::events::job::JobBlockedPayload>();
+    c.register::<runtime::events::job::JobMergedPayload>();
+    c.register::<runtime::events::job::JobFailedPayload>();
+    c.register::<runtime::events::job::JobUpdatePayload>();
+
+    // workspace/types.rs
+    c.register::<runtime::Workspace>();
+    c.register::<runtime::ShipWorkspaceKind>();
+    c.register::<runtime::WorkspaceStatus>();
+    c.register::<runtime::Environment>();
+    c.register::<runtime::Process>();
+    c.register::<runtime::ProcessStatus>();
+
+    // workspace/types_session.rs
+    c.register::<runtime::WorkspaceSession>();
+    c.register::<runtime::WorkspaceSessionStatus>();
+    c.register::<runtime::WorkspaceSessionRecord>();
+    c.register::<runtime::WorkspaceProviderMatrix>();
+    c.register::<runtime::WorkspaceRepairReport>();
+
     c
 }
 

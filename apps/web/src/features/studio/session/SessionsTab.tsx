@@ -2,7 +2,7 @@
 import { GitBranch, Bot } from 'lucide-react'
 import { DAEMON_BASE_URL } from '#/lib/daemon-config'
 import { useDaemon } from '#/features/studio/hooks/useDaemon'
-import type { WorkspaceEntry } from '#/features/studio/hooks/useDaemon'
+import type { Workspace } from '@ship/ui'
 import type { GitStatusResult } from './useGitInfo'
 
 interface SessionsTabProps {
@@ -73,7 +73,7 @@ function WorkspaceRow({
   workspace: ws,
   onActivate,
 }: {
-  workspace: WorkspaceEntry
+  workspace: Workspace
   onActivate: (branch: string) => void
 }) {
   const isActive = ws.status === 'active'

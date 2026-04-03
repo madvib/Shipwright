@@ -9,12 +9,13 @@ use std::collections::HashMap;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 use crate::events::job::event_types;
 use crate::events::EventEnvelope;
 
 /// Current status of a job, derived from its event sequence.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum JobStatus {
     Pending,
@@ -26,7 +27,7 @@ pub enum JobStatus {
 }
 
 /// Projected state of a single job.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct JobRecord {
     pub job_id: String,
     pub slug: String,

@@ -38,9 +38,18 @@ export type AgentLimits = { max_cost_per_session?: number | null; max_turns?: nu
  * provider-native subagent definitions (`.claude/agents/`, `.gemini/agents/`,
  * `.cursor/agents/`, `.codex/agents/`).
  */
-export type AgentProfile = { profile: ProfileMeta; skills?: SkillRefs; mcp?: McpRefs; plugins?: PluginRefs; permissions?: ProfilePermissions; rules?: ProfileRules }
+export type AgentProfile = { profile: ProfileMeta; skills?: SkillRefs; mcp?: McpRefs; plugins?: PluginRefs; permissions?: ProfilePermissions; rules?: ProfileRules; 
+/**
+ * App integrations for this agent profile.
+ */
+apps?: ProfileApps }
 
 export type AiConfig = { provider: string | null; model: string | null; cli_path: string | null }
+
+/**
+ * Artifact types a skill can produce. Used by Studio to filter and display skills.
+ */
+export type ArtifactType = "html" | "markdown" | "image" | "json" | "svg"
 
 /**
  * Grouping category for catalog browsing.
@@ -170,7 +179,25 @@ cursor_environment_json: JsonValue | null;
  * OpenCode-only: full `opencode.json` content (model + MCP + extras).
  * Only populated for the `opencode` provider.
  */
-opencode_config_patch: JsonValue | null }
+opencode_config_patch: JsonValue | null; 
+/**
+ * Codex-only: `.codex/hooks.json` content.
+ * Only populated for the `codex` provider.
+ */
+codex_hooks_json: JsonValue | null; 
+/**
+ * Resolved actor event subscription namespaces for this agent.
+ * 
+ * Combines:
+ * - `ship.{suffix}` entries inferred from skill artifact declarations.
+ * - `{skill.id}.` custom namespace for each skill.
+ * 
+ * The runtime reads this at actor spawn time to replace the hardcoded
+ * `subscribe_namespaces` list in `ActorConfig`.
+ */
+event_subscriptions: string[] }
+
+export type Environment = { id: string; name?: string | null; tools?: string[]; rules?: string[]; permissions_json: string; providers?: string[]; hooks_json: string; mcp_servers?: string[]; created_at: string; updated_at: string }
 
 export type FsPermissions = { allow?: string[]; deny?: string[] }
 
@@ -187,6 +214,71 @@ cursor_event?: string | null;
 gemini_event?: string | null }
 
 export type HookTrigger = "PreToolUse" | "PostToolUse" | "Notification" | "Stop" | "SubagentStop" | "PreCompact"
+
+/**
+ * Emitted when the job is blocked and cannot proceed without resolution.
+ */
+export type JobBlockedPayload = { job_id: string; 
+/**
+ * Human-readable description of what is blocking progress.
+ */
+blocker: string; needs_human: boolean }
+
+/**
+ * Emitted when a job is created. `entity_id` in the envelope is the job_id.
+ */
+export type JobCreatedPayload = { job_id: string; slug: string; agent: string; branch: string; spec_path: string; plan_id: string | null; model: string | null; provider: string | null }
+
+/**
+ * Emitted when the job is assigned to a worktree and (optionally) a process.
+ */
+export type JobDispatchedPayload = { job_id: string; worktree: string; pid: number | null }
+
+/**
+ * Emitted when the job terminates with an error.
+ */
+export type JobFailedPayload = { job_id: string; error: string }
+
+/**
+ * Emitted when the gate review fails.
+ */
+export type JobGateFailedPayload = { job_id: string; reason: string }
+
+/**
+ * Emitted when the gate review passes.
+ */
+export type JobGatePassedPayload = { job_id: string }
+
+/**
+ * Emitted when a gate review is requested for the job.
+ */
+export type JobGateRequestedPayload = { job_id: string; gate_agent: string }
+
+/**
+ * Emitted when the job's branch is merged.
+ */
+export type JobMergedPayload = { job_id: string }
+
+/**
+ * Projected state of a single job.
+ */
+export type JobRecord = { job_id: string; slug: string; agent: string; branch: string; spec_path: string; status: JobStatus; worktree: string | null; blocker: string | null; error: string | null; created_at: string; updated_at: string }
+
+/**
+ * Current status of a job, derived from its event sequence.
+ */
+export type JobStatus = "pending" | "dispatched" | "gate_pending" | "blocked" | "merged" | "failed"
+
+/**
+ * Emitted by either side (human, commander, or agent) to send a mid-flight
+ * update, instruction, or course correction. The daemon routes these to the
+ * agent's mailbox.
+ */
+export type JobUpdatePayload = { job_id: string; message: string; 
+/**
+ * Who sent this update — e.g. "human", "commander", agent mesh ID.
+ */
+sender: string }
 
 export type JsonValue = null | boolean | number | string | JsonValue[] | Partial<{ [key in string]: JsonValue }>
 
@@ -277,6 +369,20 @@ install: PluginEntry[];
  * Installation scope: `"project"` | `"user"`.
  */
 scope: string }
+
+export type Process = { id: string; workspace_id: string; status: ProcessStatus; provider?: string | null; capability?: string | null; started_at: string; ended_at?: string | null; error?: string | null }
+
+export type ProcessStatus = "running" | "paused" | "completed" | "error" | "interrupted"
+
+/**
+ * Declares which Ship apps an agent integrates with.
+ */
+export type ProfileApps = { 
+/**
+ * When true, the compiler emits an HTTP MCP transport pointing at Studio's
+ * local endpoint instead of a stdio `ship mcp serve` entry.
+ */
+studio?: boolean }
 
 export type ProfileMeta = { id: string; name: string; version?: string | null; description?: string | null; providers?: string[]; 
 /**
@@ -380,7 +486,12 @@ codex_sandbox?: string | null;
 /**
  * Shared model override used by Gemini + Codex when no feature override present.
  */
-model?: string | null; gemini_default_approval_mode?: string | null; gemini_max_session_turns?: number | null; gemini_disable_yolo_mode?: boolean | null; gemini_disable_always_allow?: boolean | null; gemini_tools_sandbox?: string | null; gemini_settings_extra?: JsonValue | null; codex_approval_policy?: string | null; codex_reasoning_effort?: string | null; codex_max_threads?: number | null; codex_max_depth?: number | null; codex_job_max_runtime_seconds?: number | null; codex_shell_env_policy?: string | null; codex_notify?: JsonValue | null; codex_settings_extra?: JsonValue | null; opencode_settings_extra?: JsonValue | null; cursor_environment?: JsonValue | null; cursor_settings_extra?: JsonValue | null; claude_theme?: string | null; claude_auto_updates?: boolean | null; claude_include_co_authored_by?: boolean | null }
+model?: string | null; gemini_default_approval_mode?: string | null; gemini_max_session_turns?: number | null; gemini_disable_yolo_mode?: boolean | null; gemini_disable_always_allow?: boolean | null; gemini_tools_sandbox?: string | null; gemini_settings_extra?: JsonValue | null; codex_approval_policy?: string | null; codex_reasoning_effort?: string | null; codex_max_threads?: number | null; codex_max_depth?: number | null; codex_job_max_runtime_seconds?: number | null; codex_shell_env_policy?: string | null; codex_notify?: JsonValue | null; codex_settings_extra?: JsonValue | null; opencode_settings_extra?: JsonValue | null; cursor_environment?: JsonValue | null; cursor_settings_extra?: JsonValue | null; claude_theme?: string | null; claude_auto_updates?: boolean | null; claude_include_co_authored_by?: boolean | null; 
+/**
+ * Port Studio listens on. Defaults to 51741. Used when an agent profile
+ * declares `[apps] studio = true` to emit the correct HTTP transport URL.
+ */
+studio_port?: number | null }
 
 /**
  * Resolved agent as returned by pull_agents.
@@ -433,6 +544,10 @@ tags: string[];
  */
 authors: string[]; 
 /**
+ * Artifact types produced by this skill (Ship smart-skills extension).
+ */
+artifacts: ArtifactType[]; 
+/**
  * Raw `assets/vars.json` content (unparsed JSON). `None` if absent.
  */
 vars_schema?: JsonValue | null; 
@@ -467,6 +582,8 @@ globs?: string[];
  */
 description?: string | null }
 
+export type ShipWorkspaceKind = "feature" | "patch" | "service"
+
 /**
  * A skill / slash command. Stored as `agents/skills/<id>/SKILL.md` (agentskills.io spec).
  * The compiler receives pre-loaded `Skill` values — it does not read files.
@@ -493,7 +610,12 @@ metadata?: Partial<{ [key in string]: string }>; content: string; source?: Skill
  * Merged from: user state (~/.ship/state/skills/{id}.json) +
  * project state (.ship/state/skills/{id}.json) + vars.json defaults.
  */
-vars: Partial<{ [key in string]: JsonValue }> }
+vars: Partial<{ [key in string]: JsonValue }>; 
+/**
+ * Artifact types this skill produces (e.g. `["html", "adr"]`).
+ * Used to infer platform event subscriptions at actor spawn time.
+ */
+artifacts: string[] }
 
 /**
  * Skill files within a transfer bundle.
@@ -520,4 +642,23 @@ export type TransferBundle = { agent: AgentBundle; dependencies?: Partial<{ [key
  * Rule file content keyed by filename (e.g. "code-style.md" → content).
  */
 rules?: Partial<{ [key in string]: string }> }
+
+/**
+ * Workspace runtime state -- SQLite only, no frontmatter file.
+ * `branch` is the workspace key and can represent either a git branch or a
+ * non-git runtime workspace identifier.
+ */
+export type Workspace = { id: string; branch: string; workspace_type?: ShipWorkspaceKind; status?: WorkspaceStatus; active_agent?: string | null; providers?: string[]; mcp_servers?: string[]; skills?: string[]; last_activated_at?: string | null; is_worktree: boolean; worktree_path?: string | null; context_hash?: string | null; config_generation?: number; compiled_at?: string | null; compile_error?: string | null; tmux_session_name?: string | null }
+
+export type WorkspaceProviderMatrix = { workspace_branch: string; agent_id?: string | null; source: string; allowed_providers: string[]; supported_providers: string[]; resolution_error?: string | null }
+
+export type WorkspaceRepairReport = { workspace_branch: string; dry_run: boolean; agent_id?: string | null; status: WorkspaceStatus; providers_expected: string[]; missing_provider_configs: string[]; had_compile_error: boolean; needs_recompile: boolean; reapplied_compile: boolean; resolution_error?: string | null; actions: string[] }
+
+export type WorkspaceSession = { id: string; workspace_id: string; workspace_branch: string; status: WorkspaceSessionStatus; started_at: string; ended_at?: string | null; agent_id?: string | null; primary_provider?: string | null; goal?: string | null; summary?: string | null; updated_workspace_ids?: string[]; session_record_id?: string | null; compiled_at?: string | null; compile_error?: string | null; config_generation_at_start?: number | null; stale_context?: boolean; created_at: string; updated_at: string }
+
+export type WorkspaceSessionRecord = { id: string; session_id: string; workspace_id: string; workspace_branch: string; summary?: string | null; updated_workspace_ids?: string[]; duration_secs?: number | null; provider?: string | null; model?: string | null; agent_id?: string | null; files_changed?: number | null; gate_result?: string | null; created_at: string }
+
+export type WorkspaceSessionStatus = "active" | "ended"
+
+export type WorkspaceStatus = "active" | "archived"
 

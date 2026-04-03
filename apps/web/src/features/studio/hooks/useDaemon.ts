@@ -4,21 +4,9 @@
 import { useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { DAEMON_BASE_URL } from '#/lib/daemon-config'
+import type { Workspace } from '@ship/ui'
 
 // ---- Types derived from shipd runtime_api.rs response shapes ----
-
-export interface WorkspaceEntry {
-  id: string
-  branch: string
-  workspace_type: string
-  status: string
-  active_agent?: string
-  worktree_path?: string
-  providers: string[]
-  mcp_servers: string[]
-  skills: string[]
-  is_worktree: boolean
-}
 
 export interface AgentEntry {
   agent_id: string
@@ -29,7 +17,7 @@ export interface AgentEntry {
 
 export interface UseDaemonReturn {
   connected: boolean
-  workspaces: WorkspaceEntry[]
+  workspaces: Workspace[]
   agents: AgentEntry[]
   error: Error | null
 }
@@ -43,10 +31,10 @@ const daemonKeys = {
 
 // ---- Fetchers ----
 
-async function fetchWorkspaces(): Promise<WorkspaceEntry[]> {
+async function fetchWorkspaces(): Promise<Workspace[]> {
   const res = await fetch(`${DAEMON_BASE_URL}/api/runtime/workspaces`)
   if (!res.ok) throw new Error(`daemon: workspaces ${res.status}`)
-  const body = await res.json() as { ok: boolean; data: { workspaces: WorkspaceEntry[] } }
+  const body = await res.json() as { ok: boolean; data: { workspaces: Workspace[] } }
   return body.data.workspaces
 }
 
@@ -62,7 +50,7 @@ async function fetchAgents(): Promise<AgentEntry[]> {
 export function useDaemon(): UseDaemonReturn {
   const queryClient = useQueryClient()
 
-  const workspacesQuery = useQuery<WorkspaceEntry[], Error>({
+  const workspacesQuery = useQuery<Workspace[], Error>({
     queryKey: daemonKeys.workspaces,
     queryFn: fetchWorkspaces,
     refetchInterval: 5000,

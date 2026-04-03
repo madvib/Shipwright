@@ -4,9 +4,10 @@
 //! only things written to the `events` table under the `job.` namespace.
 
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 /// Emitted when a job is created. `entity_id` in the envelope is the job_id.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct JobCreatedPayload {
     pub job_id: String,
     pub slug: String,
@@ -19,7 +20,7 @@ pub struct JobCreatedPayload {
 }
 
 /// Emitted when the job is assigned to a worktree and (optionally) a process.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct JobDispatchedPayload {
     pub job_id: String,
     pub worktree: String,
@@ -27,27 +28,27 @@ pub struct JobDispatchedPayload {
 }
 
 /// Emitted when a gate review is requested for the job.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct JobGateRequestedPayload {
     pub job_id: String,
     pub gate_agent: String,
 }
 
 /// Emitted when the gate review passes.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct JobGatePassedPayload {
     pub job_id: String,
 }
 
 /// Emitted when the gate review fails.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct JobGateFailedPayload {
     pub job_id: String,
     pub reason: String,
 }
 
 /// Emitted when the job is blocked and cannot proceed without resolution.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct JobBlockedPayload {
     pub job_id: String,
     /// Human-readable description of what is blocking progress.
@@ -56,13 +57,13 @@ pub struct JobBlockedPayload {
 }
 
 /// Emitted when the job's branch is merged.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct JobMergedPayload {
     pub job_id: String,
 }
 
 /// Emitted when the job terminates with an error.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct JobFailedPayload {
     pub job_id: String,
     pub error: String,
@@ -71,7 +72,7 @@ pub struct JobFailedPayload {
 /// Emitted by either side (human, commander, or agent) to send a mid-flight
 /// update, instruction, or course correction. The daemon routes these to the
 /// agent's mailbox.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct JobUpdatePayload {
     pub job_id: String,
     pub message: String,
