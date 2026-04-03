@@ -649,9 +649,20 @@ pub fn list_registered_projects() -> Result<Vec<ProjectEntry>> {
 }
 /// Returns the global config directory (~/.ship)
 pub fn get_global_dir() -> Result<PathBuf> {
+    let is_test_ctx = cfg!(test) || env::var_os("SHIP_TEST").is_some();
+
     if let Ok(env_path) = env::var("SHIP_GLOBAL_DIR") {
         let path = PathBuf::from(env_path.trim());
         if !path.as_os_str().is_empty() {
+            // Guard: reject production paths from test code.  Developers must
+            // either unset SHIP_GLOBAL_DIR or point it at a temp directory.
+            if is_test_ctx && !path.starts_with(std::env::temp_dir()) {
+                panic!(
+                    "Test attempted to use production database via SHIP_GLOBAL_DIR={}. \
+                     Set SHIP_GLOBAL_DIR to a temp directory in test setup.",
+                    path.display()
+                );
+            }
             return Ok(path);
         }
     }
@@ -664,6 +675,15 @@ pub fn get_global_dir() -> Result<PathBuf> {
             )
         })?;
         return Ok(test_dir);
+    }
+
+    // Safety net: if auto_test_global_dir() returned None but we are still in a
+    // test context, refuse to return the production path.
+    if is_test_ctx {
+        panic!(
+            "Test attempted to use production database. \
+             Set SHIP_GLOBAL_DIR to a temp directory in test setup."
+        );
     }
 
     home::home_dir()

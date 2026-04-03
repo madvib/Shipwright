@@ -128,6 +128,23 @@ pub async fn emit_event(
     Ok(ok_response(serde_json::json!({})))
 }
 
+// ---- Workspace delete endpoint ----
+
+/// DELETE /api/workspaces/{id}
+pub async fn delete_workspace(
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<(StatusCode, Json<MeshResponse>), (StatusCode, Json<MeshResponse>)> {
+    let ship_dir = runtime::project::get_global_dir().map_err(|e| {
+        err_response(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())
+    })?;
+
+    runtime::workspace::delete_workspace(&ship_dir, &id).map_err(|e| {
+        err_response(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())
+    })?;
+
+    Ok(ok_response(serde_json::json!({ "branch": id })))
+}
+
 // ---- Workspace activate endpoint ----
 
 /// POST /api/workspaces/{id}/activate

@@ -30,6 +30,8 @@ mod tests_types;
 mod tests_event_sourcing;
 #[cfg(test)]
 mod tests_actor_lifecycle;
+#[cfg(test)]
+mod tests_db_isolation;
 
 // Re-export all public types so `use runtime::workspace::*` continues to work.
 pub use types::{
