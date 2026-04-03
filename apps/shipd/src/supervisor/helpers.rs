@@ -3,7 +3,7 @@
 use anyhow::Result;
 use std::path::PathBuf;
 
-pub(super) fn worktrees_dir() -> PathBuf {
+pub(crate) fn worktrees_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("SHIP_WORKTREE_DIR") {
         return PathBuf::from(dir);
     }
@@ -13,14 +13,14 @@ pub(super) fn worktrees_dir() -> PathBuf {
     PathBuf::from(home).join("dev").join("ship-worktrees")
 }
 
-pub(super) fn repo_dir() -> PathBuf {
+pub(crate) fn repo_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("SHIP_REPO_DIR") {
         return PathBuf::from(dir);
     }
     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
-pub(super) fn create_worktree(
+pub(crate) fn create_worktree(
     worktree_path: &std::path::Path,
     branch: &str,
     base_branch: Option<&str>,
@@ -61,7 +61,7 @@ pub(super) fn create_worktree(
     Ok(())
 }
 
-pub(super) fn compile_agent_config(
+pub(crate) fn compile_agent_config(
     worktree_path: &std::path::Path,
     agent_id: &str,
 ) -> Result<()> {
@@ -82,7 +82,7 @@ pub(super) fn compile_agent_config(
     Ok(())
 }
 
-pub(super) fn ensure_tmux_session(
+pub(crate) fn ensure_tmux_session(
     session_name: &str,
     worktree_path: &std::path::Path,
 ) -> Result<()> {
@@ -114,7 +114,7 @@ pub(super) fn ensure_tmux_session(
     Ok(())
 }
 
-pub(super) fn send_agent_command(session_name: &str, providers: &[String]) {
+pub(crate) fn send_agent_command(session_name: &str, providers: &[String]) {
     let Some(cmd) = provider_cli(providers) else {
         tracing::info!(session = session_name, "no known provider CLI; skipping agent spawn");
         return;
@@ -129,7 +129,7 @@ pub(super) fn send_agent_command(session_name: &str, providers: &[String]) {
     }
 }
 
-pub(super) fn provider_cli(providers: &[String]) -> Option<String> {
+pub(crate) fn provider_cli(providers: &[String]) -> Option<String> {
     for p in providers {
         match p.as_str() {
             "claude" | "claude-code" => {

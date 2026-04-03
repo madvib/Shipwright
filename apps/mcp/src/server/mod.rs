@@ -258,10 +258,21 @@ impl ShipServer {
 
     /// Resolve a unique actor_id for this connection.
     ///
-    /// Format: `agent.{agent_name}.{branch}` — e.g. `agent.rust-runtime.job/fix-parser`.
+    /// If `SHIP_MESH_ID` is set (e.g. by the daemon job-dispatch service),
+    /// it is used directly as the actor_id.
+    ///
+    /// Otherwise: `agent.{agent_name}.{branch}` — e.g. `agent.rust-runtime.job/fix-parser`.
     /// Falls back to `agent.{agent_name}` if branch can't be detected, and
     /// `agent.mcp.{branch}` if no agent config is set.
     async fn resolve_actor_id(&self) -> String {
+        // SHIP_MESH_ID takes precedence — set by daemon when dispatching jobs.
+        if let Ok(mesh_id) = std::env::var("SHIP_MESH_ID") {
+            if !mesh_id.is_empty() {
+                tracing::info!(actor_id = %mesh_id, "resolved actor ID from SHIP_MESH_ID");
+                return mesh_id;
+            }
+        }
+
         let project_dir = self.get_effective_project_dir().await.ok();
         let agent_name = project_dir
             .as_ref()
@@ -722,7 +733,7 @@ impl ShipServer {
         Jobs are event-sourced — state is derived from the event log, not stored directly."
     )]
     async fn create_job(&self, Parameters(req): Parameters<CreateJobRequest>) -> String {
-        job_tools::create_job(req)
+        job_tools::create_job(req).await
     }
 
     #[tool(

@@ -3,6 +3,7 @@
 //! Route: POST /api/supervisor/workspaces/:id/start
 
 pub mod helpers;
+pub mod job_dispatch;
 pub mod terminal_launcher;
 
 use axum::{
