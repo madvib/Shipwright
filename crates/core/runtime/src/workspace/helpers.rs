@@ -77,31 +77,15 @@ pub(crate) fn workspace_id_from_branch(branch: &str) -> String {
     sanitize_file_name(branch)
 }
 
-pub(crate) fn infer_workspace_type(branch: &str) -> ShipWorkspaceKind {
-    if branch.starts_with("patch/") {
-        return ShipWorkspaceKind::Patch;
-    }
-    ShipWorkspaceKind::Feature
-}
-
 pub(crate) fn new_workspace(branch: &str, _now: DateTime<Utc>) -> Workspace {
     Workspace {
         id: workspace_id_from_branch(branch),
         branch: branch.to_string(),
-        workspace_type: ShipWorkspaceKind::Feature,
         status: WorkspaceStatus::Active,
-        active_agent: None,
-        providers: Vec::new(),
-        mcp_servers: Vec::new(),
-        skills: Vec::new(),
-        last_activated_at: None,
         is_worktree: false,
         worktree_path: None,
-        context_hash: None,
-        config_generation: 0,
-        compiled_at: None,
-        compile_error: None,
-        tmux_session_name: None,
+        active_agent: None,
+        last_activated_at: None,
     }
 }
 
@@ -143,24 +127,10 @@ fn lifecycle_allows_transition(from: WorkspaceStatus, to: WorkspaceStatus) -> bo
         )
 }
 
-fn type_allows_status(workspace_type: ShipWorkspaceKind, status: WorkspaceStatus) -> bool {
-    let _ = workspace_type;
-    let _ = status;
-    true
-}
-
 pub fn validate_workspace_transition(
-    workspace_type: ShipWorkspaceKind,
     from: WorkspaceStatus,
     to: WorkspaceStatus,
 ) -> Result<()> {
-    if !type_allows_status(workspace_type, to) {
-        return Err(anyhow::anyhow!(
-            "Workspace type '{}' cannot enter status '{}'",
-            workspace_type,
-            to
-        ));
-    }
     if !lifecycle_allows_transition(from, to) {
         return Err(anyhow::anyhow!(
             "Invalid workspace transition: {} -> {}",

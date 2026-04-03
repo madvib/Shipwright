@@ -89,11 +89,7 @@ fn refresh_workspaces(state: &mut TopState, ship_dir: &Path) {
                     branch: ws.branch,
                     status: format!("{}", ws.status),
                     agent: ws.active_agent.unwrap_or_else(|| "—".into()),
-                    providers: if ws.providers.is_empty() {
-                        "—".into()
-                    } else {
-                        ws.providers.join(", ")
-                    },
+                    providers: "—".into(),
                     session_status,
                 });
             }

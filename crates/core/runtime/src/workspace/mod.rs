@@ -30,12 +30,10 @@ mod tests_types;
 mod tests_event_sourcing;
 #[cfg(test)]
 mod tests_actor_lifecycle;
-#[cfg(test)]
-mod tests_db_isolation;
 
 // Re-export all public types so `use runtime::workspace::*` continues to work.
 pub use types::{
-    Environment, Process, ProcessStatus, ShipWorkspaceKind, Workspace, WorkspaceStatus,
+    Environment, Process, ProcessStatus, Workspace, WorkspaceStatus,
 };
 pub use types_session::{
     CreateWorkspaceRequest, EndWorkspaceSessionRequest, WorkspaceProviderMatrix,
@@ -54,7 +52,7 @@ pub use event_upserts::{
 };
 pub use helpers::validate_workspace_transition;
 pub use lifecycle::{
-    activate_workspace, create_workspace, get_active_workspace_type, seed_service_workspace,
+    activate_workspace, create_workspace, seed_service_workspace,
     set_workspace_active_agent, set_workspace_started, set_workspace_tmux_session, sync_workspace,
     transition_workspace_status,
 };

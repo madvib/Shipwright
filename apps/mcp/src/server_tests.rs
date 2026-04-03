@@ -1,7 +1,7 @@
 use super::*;
 use runtime::project::init_project;
 use runtime::workspace::{
-    CreateWorkspaceRequest as RuntimeCreateWorkspaceRequest, ShipWorkspaceKind,
+    CreateWorkspaceRequest as RuntimeCreateWorkspaceRequest,
     create_workspace as runtime_create_workspace,
 };
 use runtime::{AgentProfile, add_agent};
@@ -54,15 +54,10 @@ async fn mcp_workspace_control_plane_round_trip() {
         &project_dir,
         RuntimeCreateWorkspaceRequest {
             branch: "feature/mode-control-plane".to_string(),
-            workspace_type: Some(ShipWorkspaceKind::Feature),
             status: None,
             active_agent: None,
-            providers: None,
-            mcp_servers: None,
-            skills: None,
             is_worktree: Some(false),
             worktree_path: None,
-            context_hash: None,
         },
     )
     .expect("create workspace for test");

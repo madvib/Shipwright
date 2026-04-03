@@ -8,7 +8,7 @@ use rmcp::{
     },
     service::{NotificationContext, RequestContext},
 };
-use runtime::{get_active_agent, workspace::get_active_workspace_type};
+use runtime::get_active_agent;
 use std::path::Path;
 
 use crate::resource_resolver;
@@ -115,10 +115,6 @@ impl ServerHandler for ShipServer {
         let all_tools = self.tool_router.list_all();
         let visible = if let Ok(project_dir) = self.get_effective_project_dir().await {
             let active_agent = get_active_agent(Some(project_dir.clone())).unwrap_or(None);
-            let in_svc = matches!(
-                get_active_workspace_type(&project_dir).unwrap_or(None),
-                Some(runtime::ShipWorkspaceKind::Service)
-            );
             all_tools
                 .into_iter()
                 .filter(|t| {
@@ -126,7 +122,7 @@ impl ServerHandler for ShipServer {
                     if Self::is_core_tool(n) {
                         return true;
                     }
-                    if in_svc && Self::is_project_workspace_tool(n) {
+                    if Self::is_project_workspace_tool(n) {
                         return true;
                     }
                     active_agent

@@ -582,8 +582,6 @@ globs?: string[];
  */
 description?: string | null }
 
-export type ShipWorkspaceKind = "feature" | "patch" | "service"
-
 /**
  * A skill / slash command. Stored as `agents/skills/<id>/SKILL.md` (agentskills.io spec).
  * The compiler receives pre-loaded `Skill` values — it does not read files.
@@ -648,7 +646,7 @@ rules?: Partial<{ [key in string]: string }> }
  * `branch` is the workspace key and can represent either a git branch or a
  * non-git runtime workspace identifier.
  */
-export type Workspace = { id: string; branch: string; workspace_type?: ShipWorkspaceKind; status?: WorkspaceStatus; active_agent?: string | null; providers?: string[]; mcp_servers?: string[]; skills?: string[]; last_activated_at?: string | null; is_worktree: boolean; worktree_path?: string | null; context_hash?: string | null; config_generation?: number; compiled_at?: string | null; compile_error?: string | null; tmux_session_name?: string | null }
+export type Workspace = { id: string; branch: string; status?: WorkspaceStatus; is_worktree: boolean; worktree_path?: string | null; active_agent?: string | null; last_activated_at?: string | null }
 
 export type WorkspaceProviderMatrix = { workspace_branch: string; agent_id?: string | null; source: string; allowed_providers: string[]; supported_providers: string[]; resolution_error?: string | null }
 

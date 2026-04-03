@@ -3,54 +3,6 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-// ---- Workspace kind --------------------------------------------------------
-
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type, Default)]
-#[serde(rename_all = "kebab-case")]
-pub enum ShipWorkspaceKind {
-    #[default]
-    Feature,
-    Patch,
-    Service,
-}
-
-impl std::fmt::Display for ShipWorkspaceKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ShipWorkspaceKind::Feature => write!(f, "feature"),
-            ShipWorkspaceKind::Patch => write!(f, "patch"),
-            ShipWorkspaceKind::Service => write!(f, "service"),
-        }
-    }
-}
-
-impl std::str::FromStr for ShipWorkspaceKind {
-    type Err = anyhow::Error;
-
-    fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
-        parse_workspace_kind(value)
-            .ok_or_else(|| anyhow::anyhow!("Invalid workspace type: {}", value))
-    }
-}
-
-pub(crate) fn parse_workspace_kind(value: &str) -> Option<ShipWorkspaceKind> {
-    match value.trim().to_lowercase().as_str() {
-        "feature" => Some(ShipWorkspaceKind::Feature),
-        "patch" => Some(ShipWorkspaceKind::Patch),
-        "service" => Some(ShipWorkspaceKind::Service),
-        _ => None,
-    }
-}
-
-pub(crate) fn parse_workspace_type_required(value: &str) -> Result<ShipWorkspaceKind> {
-    parse_workspace_kind(value).ok_or_else(|| {
-        anyhow!(
-            "Invalid workspace type '{}'; expected one of: feature, patch, service",
-            value
-        )
-    })
-}
-
 // ---- Workspace status ------------------------------------------------------
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type, Default)]
@@ -76,8 +28,7 @@ impl std::str::FromStr for WorkspaceStatus {
     fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
         match value.to_lowercase().as_str() {
             "active" => Ok(WorkspaceStatus::Active),
-            "archived" => Ok(WorkspaceStatus::Archived),
-            _ => Err(anyhow::anyhow!("Invalid workspace status: {}", value)),
+            _ => Ok(WorkspaceStatus::Archived),
         }
     }
 }
@@ -85,11 +36,8 @@ impl std::str::FromStr for WorkspaceStatus {
 pub(crate) fn parse_workspace_status_required(value: &str) -> Result<WorkspaceStatus> {
     match value.trim().to_lowercase().as_str() {
         "active" => Ok(WorkspaceStatus::Active),
-        "archived" => Ok(WorkspaceStatus::Archived),
-        _ => Err(anyhow!(
-            "Invalid workspace status '{}'; expected one of: active, archived",
-            value
-        )),
+        // Any non-active status (archived, completed, idle, etc.) maps to Archived
+        _ => Ok(WorkspaceStatus::Archived),
     }
 }
 
@@ -103,32 +51,14 @@ pub struct Workspace {
     pub id: String,
     pub branch: String,
     #[serde(default)]
-    pub workspace_type: ShipWorkspaceKind,
-    #[serde(default)]
     pub status: WorkspaceStatus,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub active_agent: Option<String>,
-    #[serde(default)]
-    pub providers: Vec<String>,
-    #[serde(default)]
-    pub mcp_servers: Vec<String>,
-    #[serde(default)]
-    pub skills: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_activated_at: Option<DateTime<Utc>>,
     pub is_worktree: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub worktree_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub context_hash: Option<String>,
-    #[serde(default)]
-    pub config_generation: i64,
+    pub active_agent: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub compiled_at: Option<DateTime<Utc>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub compile_error: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tmux_session_name: Option<String>,
+    pub last_activated_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]

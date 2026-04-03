@@ -1,46 +1,16 @@
 use crate::agents::config::{
-    ProviderSettings, WorkspaceAgentSettings, resolve_provider_settings_with_agent_override,
+    ProviderSettings, resolve_provider_settings_with_agent_override,
 };
 use anyhow::{Result, anyhow};
-use chrono::Utc;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use super::context_hash::compute_workspace_context_hash;
 use super::event_upserts::{upsert_workspace_on_compile_failed, upsert_workspace_on_compiled};
 use super::helpers::*;
 use super::types::*;
 use super::types_session::*;
 
 // ---- Agent config resolution -----------------------------------------------
-
-fn merge_feature_agent_with_workspace(
-    feature_agent: Option<WorkspaceAgentSettings>,
-    workspace: &Workspace,
-) -> Option<WorkspaceAgentSettings> {
-    let mut has_override = feature_agent.is_some();
-    let mut merged = feature_agent.unwrap_or_default();
-
-    let workspace_providers = normalize_nonempty_id_list(&workspace.providers);
-    if !workspace_providers.is_empty() {
-        merged.providers = workspace_providers;
-        has_override = true;
-    }
-
-    let workspace_mcp_servers = normalize_nonempty_id_list(&workspace.mcp_servers);
-    if !workspace_mcp_servers.is_empty() {
-        merged.mcp_servers = workspace_mcp_servers;
-        has_override = true;
-    }
-
-    let workspace_skills = normalize_nonempty_id_list(&workspace.skills);
-    if !workspace_skills.is_empty() {
-        merged.skills = workspace_skills;
-        has_override = true;
-    }
-
-    if has_override { Some(merged) } else { None }
-}
 
 pub(crate) fn resolve_workspace_agent_config(
     ship_dir: &Path,
@@ -57,11 +27,9 @@ pub(crate) fn resolve_workspace_agent_config(
         })
         .map(|a| a.to_string());
 
-    let workspace_agent = merge_feature_agent_with_workspace(None, workspace);
-
     resolve_provider_settings_with_agent_override(
         ship_dir,
-        workspace_agent.as_ref(),
+        None,
         agent_id.as_deref(),
     )
 }
@@ -114,9 +82,7 @@ pub(crate) fn build_workspace_provider_matrix(
     Ok(WorkspaceProviderMatrix {
         workspace_branch: workspace.branch.clone(),
         agent_id: resolved_agent_id,
-        source: if !workspace.providers.is_empty() {
-            "workspace".to_string()
-        } else if resolved.active_agent.is_some() {
+        source: if resolved.active_agent.is_some() {
             "agent/config".to_string()
         } else {
             "config/default".to_string()
@@ -129,7 +95,10 @@ pub(crate) fn build_workspace_provider_matrix(
 
 // ---- Context root and missing configs --------------------------------------
 
-pub(crate) fn resolve_workspace_context_root(ship_dir: &Path, workspace: &Workspace) -> PathBuf {
+pub(crate) fn resolve_workspace_context_root(
+    ship_dir: &Path,
+    workspace: &Workspace,
+) -> PathBuf {
     if workspace.is_worktree
         && let Some(path) = workspace.worktree_path.as_deref()
     {
@@ -161,11 +130,16 @@ pub(crate) fn missing_provider_configs_for_workspace(
 
 // ---- Compile workspace context ---------------------------------------------
 
+/// Compile workspace context and return the resolved provider list.
+///
+/// Events (compiled / compile_failed) are emitted as side effects.
+/// The Workspace struct is read-only -- compile state lives in the DB
+/// via the projection.
 pub(crate) fn compile_workspace_context(
     ship_dir: &Path,
-    workspace: &mut Workspace,
+    workspace: &Workspace,
     agent_id_override: Option<&str>,
-) -> Result<()> {
+) -> Result<Vec<String>> {
     let started = Instant::now();
     let agent_id = agent_id_override
         .map(|a| a.to_string())
@@ -175,11 +149,10 @@ pub(crate) fn compile_workspace_context(
         match resolve_workspace_agent_config(ship_dir, workspace, agent_id.as_deref()) {
             Ok(agent) => agent,
             Err(error) => {
-                let now = Utc::now();
-                workspace.compiled_at = Some(now);
-                workspace.compile_error = Some(error.to_string());
                 upsert_workspace_on_compile_failed(
-                    ship_dir, workspace, &error.to_string(),
+                    ship_dir,
+                    &workspace.branch,
+                    &error.to_string(),
                 )?;
                 return Err(error);
             }
@@ -190,11 +163,10 @@ pub(crate) fn compile_workspace_context(
             "No valid providers resolved for workspace '{}'",
             workspace.branch
         );
-        let now = Utc::now();
-        workspace.compiled_at = Some(now);
-        workspace.compile_error = Some(error.to_string());
         upsert_workspace_on_compile_failed(
-            ship_dir, workspace, &error.to_string(),
+            ship_dir,
+            &workspace.branch,
+            &error.to_string(),
         )?;
         return Err(error);
     }
@@ -209,20 +181,6 @@ pub(crate) fn compile_workspace_context(
         .iter()
         .map(|skill| skill.id.clone())
         .collect::<Vec<_>>();
-
-    let now = Utc::now();
-    let next_context_hash =
-        match compute_workspace_context_hash(ship_dir, workspace, &resolved_agent) {
-            Ok(hash) => hash,
-            Err(error) => {
-                workspace.compiled_at = Some(now);
-                workspace.compile_error = Some(error.to_string());
-                upsert_workspace_on_compile_failed(
-                    ship_dir, workspace, &error.to_string(),
-                )?;
-                return Err(error);
-            }
-        };
 
     let context_root = resolve_workspace_context_root(ship_dir, workspace);
     for provider in &providers {
@@ -240,21 +198,18 @@ pub(crate) fn compile_workspace_context(
                 "Failed to compile provider '{}' for workspace '{}'",
                 provider, workspace.branch
             ));
-            workspace.compiled_at = Some(now);
-            workspace.compile_error = Some(contextual.to_string());
-            workspace.context_hash = Some(next_context_hash.clone());
             upsert_workspace_on_compile_failed(
-                ship_dir, workspace, &contextual.to_string(),
+                ship_dir,
+                &workspace.branch,
+                &contextual.to_string(),
             )?;
             return Err(contextual);
         }
     }
 
-    workspace.config_generation = workspace.config_generation.saturating_add(1);
-    workspace.compiled_at = Some(now);
-    workspace.compile_error = None;
-    workspace.context_hash = Some(next_context_hash);
     let duration_ms = started.elapsed().as_millis() as u64;
-    upsert_workspace_on_compiled(ship_dir, workspace, duration_ms)?;
-    Ok(())
+    // config_generation is tracked by the projection; pass 0 here as a
+    // signal that the projection should increment.
+    upsert_workspace_on_compiled(ship_dir, &workspace.branch, 0, duration_ms)?;
+    Ok(providers)
 }

@@ -14,10 +14,8 @@ pub fn get_workspace_by_id_db(id: &str) -> Result<Option<(String, WorkspaceDbRow
     let mut conn = open_db()?;
     let row_opt = block_on(async {
         sqlx::query(
-            "SELECT branch, COALESCE(id, branch), workspace_type, status, active_agent, \
-             providers_json, mcp_servers_json, skills_json, is_worktree, worktree_path, \
-             last_activated_at, context_hash, COALESCE(config_generation, 0), compiled_at, compile_error, \
-             tmux_session_name \
+            "SELECT branch, COALESCE(id, branch), status, is_worktree, worktree_path, \
+             active_agent, last_activated_at \
              FROM workspace WHERE id = ? OR branch = ? LIMIT 1",
         )
         .bind(id)
@@ -28,41 +26,20 @@ pub fn get_workspace_by_id_db(id: &str) -> Result<Option<(String, WorkspaceDbRow
     if let Some(row) = row_opt {
         let branch: String = row.get(0);
         let rec_id: String = row.get(1);
-        let workspace_type: String = row.get(2);
-        let status: String = row.get(3);
-        let active_agent: Option<String> = row.get(4);
-        let providers_json: String = row.get(5);
-        let mcp_servers_json: String = row.get(6);
-        let skills_json: String = row.get(7);
-        let is_worktree: i64 = row.get(8);
-        let worktree_path: Option<String> = row.get(9);
-        let last_activated_at: Option<String> = row.get(10);
-        let context_hash: Option<String> = row.get(11);
-        let config_generation: i64 = row.get(12);
-        let compiled_at: Option<String> = row.get(13);
-        let compile_error: Option<String> = row.get(14);
-        let tmux_session_name: Option<String> = row.get(15);
-        let providers: Vec<String> = serde_json::from_str(&providers_json).unwrap_or_default();
-        let mcp_servers: Vec<String> = serde_json::from_str(&mcp_servers_json).unwrap_or_default();
-        let skills: Vec<String> = serde_json::from_str(&skills_json).unwrap_or_default();
+        let status: String = row.get(2);
+        let is_worktree: i64 = row.get(3);
+        let worktree_path: Option<String> = row.get(4);
+        let active_agent: Option<String> = row.get(5);
+        let last_activated_at: Option<String> = row.get(6);
         Ok(Some((
             branch,
             (
                 rec_id,
-                workspace_type,
                 status,
-                active_agent,
-                providers,
-                mcp_servers,
-                skills,
                 is_worktree != 0,
                 worktree_path,
+                active_agent,
                 last_activated_at,
-                context_hash,
-                config_generation,
-                compiled_at,
-                compile_error,
-                tmux_session_name,
             ),
         )))
     } else {
@@ -75,10 +52,8 @@ pub fn get_workspace_db(branch: &str) -> Result<Option<WorkspaceDbRow>> {
     let mut conn = open_db()?;
     let row_opt = block_on(async {
         sqlx::query(
-            "SELECT COALESCE(id, branch), workspace_type, status, active_agent, \
-             providers_json, mcp_servers_json, skills_json, is_worktree, worktree_path, \
-             last_activated_at, context_hash, COALESCE(config_generation, 0), compiled_at, compile_error, \
-             tmux_session_name \
+            "SELECT COALESCE(id, branch), status, is_worktree, worktree_path, \
+             active_agent, last_activated_at \
              FROM workspace WHERE branch = ?",
         )
         .bind(branch)
@@ -87,39 +62,18 @@ pub fn get_workspace_db(branch: &str) -> Result<Option<WorkspaceDbRow>> {
     })?;
     if let Some(row) = row_opt {
         let id: String = row.get(0);
-        let workspace_type: String = row.get(1);
-        let status: String = row.get(2);
-        let active_agent: Option<String> = row.get(3);
-        let providers_json: String = row.get(4);
-        let mcp_servers_json: String = row.get(5);
-        let skills_json: String = row.get(6);
-        let is_worktree: i64 = row.get(7);
-        let worktree_path: Option<String> = row.get(8);
-        let last_activated_at: Option<String> = row.get(9);
-        let context_hash: Option<String> = row.get(10);
-        let config_generation: i64 = row.get(11);
-        let compiled_at: Option<String> = row.get(12);
-        let compile_error: Option<String> = row.get(13);
-        let tmux_session_name: Option<String> = row.get(14);
-        let providers: Vec<String> = serde_json::from_str(&providers_json).unwrap_or_default();
-        let mcp_servers: Vec<String> = serde_json::from_str(&mcp_servers_json).unwrap_or_default();
-        let skills: Vec<String> = serde_json::from_str(&skills_json).unwrap_or_default();
+        let status: String = row.get(1);
+        let is_worktree: i64 = row.get(2);
+        let worktree_path: Option<String> = row.get(3);
+        let active_agent: Option<String> = row.get(4);
+        let last_activated_at: Option<String> = row.get(5);
         Ok(Some((
             id,
-            workspace_type,
             status,
-            active_agent,
-            providers,
-            mcp_servers,
-            skills,
             is_worktree != 0,
             worktree_path,
+            active_agent,
             last_activated_at,
-            context_hash,
-            config_generation,
-            compiled_at,
-            compile_error,
-            tmux_session_name,
         )))
     } else {
         Ok(None)
@@ -130,10 +84,8 @@ pub fn list_workspaces_db() -> Result<Vec<WorkspaceDbListRow>> {
     let mut conn = open_db()?;
     let rows = block_on(async {
         sqlx::query(
-            "SELECT branch, COALESCE(id, branch), workspace_type, status, active_agent, \
-             providers_json, mcp_servers_json, skills_json, is_worktree, worktree_path, \
-             last_activated_at, context_hash, COALESCE(config_generation, 0), compiled_at, compile_error, \
-             tmux_session_name \
+            "SELECT branch, COALESCE(id, branch), status, is_worktree, worktree_path, \
+             active_agent, last_activated_at \
              FROM workspace \
              ORDER BY \
                CASE status \
@@ -151,41 +103,20 @@ pub fn list_workspaces_db() -> Result<Vec<WorkspaceDbListRow>> {
     for row in rows {
         let branch: String = row.get(0);
         let id: String = row.get(1);
-        let workspace_type: String = row.get(2);
-        let status: String = row.get(3);
-        let active_agent: Option<String> = row.get(4);
-        let providers_json: String = row.get(5);
-        let mcp_servers_json: String = row.get(6);
-        let skills_json: String = row.get(7);
-        let is_worktree: i64 = row.get(8);
-        let worktree_path: Option<String> = row.get(9);
-        let last_activated_at: Option<String> = row.get(10);
-        let context_hash: Option<String> = row.get(11);
-        let config_generation: i64 = row.get(12);
-        let compiled_at: Option<String> = row.get(13);
-        let compile_error: Option<String> = row.get(14);
-        let tmux_session_name: Option<String> = row.get(15);
-        let providers: Vec<String> = serde_json::from_str(&providers_json).unwrap_or_default();
-        let mcp_servers: Vec<String> = serde_json::from_str(&mcp_servers_json).unwrap_or_default();
-        let skills: Vec<String> = serde_json::from_str(&skills_json).unwrap_or_default();
+        let status: String = row.get(2);
+        let is_worktree: i64 = row.get(3);
+        let worktree_path: Option<String> = row.get(4);
+        let active_agent: Option<String> = row.get(5);
+        let last_activated_at: Option<String> = row.get(6);
 
         result.push((
             branch,
             id,
-            workspace_type,
             status,
-            active_agent,
-            providers,
-            mcp_servers,
-            skills,
             is_worktree != 0,
             worktree_path,
+            active_agent,
             last_activated_at,
-            context_hash,
-            config_generation,
-            compiled_at,
-            compile_error,
-            tmux_session_name,
         ));
     }
     Ok(result)
@@ -261,6 +192,21 @@ pub fn delete_workspace_db(branch: &str) -> Result<bool> {
     })?;
 
     Ok(deleted)
+}
+
+/// Retrieve the tmux_session_name for a workspace by id or branch.
+pub fn get_workspace_tmux_session_db(id: &str) -> Result<Option<String>> {
+    let mut conn = open_db()?;
+    let row_opt = block_on(async {
+        sqlx::query_scalar::<_, Option<String>>(
+            "SELECT tmux_session_name FROM workspace WHERE id = ? OR branch = ? LIMIT 1",
+        )
+        .bind(id)
+        .bind(id)
+        .fetch_optional(&mut conn)
+        .await
+    })?;
+    Ok(row_opt.flatten())
 }
 
 /// Mark any currently active workspace as archived except `active_branch`.

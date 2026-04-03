@@ -34,9 +34,11 @@ install: build-release
     cargo install --path apps/ship-studio-cli
     cp -f target/release/shipd ~/.local/bin/shipd
 
-# Restart shipd with the latest dev build (build → install → daemon restart)
+# Restart shipd with the latest dev build (build → install → hard restart)
 daemon-restart: install-dev
-    -ship daemon stop 2>/dev/null; true
+    -pkill -9 shipd 2>/dev/null; true
+    @sleep 1
+    @rm -f ~/.ship/network.port ~/.ship/network.pid
     ship daemon start
 
 # Rebuild WASM compiler (requires build-essential)

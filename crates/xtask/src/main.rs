@@ -105,7 +105,6 @@ fn collect_types() -> TypeCollection {
 
     // workspace/types.rs
     c.register::<runtime::Workspace>();
-    c.register::<runtime::ShipWorkspaceKind>();
     c.register::<runtime::WorkspaceStatus>();
     c.register::<runtime::Environment>();
     c.register::<runtime::Process>();

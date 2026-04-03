@@ -3,7 +3,6 @@ use anyhow::Result;
 use std::hash::{Hash, Hasher};
 use std::path::Path;
 
-use super::helpers::normalize_nonempty_id_list;
 use super::types::Workspace;
 
 pub(super) fn stable_hash(value: &str) -> String {
@@ -57,11 +56,7 @@ pub(super) fn compute_workspace_context_hash(
     let fingerprint = serde_json::json!({
         "workspace": {
             "branch": workspace.branch,
-            "workspace_type": workspace.workspace_type.to_string(),
             "agent_id": resolved_agent.active_agent,
-            "provider_overrides": normalize_nonempty_id_list(&workspace.providers),
-            "mcp_server_overrides": normalize_nonempty_id_list(&workspace.mcp_servers),
-            "skill_overrides": normalize_nonempty_id_list(&workspace.skills),
         },
         "providers": normalized_providers,
         "model": resolved_agent.model,

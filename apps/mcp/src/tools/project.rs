@@ -108,7 +108,7 @@ pub async fn get_project_info(project_dir: &Path) -> String {
     if let Some(ws) = active_workspace {
         out.push_str(&format!(
             "- Workspace: {} [{:?}]",
-            ws.branch, ws.workspace_type
+            ws.branch, ws.status
         ));
         if let Some(ref mode) = ws.active_agent {
             out.push_str(&format!(" mode={}", mode));

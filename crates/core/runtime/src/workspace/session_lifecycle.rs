@@ -142,7 +142,7 @@ pub fn start_workspace_session(
             .ok_or_else(|| anyhow!("No providers resolved for workspace '{}'", workspace.branch))?
     };
 
-    compile_workspace_context(ship_dir, &mut workspace, agent_id.as_deref())?;
+    let _providers = compile_workspace_context(ship_dir, &workspace, agent_id.as_deref())?;
 
     let session_id = crate::gen_nanoid();
     let started_payload = SessionStarted {
@@ -151,8 +151,8 @@ pub fn start_workspace_session(
         workspace_branch: workspace.branch.clone(),
         agent_id,
         primary_provider: Some(primary_provider),
-        config_generation_at_start: Some(workspace.config_generation),
-        compiled_at: workspace.compiled_at.as_ref().map(|ts| ts.to_rfc3339()),
+        config_generation_at_start: None,
+        compiled_at: None,
     };
     let start_envelope = insert_session_with_started_event(&session_id, &workspace.id, &started_payload)?;
     // Apply session projection synchronously so get_workspace_session_db finds the row.

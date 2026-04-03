@@ -90,7 +90,7 @@ pub use db::workspace_db::{open_workspace_db, workspace_db_path};
 
 pub use workspace::{
     CreateWorkspaceRequest, EndWorkspaceSessionRequest, Environment, Process, ProcessStatus,
-    ShipWorkspaceKind, Workspace, WorkspaceProviderMatrix, WorkspaceRepairReport, WorkspaceSession,
+    Workspace, WorkspaceProviderMatrix, WorkspaceRepairReport, WorkspaceSession,
     WorkspaceSessionRecord, WorkspaceSessionStatus, WorkspaceStatus, activate_workspace,
     create_workspace, delete_workspace, end_workspace_session, get_active_workspace_session,
     get_workspace, get_workspace_provider_matrix, get_workspace_session_record,

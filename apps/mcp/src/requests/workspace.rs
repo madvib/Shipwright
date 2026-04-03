@@ -11,15 +11,13 @@ pub struct ListWorkspacesRequest {
 pub struct CreateWorkspaceRequest {
     /// Human-readable name for the workspace
     pub name: String,
-    /// Workspace kind: "imperative" | "declarative" | "service"
-    pub kind: String,
     /// Optional preset ID to activate in this workspace
     pub preset_id: Option<String>,
     /// Branch name. If omitted, derived from name (slugified).
     pub branch: Option<String>,
     /// Base branch to create worktree from. Defaults to "main".
     pub base_branch: Option<String>,
-    /// File scope — paths this workspace should edit (e.g. "crates/")
+    /// File scope -- paths this workspace should edit (e.g. "crates/")
     pub file_scope: Option<String>,
 }
 

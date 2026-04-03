@@ -16,7 +16,8 @@ fn test_branch(name: &str) -> String {
 
 /// Create a workspace record pointing at the given temp dir so `resolve_worktree` can find it.
 fn create_test_workspace(dir: &TempDir) -> String {
-    let ship_dir = runtime::project::get_global_dir().unwrap();
+    let ship_dir = dir.path().join(".ship");
+    std::env::set_var("SHIP_GLOBAL_DIR", &ship_dir);
     std::fs::create_dir_all(&ship_dir).unwrap();
     let branch = test_branch("ws");
     runtime::workspace::create_workspace(

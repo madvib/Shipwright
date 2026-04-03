@@ -22,12 +22,11 @@ use anyhow::Result;
 use std::path::Path;
 
 use super::helpers::workspace_id_from_branch;
-use super::types::Workspace;
 
 // ── helper ────────────────────────────────────────────────────────────────────
 
 /// Apply WorkspaceProjection to platform.db synchronously.
-/// Errors are logged but not propagated — the event is already persisted.
+/// Errors are logged but not propagated -- the event is already persisted.
 fn sync_workspace_projection(envelope: &EventEnvelope) {
     let proj = WorkspaceProjection::new();
     match crate::db::open_db() {
@@ -47,68 +46,75 @@ fn sync_workspace_projection(envelope: &EventEnvelope) {
 
 // ── public event-emitting functions ──────────────────────────────────────────
 
-pub fn upsert_workspace_on_activate(_ship_dir: &Path, workspace: &Workspace) -> Result<()> {
+pub fn upsert_workspace_on_activate(
+    _ship_dir: &Path,
+    branch: &str,
+    agent_id: Option<&str>,
+    providers: &[String],
+) -> Result<()> {
     let payload = WorkspaceActivated {
-        agent_id: workspace.active_agent.clone(),
-        providers: workspace.providers.clone(),
+        agent_id: agent_id.map(str::to_string),
+        providers: providers.to_vec(),
     };
-    let envelope = emit_workspace_activated(&workspace.branch, &payload)?;
+    let envelope = emit_workspace_activated(branch, &payload)?;
     sync_workspace_projection(&envelope);
     Ok(())
 }
 
 pub fn upsert_workspace_on_compiled(
     _ship_dir: &Path,
-    workspace: &Workspace,
+    branch: &str,
+    config_generation: u32,
     duration_ms: u64,
 ) -> Result<()> {
     let payload = WorkspaceCompiled {
-        config_generation: workspace.config_generation as u32,
+        config_generation,
         duration_ms,
     };
-    let envelope = emit_workspace_compiled(&workspace.branch, &payload)?;
+    let envelope = emit_workspace_compiled(branch, &payload)?;
     sync_workspace_projection(&envelope);
     Ok(())
 }
 
 pub fn upsert_workspace_on_compile_failed(
     _ship_dir: &Path,
-    workspace: &Workspace,
+    branch: &str,
     error: &str,
 ) -> Result<()> {
     let payload = WorkspaceCompileFailed { error: error.to_string() };
-    let envelope = emit_workspace_compile_failed(&workspace.branch, &payload)?;
+    let envelope = emit_workspace_compile_failed(branch, &payload)?;
     sync_workspace_projection(&envelope);
     Ok(())
 }
 
-pub fn upsert_workspace_on_archived(_ship_dir: &Path, workspace: &Workspace) -> Result<()> {
+pub fn upsert_workspace_on_archived(_ship_dir: &Path, branch: &str) -> Result<()> {
     let payload = WorkspaceArchived {};
-    let envelope = emit_workspace_archived(&workspace.branch, &payload)?;
+    let envelope = emit_workspace_archived(branch, &payload)?;
     sync_workspace_projection(&envelope);
     Ok(())
 }
 
-pub fn upsert_workspace_on_created(_ship_dir: &Path, workspace: &Workspace) -> Result<()> {
-    let workspace_type = workspace.workspace_type.to_string();
-    let status = workspace.status.to_string();
-    let workspace_id = if workspace.id.trim().is_empty() {
-        workspace_id_from_branch(&workspace.branch)
-    } else {
-        workspace.id.clone()
-    };
+pub fn upsert_workspace_on_created(
+    _ship_dir: &Path,
+    branch: &str,
+    is_worktree: bool,
+    worktree_path: Option<&str>,
+    active_agent: Option<&str>,
+    status: &str,
+) -> Result<()> {
+    let workspace_id = workspace_id_from_branch(branch);
     let payload = WorkspaceCreated {
         workspace_id,
-        workspace_type,
-        status,
-        active_agent: workspace.active_agent.clone(),
-        providers: workspace.providers.clone(),
-        mcp_servers: workspace.mcp_servers.clone(),
-        skills: workspace.skills.clone(),
-        is_worktree: workspace.is_worktree,
-        worktree_path: workspace.worktree_path.clone(),
+        workspace_type: "feature".to_string(),
+        status: status.to_string(),
+        active_agent: active_agent.map(str::to_string),
+        providers: Vec::new(),
+        mcp_servers: Vec::new(),
+        skills: Vec::new(),
+        is_worktree,
+        worktree_path: worktree_path.map(str::to_string),
     };
-    let envelope = emit_workspace_created(&workspace.branch, &payload)?;
+    let envelope = emit_workspace_created(branch, &payload)?;
     sync_workspace_projection(&envelope);
     Ok(())
 }
@@ -121,7 +127,7 @@ pub fn upsert_workspace_on_deleted(_ship_dir: &Path, branch: &str) -> Result<()>
 
 pub fn upsert_workspace_on_status_changed(
     _ship_dir: &Path,
-    workspace: &Workspace,
+    branch: &str,
     old_status: &str,
     new_status: &str,
 ) -> Result<()> {
@@ -129,7 +135,7 @@ pub fn upsert_workspace_on_status_changed(
         old_status: old_status.to_string(),
         new_status: new_status.to_string(),
     };
-    let envelope = emit_workspace_status_changed(&workspace.branch, &payload)?;
+    let envelope = emit_workspace_status_changed(branch, &payload)?;
     sync_workspace_projection(&envelope);
     Ok(())
 }
@@ -148,13 +154,6 @@ pub fn emit_workspace_agent_changed_event(
 ) -> Result<()> {
     let payload = WorkspaceAgentChanged { agent_id: agent_id.map(str::to_string) };
     let envelope = emit_workspace_agent_changed(branch, &payload)?;
-    sync_workspace_projection(&envelope);
-    Ok(())
-}
-
-pub fn upsert_workspace_on_agent_changed(_ship_dir: &Path, workspace: &Workspace) -> Result<()> {
-    let payload = WorkspaceAgentChanged { agent_id: workspace.active_agent.clone() };
-    let envelope = emit_workspace_agent_changed(&workspace.branch, &payload)?;
     sync_workspace_projection(&envelope);
     Ok(())
 }

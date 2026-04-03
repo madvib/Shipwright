@@ -1,7 +1,6 @@
-//! Failing tests that define the complete event-sourced contract for workspace writes.
+//! Tests that define the complete event-sourced contract for workspace writes.
 //!
-//! Every workspace mutation must emit a typed event. These tests are RED until
-//! the implementation agent wires the missing event emissions.
+//! Every workspace mutation must emit a typed event.
 
 #[cfg(test)]
 mod tests {
@@ -34,8 +33,6 @@ mod tests {
         .unwrap()
     }
 
-    // ── test 1: create_workspace emits workspace.created ─────────────────────
-
     #[test]
     fn create_workspace_emits_created_event() -> Result<()> {
         let (_tmp, ship_dir) = setup();
@@ -56,8 +53,6 @@ mod tests {
         );
         Ok(())
     }
-
-    // ── test 2: delete_workspace emits workspace.deleted ─────────────────────
 
     #[test]
     fn delete_workspace_emits_deleted_event() -> Result<()> {
@@ -82,8 +77,6 @@ mod tests {
         Ok(())
     }
 
-    // ── test 3: transition to Archived -> Active emits workspace.status_changed
-
     #[test]
     fn status_transition_to_idle_emits_status_changed_event() -> Result<()> {
         let (_tmp, ship_dir) = setup();
@@ -97,8 +90,6 @@ mod tests {
             },
         )?;
 
-        // Transition to Archived first so we can transition back to Active
-        // (the non-archive return path that currently calls plain upsert_workspace).
         transition_workspace_status(&ship_dir, branch, WorkspaceStatus::Archived)?;
         transition_workspace_status(&ship_dir, branch, WorkspaceStatus::Active)?;
 
@@ -109,8 +100,6 @@ mod tests {
         );
         Ok(())
     }
-
-    // ── test 4: second non-archive transition also emits workspace.status_changed
 
     #[test]
     fn status_transition_to_frozen_emits_status_changed_event() -> Result<()> {
@@ -125,23 +114,18 @@ mod tests {
             },
         )?;
 
-        // Archive then reactivate: the Active transition is the gap under test.
         transition_workspace_status(&ship_dir, branch, WorkspaceStatus::Archived)?;
         transition_workspace_status(&ship_dir, branch, WorkspaceStatus::Active)?;
-
-        // Two non-archive status transitions must each produce an event.
         transition_workspace_status(&ship_dir, branch, WorkspaceStatus::Archived)?;
         transition_workspace_status(&ship_dir, branch, WorkspaceStatus::Active)?;
 
         let count = count_events_by_type_and_entity("workspace.status_changed", branch);
         assert_eq!(
             count, 2,
-            "each non-archive status transition must emit workspace.status_changed, got {count} rows"
+            "each non-archive status transition must emit workspace.status_changed, got {count}"
         );
         Ok(())
     }
-
-    // ── test 5: demote_other_active_workspaces_db emits archived event per workspace
 
     #[test]
     fn bulk_demotion_emits_archived_event_per_workspace() -> Result<()> {
@@ -177,31 +161,21 @@ mod tests {
         let count_a = count_events_by_type_and_entity("workspace.archived", branch_a);
         let count_b = count_events_by_type_and_entity("workspace.archived", branch_b);
 
-        assert_eq!(
-            count_a, 1,
-            "demoted workspace '{branch_a}' must have a workspace.archived event, got {count_a}"
-        );
-        assert_eq!(
-            count_b, 1,
-            "demoted workspace '{branch_b}' must have a workspace.archived event, got {count_b}"
-        );
+        assert_eq!(count_a, 1, "demoted workspace must have archived event");
+        assert_eq!(count_b, 1, "demoted workspace must have archived event");
         Ok(())
     }
-
-    // ── test 6: seed_service_workspace emits workspace.created ───────────────
 
     #[test]
     fn seed_service_workspace_emits_created_event() -> Result<()> {
         let (_tmp, ship_dir) = setup();
 
-        // Ensure no service workspace exists yet by using a fresh isolated DB
-        // (guaranteed by the per-test get_global_dir isolation).
         seed_service_workspace(&ship_dir)?;
 
         let count = count_events_by_type_and_entity("workspace.created", "ship");
         assert_eq!(
             count, 1,
-            "seed_service_workspace must emit a workspace.created event for branch 'ship', got {count}"
+            "seed_service_workspace must emit a workspace.created event, got {count}"
         );
         Ok(())
     }
@@ -212,15 +186,7 @@ mod tests {
 
         let req = CreateWorkspaceRequest {
             branch: "feature/agent-change-test".to_string(),
-            workspace_type: Some(ShipWorkspaceKind::Feature),
-            status: None,
-            active_agent: None,
-            providers: None,
-            mcp_servers: None,
-            skills: None,
-            is_worktree: Some(false),
-            worktree_path: None,
-            context_hash: None,
+            ..Default::default()
         };
         create_workspace(&ship_dir, req)?;
 
@@ -232,7 +198,7 @@ mod tests {
         );
         assert_eq!(
             count, 1,
-            "set_workspace_active_agent on inactive workspace must emit workspace.agent_changed, got {count}"
+            "set_workspace_active_agent must emit workspace.agent_changed, got {count}"
         );
         Ok(())
     }

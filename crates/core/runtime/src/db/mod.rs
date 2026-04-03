@@ -5,7 +5,6 @@
 pub mod actor_events;
 pub mod adrs;
 pub mod agents;
-pub mod branch;
 pub mod branch_context;
 pub mod events;
 #[cfg(test)]
@@ -19,7 +18,6 @@ pub mod session_events;
 #[cfg(test)]
 pub mod session_events_testutil;
 pub mod types;
-pub mod workspace;
 pub mod workspace_db;
 pub mod workspace_events;
 pub mod workspace_state;

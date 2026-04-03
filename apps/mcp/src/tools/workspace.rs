@@ -69,39 +69,28 @@ pub fn create_workspace(project_dir: &Path, req: CreateWorkspaceRequest) -> Stri
     let worktrees_dir = configured_worktree_dir(project_root);
     let worktree_path = worktrees_dir.join(&branch);
     let base_branch = req.base_branch.as_deref().unwrap_or("main");
-    let kind = req.kind.to_ascii_lowercase();
-    let is_service = kind == "service";
 
-    if !is_service {
-        if let Err(e) = std::fs::create_dir_all(&worktrees_dir) {
-            return format!("Error: could not create worktrees dir: {}", e);
-        }
-        if let Some(msg) = create_git_worktree(project_root, &worktree_path, &branch, base_branch) {
-            return msg;
-        }
-        if let Err(warn) = write_workspace_config(
-            &worktree_path,
-            &req.name,
-            &kind,
-            &req.preset_id,
-            &req.file_scope,
-        ) {
-            return warn;
-        }
-        format!(
-            "Created workspace '{}' (branch: {}, kind: {})\nWorktree: {}",
-            req.name,
-            branch,
-            kind,
-            worktree_path.display()
-        )
-    } else {
-        format!(
-            "Created service workspace '{}' (branch: {}, kind: service)\n\
-            No worktree created for service workspaces.",
-            req.name, branch
-        )
+    if let Err(e) = std::fs::create_dir_all(&worktrees_dir) {
+        return format!("Error: could not create worktrees dir: {}", e);
     }
+    if let Some(msg) = create_git_worktree(project_root, &worktree_path, &branch, base_branch) {
+        return msg;
+    }
+    if let Err(warn) = write_workspace_config(
+        &worktree_path,
+        &req.name,
+        "feature",
+        &req.preset_id,
+        &req.file_scope,
+    ) {
+        return warn;
+    }
+    format!(
+        "Created workspace '{}' (branch: {})\nWorktree: {}",
+        req.name,
+        branch,
+        worktree_path.display()
+    )
 }
 
 fn create_git_worktree(

@@ -7,8 +7,11 @@ use tokio::sync::Mutex;
 
 fn make_api_state() -> ApiState {
     let kernel = {
-        let global_dir = runtime::project::get_global_dir().unwrap();
-        runtime::events::init_kernel_router(global_dir).unwrap()
+        let tmp = std::env::temp_dir().join(format!("ship-pty-test-{}", std::process::id()));
+        let ship_dir = tmp.join(".ship");
+        std::fs::create_dir_all(&ship_dir).unwrap();
+        std::env::set_var("SHIP_GLOBAL_DIR", &ship_dir);
+        runtime::events::init_kernel_router(ship_dir).unwrap()
     };
     let mesh_registry = Arc::new(tokio::sync::RwLock::new(HashMap::new()));
     ApiState {
@@ -22,6 +25,8 @@ fn make_api_state() -> ApiState {
 /// Set up the global DB via init_project on a temp project dir.
 fn setup_db() -> TempDir {
     let tmp = TempDir::new().unwrap();
+    let ship_dir = tmp.path().join(".ship");
+    std::env::set_var("SHIP_GLOBAL_DIR", &ship_dir);
     runtime::project::init_project(tmp.path().to_path_buf()).unwrap();
     runtime::db::ensure_db().unwrap();
     tmp

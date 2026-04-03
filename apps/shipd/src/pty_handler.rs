@@ -67,8 +67,8 @@ pub async fn workspace_pty(
         }
     };
 
-    let session_name = match workspace.tmux_session_name.as_deref() {
-        Some(s) if !s.is_empty() => s.to_string(),
+    let session_name = match runtime::db::workspace_state::get_workspace_tmux_session_db(&workspace_id) {
+        Ok(Some(s)) if !s.is_empty() => s,
         _ => {
             return (
                 StatusCode::NOT_FOUND,

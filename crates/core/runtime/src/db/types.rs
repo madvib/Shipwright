@@ -2,39 +2,21 @@
 
 pub type WorkspaceDbRow = (
     String,         // 0: id
-    String,         // 1: workspace_type
-    String,         // 2: status
-    Option<String>, // 3: active_agent
-    Vec<String>,    // 4: providers
-    Vec<String>,    // 5: mcp_servers
-    Vec<String>,    // 6: skills
-    bool,           // 7: is_worktree
-    Option<String>, // 8: worktree_path
-    Option<String>, // 9: last_activated_at
-    Option<String>, // 10: context_hash
-    i64,            // 11: config_generation
-    Option<String>, // 12: compiled_at
-    Option<String>, // 13: compile_error
-    Option<String>, // 14: tmux_session_name
+    String,         // 1: status
+    bool,           // 2: is_worktree
+    Option<String>, // 3: worktree_path
+    Option<String>, // 4: active_agent
+    Option<String>, // 5: last_activated_at
 );
 
 pub type WorkspaceDbListRow = (
     String,         // 0: branch
     String,         // 1: id
-    String,         // 2: workspace_type
-    String,         // 3: status
-    Option<String>, // 4: active_agent
-    Vec<String>,    // 5: providers
-    Vec<String>,    // 6: mcp_servers
-    Vec<String>,    // 7: skills
-    bool,           // 8: is_worktree
-    Option<String>, // 9: worktree_path
-    Option<String>, // 10: last_activated_at
-    Option<String>, // 11: context_hash
-    i64,            // 12: config_generation
-    Option<String>, // 13: compiled_at
-    Option<String>, // 14: compile_error
-    Option<String>, // 15: tmux_session_name
+    String,         // 2: status
+    bool,           // 3: is_worktree
+    Option<String>, // 4: worktree_path
+    Option<String>, // 5: active_agent
+    Option<String>, // 6: last_activated_at
 );
 
 #[derive(Debug, Clone, PartialEq, Eq)]

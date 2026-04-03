@@ -1,5 +1,5 @@
 use anyhow::Result;
-use runtime::{get_active_agent, workspace::get_active_workspace_type};
+use runtime::get_active_agent;
 use std::path::Path;
 use std::process::Command as ProcessCommand;
 
@@ -78,10 +78,7 @@ impl ShipServer {
             return Ok(());
         }
         if Self::is_project_workspace_tool(tool_name) {
-            let active_type = get_active_workspace_type(project_dir).unwrap_or(None);
-            if matches!(active_type, Some(runtime::ShipWorkspaceKind::Service)) {
-                return Ok(());
-            }
+            return Ok(());
         }
         let active_agent =
             get_active_agent(Some(project_dir.to_path_buf())).map_err(|e| e.to_string())?;

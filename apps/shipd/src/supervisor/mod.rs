@@ -88,7 +88,7 @@ pub async fn start_workspace(
     }
 
     // Step 5: Spawn agent command in the tmux window.
-    send_agent_command(&tmux_session, &workspace.providers);
+    send_agent_command(&tmux_session, &[]);
 
     // Step 6: Register agent on mesh.
     register_on_mesh(&state, &req.agent_id).await;

@@ -158,11 +158,9 @@ pub fn get_active_workspace_session(
         Some(workspace) => workspace,
         None => return Ok(None),
     };
-    let mut generation_by_branch = HashMap::new();
-    generation_by_branch.insert(workspace.branch.clone(), workspace.config_generation);
     Ok(get_active_workspace_session_db(&workspace.id)?.map(|row| {
         let mut session = hydrate_workspace_session(row);
-        annotate_session_stale_state(&mut session, &generation_by_branch);
+        annotate_session_stale_state(&mut session, &HashMap::new());
         let _ = annotate_session_record(ship_dir, &mut session);
         session
     }))
@@ -173,21 +171,14 @@ pub fn list_workspace_sessions(
     branch: Option<&str>,
     limit: usize,
 ) -> Result<Vec<WorkspaceSession>> {
-    let mut workspace_generation_by_branch = HashMap::new();
+    let workspace_generation_by_branch = HashMap::new();
     let workspace_id = if let Some(branch) = branch {
         let branch = ensure_branch_key(branch)?;
         match get_workspace(ship_dir, branch)? {
-            Some(workspace) => {
-                workspace_generation_by_branch
-                    .insert(workspace.branch.clone(), workspace.config_generation);
-                Some(workspace.id)
-            }
+            Some(workspace) => Some(workspace.id),
             None => return Ok(Vec::new()),
         }
     } else {
-        for workspace in list_workspaces(ship_dir)? {
-            workspace_generation_by_branch.insert(workspace.branch, workspace.config_generation);
-        }
         None
     };
 
