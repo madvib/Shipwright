@@ -30,7 +30,7 @@ export interface GitLogEntry {
 
 function useActiveWorkspaceId(): string {
   const { workspaces } = useDaemon()
-  return workspaces.find((w) => w.status === 'active')?.branch ?? 'v0.2.0'
+  return workspaces.find((w) => w.status === 'active')?.branch ?? ''
 }
 
 export function useGitStatus() {

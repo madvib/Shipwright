@@ -4,7 +4,6 @@
 import type { QueryClient } from '@tanstack/react-query'
 import type { McpClient } from '#/lib/mcp-client'
 import { mcpKeys } from '#/lib/query-keys'
-import type { EventEnvelope } from '#/features/studio/events/useEventStream'
 
 const RECONNECT_DELAY_MS = 3_000
 
@@ -24,14 +23,11 @@ export function startNotificationListener(
   void (async () => {
     while (refs.listenerActiveRef.current && refs.clientRef.current === client) {
       try {
-        await client.startNotificationListener((method, params) => {
+        await client.startNotificationListener((method) => {
+          // Events come from daemon SSE (useDaemon), not MCP.
+          // Only handle resource invalidation here.
           if (method === 'notifications/resources/list_changed') {
             void queryClient.invalidateQueries({ queryKey: mcpKeys.all })
-          } else if (method === 'ship/event' && params != null) {
-            const envelope = params as EventEnvelope
-            queryClient.setQueryData(mcpKeys.events(), (prev: EventEnvelope[] | undefined) => {
-              return [envelope, ...(prev ?? [])].slice(0, 200)
-            })
           }
         })
         // Stream closed normally — fallback invalidation
