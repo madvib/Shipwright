@@ -14,6 +14,7 @@ const EMPTY: Skill = {
   description: null,
   source: 'custom',
   vars: {},
+  artifacts: [],
 }
 
 export function SkillListEditor({ skills, onChange }: Props) {

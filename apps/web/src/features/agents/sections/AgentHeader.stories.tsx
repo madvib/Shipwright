@@ -19,8 +19,8 @@ const baseProfile: ResolvedAgentProfile = {
     version: 'v0.1.0',
   },
   skills: [
-    { id: 'ship-coordination', name: 'ship-coordination', content: '', source: 'custom', vars: {} },
-    { id: 'code-review', name: 'code-review', content: '', source: 'community', vars: {} },
+    { id: 'ship-coordination', name: 'ship-coordination', content: '', source: 'custom', vars: {}, artifacts: [] },
+    { id: 'code-review', name: 'code-review', content: '', source: 'community', vars: {}, artifacts: [] },
   ],
   mcpServers: [
     { name: 'ship', command: 'ship', args: ['mcp', 'serve'], server_type: 'stdio', url: null, timeout_secs: null, codex_enabled_tools: [], codex_disabled_tools: [], gemini_include_tools: [], gemini_exclude_tools: [] },

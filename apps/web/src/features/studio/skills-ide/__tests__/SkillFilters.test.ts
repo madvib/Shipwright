@@ -5,7 +5,7 @@ import type { LibrarySkill } from '../useSkillsLibrary'
 function makeSkill(overrides: Partial<LibrarySkill> & { id: string }): LibrarySkill {
   return {
     name: overrides.id, description: null, content: '', source: 'custom',
-    vars: {}, origin: 'project', usedBy: [], stableId: null,
+    vars: {}, artifacts: [], origin: 'project', usedBy: [], stableId: null,
     tags: [], authors: [], varsSchema: null, files: ['SKILL.md'],
     referenceDocs: {}, evals: null,
     ...overrides,

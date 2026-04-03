@@ -42,7 +42,7 @@ export const NotFound: Story = {
 /** Not-found via 404 Response object. */
 export const NotFound404Response: Story = {
   args: {
-    error: new Response(null, { status: 404 }),
+    error: new Response(null, { status: 404 }) as unknown as Error,
     reset: fn(),
   },
 }
@@ -66,7 +66,7 @@ export const ShortError: Story = {
 /** String error (non-Error instance). */
 export const StringError: Story = {
   args: {
-    error: 'Something unexpected happened during compilation.',
+    error: 'Something unexpected happened during compilation.' as unknown as Error,
     reset: fn(),
   },
 }

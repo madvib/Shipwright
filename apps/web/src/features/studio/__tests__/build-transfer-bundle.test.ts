@@ -52,8 +52,8 @@ describe('buildTransferBundle', () => {
   it('maps skills to skill_refs and skills bundle', () => {
     const agent = makeAgent({
       skills: [
-        { id: 'sk-1', name: 'Skill One', description: '', content: '# Skill 1', source: 'custom' as const, vars: {} },
-        { id: 'sk-2', name: 'Skill Two', description: '', content: '# Skill 2', source: 'custom' as const, vars: {} },
+        { id: 'sk-1', name: 'Skill One', description: '', content: '# Skill 1', source: 'custom' as const, vars: {}, artifacts: [] },
+        { id: 'sk-2', name: 'Skill Two', description: '', content: '# Skill 2', source: 'custom' as const, vars: {}, artifacts: [] },
       ],
     })
     const bundle = buildTransferBundle(agent)

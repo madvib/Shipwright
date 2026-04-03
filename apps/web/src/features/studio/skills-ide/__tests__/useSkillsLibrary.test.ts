@@ -4,7 +4,7 @@ import type { LibrarySkill } from '../useSkillsLibrary'
 import type { PullSkill } from '@ship/ui'
 
 function skill(id: string, name: string, source = 'custom'): PullSkill {
-  return { id, name, description: `${name} description`, content: `# ${name}`, source, tags: [], authors: [], files: [], reference_docs: {} }
+  return { id, name, description: `${name} description`, content: `# ${name}`, source, tags: [], authors: [], artifacts: [], files: [], reference_docs: {} }
 }
 
 describe('aggregateSkills', () => {
@@ -92,7 +92,7 @@ describe('aggregateSkills', () => {
   })
 
   it('handles null description in PullSkill', () => {
-    const ps: PullSkill = { id: 'x', name: 'X', description: null, content: '# X', source: 'custom', tags: [], authors: [], files: [], reference_docs: {} }
+    const ps: PullSkill = { id: 'x', name: 'X', description: null, content: '# X', source: 'custom', tags: [], authors: [], artifacts: [], files: [], reference_docs: {} }
     const result = aggregateSkills([{ id: 'a', skills: [ps], source: 'project' }])
     expect(result[0].description).toBeNull()
   })
@@ -109,7 +109,7 @@ describe('aggregateSkills', () => {
 function librarySkill(id: string, name: string): LibrarySkill {
   return {
     id, name, description: null, content: `# ${name}`, source: 'custom',
-    vars: {}, origin: 'project', usedBy: [], stableId: null,
+    vars: {}, artifacts: [], origin: 'project', usedBy: [], stableId: null,
     tags: [], authors: [], varsSchema: null, files: ['SKILL.md'],
     referenceDocs: {}, evals: null,
   }

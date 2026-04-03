@@ -21,6 +21,8 @@ function makeResult(overrides: Partial<CompileResult> = {}): CompileResult {
     plugins_manifest: { install: [], scope: 'project' },
     agent_files: {},
     cursor_environment_json: null,
+    codex_hooks_json: null,
+    event_subscriptions: [],
     ...overrides,
   }
 }
@@ -201,8 +203,8 @@ function makeAgent(overrides: Partial<ResolvedAgentProfile> = {}): ResolvedAgent
       version: '0.1.0',
     },
     skills: [
-      { id: 'skill-a', name: 'skill-a', content: '', source: 'custom', vars: {} },
-      { id: 'skill-b', name: 'skill-b', content: '', source: 'community', vars: {} },
+      { id: 'skill-a', name: 'skill-a', content: '', source: 'custom', vars: {}, artifacts: [] },
+      { id: 'skill-b', name: 'skill-b', content: '', source: 'community', vars: {}, artifacts: [] },
     ],
     mcpServers: [
       { name: 'github', command: 'npx', args: [], server_type: 'stdio', url: null, timeout_secs: null, codex_enabled_tools: [], codex_disabled_tools: [], gemini_include_tools: [], gemini_exclude_tools: [] },
@@ -241,7 +243,7 @@ describe('buildShipManifest', () => {
 
   it('uses library skills when no agent is provided', () => {
     const library: ProjectLibrary = {
-      skills: [{ id: 'lib-skill', name: 'lib-skill', content: '', source: 'custom' as const, vars: {} }],
+      skills: [{ id: 'lib-skill', name: 'lib-skill', content: '', source: 'custom' as const, vars: {}, artifacts: [] }],
       agent_profiles: [],
       claude_team_agents: [],
       env: {},
@@ -255,9 +257,9 @@ describe('buildShipManifest', () => {
   })
 
   it('prefers agent skills over library skills', () => {
-    const agent = makeAgent({ skills: [{ id: 'agent-skill', name: 'agent-skill', content: '', source: 'custom', vars: {} }] })
+    const agent = makeAgent({ skills: [{ id: 'agent-skill', name: 'agent-skill', content: '', source: 'custom', vars: {}, artifacts: [] }] })
     const library: ProjectLibrary = {
-      skills: [{ id: 'lib-skill', name: 'lib-skill', content: '', source: 'custom' as const, vars: {} }],
+      skills: [{ id: 'lib-skill', name: 'lib-skill', content: '', source: 'custom' as const, vars: {}, artifacts: [] }],
       agent_profiles: [],
       claude_team_agents: [],
       env: {},

@@ -18,6 +18,7 @@ const makeSkill = (id: string, name: string, source: Skill['source'], version?: 
   source,
   metadata: { version: version ?? 'v0.1.0' },
   vars: {},
+  artifacts: [],
 })
 
 /** Empty state -- no skills attached, only the "Add skill" chip visible. */

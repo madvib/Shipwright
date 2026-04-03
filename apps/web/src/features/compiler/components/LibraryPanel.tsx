@@ -88,6 +88,7 @@ export const CURATED_SKILLS: CuratedSkill[] = [
       description: 'Project intelligence workflow',
       content: `# Shipflow\n\nUse Ship to plan, execute, and wrap up work sessions.\n\n## Planning\nStart sessions with context: goals, active feature, current workspace.\n\n## Working  \nLog progress against specs. Reference ADRs for architectural decisions.\n\n## Wrapping up\nEnd sessions with a summary. Update spec status. Log what shipped.\n`,
       vars: {},
+      artifacts: [],
     },
   },
   {
@@ -100,6 +101,7 @@ export const CURATED_SKILLS: CuratedSkill[] = [
       description: 'Git commit discipline',
       content: `# Smart Commit\n\nCreate focused, well-described git commits.\n\n## Rules\n- Imperative mood: "add feature" not "added feature"\n- First line ≤72 characters\n- Body explains WHY not WHAT\n- Atomic: one logical change per commit\n- Never skip hooks unless explicitly asked\n`,
       vars: {},
+      artifacts: [],
     },
   },
   {
@@ -112,6 +114,7 @@ export const CURATED_SKILLS: CuratedSkill[] = [
       description: 'Code review process',
       content: `# Code Review\n\nSystematic code review focusing on correctness, clarity, and maintainability.\n\n## Process\n1. Understand intent before critiquing\n2. Check: correctness, edge cases, performance, security\n3. Suggest, don't dictate\n4. Prioritize: blocker > should-fix > nit\n`,
       vars: {},
+      artifacts: [],
     },
   },
   {
@@ -124,6 +127,7 @@ export const CURATED_SKILLS: CuratedSkill[] = [
       description: 'Debugging methodology',
       content: `# Debug Expert\n\nMethodical debugging: isolate, reproduce, understand, fix, verify.\n\n## Process\n1. Reproduce reliably before touching code\n2. Form a hypothesis. Test it.\n3. Fix root cause, not symptoms\n4. Add a test that would have caught this\n5. Document what was learned\n`,
       vars: {},
+      artifacts: [],
     },
   },
   {
@@ -136,6 +140,7 @@ export const CURATED_SKILLS: CuratedSkill[] = [
       description: 'Document creation',
       content: `# Create Document\n\nCreate well-structured planning documents, specs, and architectural decision records.\n\n## Formats\n- **Spec**: problem statement, scope, success criteria, open questions\n- **ADR**: context, decision, consequences, alternatives considered\n- **Feature**: user story, acceptance criteria, implementation notes\n`,
       vars: {},
+      artifacts: [],
     },
   },
 ]

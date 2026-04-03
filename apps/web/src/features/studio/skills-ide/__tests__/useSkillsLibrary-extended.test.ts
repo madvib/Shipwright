@@ -6,7 +6,7 @@ import type { PullSkill } from '@ship/ui'
 function skill(id: string, name: string, overrides?: Partial<PullSkill>): PullSkill {
   return {
     id, name, description: `${name} desc`, content: `# ${name}`,
-    source: 'custom', tags: [], authors: [], files: [], reference_docs: {},
+    source: 'custom', tags: [], authors: [], artifacts: [], files: [], reference_docs: {},
     ...overrides,
   }
 }
@@ -14,7 +14,7 @@ function skill(id: string, name: string, overrides?: Partial<PullSkill>): PullSk
 function librarySkill(id: string, name: string, overrides?: Partial<LibrarySkill>): LibrarySkill {
   return {
     id, name, description: null, content: `# ${name}`, source: 'custom',
-    vars: {}, origin: 'project', usedBy: [], stableId: null,
+    vars: {}, artifacts: [], origin: 'project', usedBy: [], stableId: null,
     tags: [], authors: [], varsSchema: null, files: ['SKILL.md'],
     referenceDocs: {}, evals: null,
     ...overrides,

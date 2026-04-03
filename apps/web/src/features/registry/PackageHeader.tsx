@@ -20,6 +20,7 @@ function packageSkillToLibrarySkill(ps: PackageSkill): Skill {
     content: `# ${ps.name}\n\n${ps.description ?? ''}\n`,
     source: 'imported',
     vars: {},
+    artifacts: [],
   }
 }
 
