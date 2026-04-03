@@ -140,6 +140,10 @@ pub async fn run_network(host: String, port: u16) -> Result<()> {
             axum::routing::get(project_api::list_skills),
         )
         .route(
+            "/workspaces/{id}",
+            axum::routing::delete(project_api::delete_workspace),
+        )
+        .route(
             "/workspaces/{id}/activate",
             axum::routing::post(project_api::activate_workspace),
         )

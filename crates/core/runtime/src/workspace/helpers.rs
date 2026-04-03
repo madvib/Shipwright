@@ -184,6 +184,48 @@ pub(crate) fn validate_agent_exists(ship_dir: &Path, agent_id: &str) -> Result<S
     }
 }
 
+// ---- Worktree path resolution via git ----------------------------------------
+
+/// Resolve the actual filesystem path for `branch` using `git worktree list --porcelain`.
+///
+/// Returns `None` when the branch has no active worktree or git is unavailable.
+pub(crate) fn git_worktree_path_for_branch(branch: &str) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .args(["worktree", "list", "--porcelain"])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    parse_git_worktree_path(&stdout, branch)
+}
+
+/// Parse `git worktree list --porcelain` output and return the path for `branch`.
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn parse_git_worktree_path(porcelain: &str, branch: &str) -> Option<String> {
+    let needle = branch.trim();
+    let mut current_path: Option<String> = None;
+
+    for line in porcelain.lines() {
+        if let Some(path) = line.strip_prefix("worktree ") {
+            current_path = Some(path.to_string());
+        } else if let Some(branch_ref) = line.strip_prefix("branch ") {
+            let short = branch_ref.strip_prefix("refs/heads/").unwrap_or(branch_ref);
+            if short == needle {
+                return current_path;
+            }
+            current_path = None;
+        } else if line.is_empty() {
+            current_path = None;
+        }
+    }
+
+    None
+}
+
 // ---- Worktree path defaults ------------------------------------------------
 
 pub(crate) fn default_project_worktree_root(ship_dir: &Path) -> PathBuf {

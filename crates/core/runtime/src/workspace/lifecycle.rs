@@ -56,7 +56,8 @@ pub fn create_workspace(ship_dir: &Path, request: CreateWorkspaceRequest) -> Res
     if !workspace.is_worktree {
         workspace.worktree_path = None;
     } else if workspace.worktree_path.is_none() {
-        workspace.worktree_path = default_worktree_path(ship_dir, &branch);
+        workspace.worktree_path = git_worktree_path_for_branch(&branch)
+            .or_else(|| default_worktree_path(ship_dir, &branch));
     }
     if workspace.is_worktree && workspace.worktree_path.is_none() {
         return Err(anyhow::anyhow!(
@@ -146,6 +147,13 @@ pub fn activate_workspace(ship_dir: &Path, branch: &str) -> Result<Workspace> {
 
     workspace.status = WorkspaceStatus::Active;
     workspace.last_activated_at = Some(now);
+
+    // Resolve the real worktree path from git rather than using a slug-derived
+    // fallback that produces phantom paths like ~/.ship/worktrees/v0-2-0.
+    if let Some(git_path) = git_worktree_path_for_branch(branch) {
+        workspace.is_worktree = true;
+        workspace.worktree_path = Some(git_path);
+    }
 
     persist_branch_link_from_workspace(ship_dir, &workspace)?;
     let active_agent = workspace.active_agent.clone();
