@@ -17,6 +17,8 @@ pub struct JobCreatedPayload {
     pub plan_id: Option<String>,
     pub model: Option<String>,
     pub provider: Option<String>,
+    #[serde(default)]
+    pub depends_on: Option<Vec<String>>,
 }
 
 /// Emitted when the job is assigned to a worktree and (optionally) a process.
@@ -56,10 +58,18 @@ pub struct JobBlockedPayload {
     pub needs_human: bool,
 }
 
+/// Emitted when the agent signals the job is done but before gate/merge.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct JobCompletedPayload {
+    pub job_id: String,
+    pub slug: String,
+}
+
 /// Emitted when the job's branch is merged.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct JobMergedPayload {
     pub job_id: String,
+    pub slug: String,
 }
 
 /// Emitted when the job terminates with an error.
@@ -88,6 +98,7 @@ pub mod event_types {
     pub const JOB_GATE_PASSED: &str = "job.gate_passed";
     pub const JOB_GATE_FAILED: &str = "job.gate_failed";
     pub const JOB_BLOCKED: &str = "job.blocked";
+    pub const JOB_COMPLETED: &str = "job.completed";
     pub const JOB_MERGED: &str = "job.merged";
     pub const JOB_FAILED: &str = "job.failed";
     pub const JOB_UPDATE: &str = "job.update";

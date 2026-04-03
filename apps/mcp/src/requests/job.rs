@@ -17,13 +17,15 @@ pub struct CreateJobRequest {
     pub model: Option<String>,
     /// Provider override (e.g. "anthropic", "openai").
     pub provider: Option<String>,
+    /// Job slugs that must complete before this job is dispatched.
+    pub depends_on: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, JsonSchema)]
 pub struct UpdateJobRequest {
     /// Job ID returned by create_job.
     pub job_id: String,
-    /// Target status: dispatched | gate_requested | gate_passed | gate_failed | blocked | merged | failed
+    /// Target status: dispatched | gate_requested | gate_passed | gate_failed | blocked | completed | merged | failed
     pub status: String,
     /// Worktree path — required when status is "dispatched".
     pub worktree: Option<String>,

@@ -4,9 +4,9 @@
 //! and return the result. State is read back via the projection in `load_jobs`.
 
 use runtime::events::job::{
-    JobBlockedPayload, JobCreatedPayload, JobDispatchedPayload, JobFailedPayload,
-    JobGateFailedPayload, JobGatePassedPayload, JobGateRequestedPayload, JobMergedPayload,
-    event_types,
+    JobBlockedPayload, JobCompletedPayload, JobCreatedPayload, JobDispatchedPayload,
+    JobFailedPayload, JobGateFailedPayload, JobGatePassedPayload, JobGateRequestedPayload,
+    JobMergedPayload, event_types,
 };
 use runtime::events::{EventEnvelope, EventStore, SqliteEventStore};
 use runtime::projections::job::{JobStatus, load_jobs};
@@ -28,6 +28,7 @@ pub async fn create_job(req: CreateJobRequest) -> String {
         plan_id: req.plan_id,
         model: req.model,
         provider: req.provider,
+        depends_on: req.depends_on,
     };
     let envelope = match EventEnvelope::new(event_types::JOB_CREATED, &job_id, &payload) {
         Ok(e) => e,
@@ -130,13 +131,28 @@ pub fn update_job(req: UpdateJobRequest) -> String {
                 },
             )
         }
-        "merged" => EventEnvelope::new(
-            event_types::JOB_MERGED,
-            &req.job_id,
-            &JobMergedPayload {
-                job_id: req.job_id.clone(),
-            },
-        ),
+        "completed" => {
+            let slug = resolve_slug(&store, &req.job_id);
+            EventEnvelope::new(
+                event_types::JOB_COMPLETED,
+                &req.job_id,
+                &JobCompletedPayload {
+                    job_id: req.job_id.clone(),
+                    slug,
+                },
+            )
+        }
+        "merged" => {
+            let slug = resolve_slug(&store, &req.job_id);
+            EventEnvelope::new(
+                event_types::JOB_MERGED,
+                &req.job_id,
+                &JobMergedPayload {
+                    job_id: req.job_id.clone(),
+                    slug,
+                },
+            )
+        }
         "failed" => {
             let error = match req.error {
                 Some(e) => e,
@@ -154,7 +170,7 @@ pub fn update_job(req: UpdateJobRequest) -> String {
         other => {
             return format!(
                 "Error: unknown status '{other}'. Valid values: \
-                dispatched, gate_requested, gate_passed, gate_failed, blocked, merged, failed"
+                dispatched, gate_requested, gate_passed, gate_failed, blocked, completed, merged, failed"
             );
         }
     };
@@ -182,6 +198,7 @@ pub fn list_jobs(req: ListJobsRequest) -> String {
         let target = match status_filter.as_str() {
             "pending" => Some(JobStatus::Pending),
             "dispatched" => Some(JobStatus::Dispatched),
+            "completed" => Some(JobStatus::Completed),
             "gate_pending" => Some(JobStatus::GatePending),
             "blocked" => Some(JobStatus::Blocked),
             "merged" => Some(JobStatus::Merged),
@@ -189,7 +206,7 @@ pub fn list_jobs(req: ListJobsRequest) -> String {
             other => {
                 return format!(
                     "Error: unknown status filter '{other}'. Valid values: \
-                    pending, dispatched, gate_pending, blocked, merged, failed"
+                    pending, dispatched, completed, gate_pending, blocked, merged, failed"
                 );
             }
         };
@@ -204,6 +221,14 @@ pub fn list_jobs(req: ListJobsRequest) -> String {
         Ok(json) => json,
         Err(e) => format!("Error serializing jobs: {e}"),
     }
+}
+
+/// Look up the slug for a job_id from the event store projection.
+fn resolve_slug(_store: &SqliteEventStore, job_id: &str) -> String {
+    load_jobs()
+        .ok()
+        .and_then(|jobs| jobs.get(job_id).map(|r| r.slug.clone()))
+        .unwrap_or_default()
 }
 
 /// Return a single job record by job_id.
