@@ -7,7 +7,6 @@
 //! - `workspace` -- branch-keyed unit of work
 //! - `workspace_session` -- time-bounded work interval
 //! - `workspace_session_record` -- immutable end-of-session snapshot
-//! - `branch_config` -- compiled preset state per branch
 //! - `branch_context` -- branch-to-entity links
 //! - `event_log` -- append-only audit trail
 //! - `agent_runtime_settings` -- singleton global agent config

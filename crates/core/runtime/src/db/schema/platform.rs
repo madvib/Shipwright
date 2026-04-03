@@ -94,18 +94,6 @@ CREATE INDEX IF NOT EXISTS workspace_session_record_workspace_idx
   ON workspace_session_record(workspace_id, created_at DESC);
 "#;
 
-/// Branch config: compiled preset and plugin state per branch.
-pub const BRANCH_CONFIG: &str = r#"
-CREATE TABLE IF NOT EXISTS branch_config (
-  branch       TEXT PRIMARY KEY,
-  preset_id    TEXT NOT NULL,
-  workspace_id TEXT,
-  plugins_json TEXT NOT NULL DEFAULT '[]',
-  compiled_at  TEXT NOT NULL,
-  updated_at   TEXT NOT NULL
-);
-"#;
-
 /// Branch context: links a branch to an external entity (e.g. a target or capability).
 pub const BRANCH_CONTEXT: &str = r#"
 CREATE TABLE IF NOT EXISTS branch_context (
