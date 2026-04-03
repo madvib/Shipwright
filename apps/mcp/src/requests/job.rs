@@ -13,6 +13,10 @@ pub struct CreateJobRequest {
     pub spec_path: String,
     /// Optional reference to a plan that originated this job.
     pub plan_id: Option<String>,
+    /// Model override for the spawned agent (e.g. "sonnet", "opus").
+    pub model: Option<String>,
+    /// Provider override (e.g. "anthropic", "openai").
+    pub provider: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]

@@ -223,6 +223,7 @@ pub mod event_types {
     pub const JOB_COMPLETED: &str = "job.completed";
     pub const JOB_FAILED: &str = "job.failed";
     pub const JOB_DISPATCHED: &str = "job.dispatched";
+    pub const JOB_UPDATE: &str = "job.update";
     pub const CONFIG_CHANGED: &str = "config.changed";
     pub const PROJECT_LOG: &str = "project.log";
 
@@ -254,6 +255,7 @@ pub mod event_types {
         JOB_COMPLETED,
         JOB_FAILED,
         JOB_DISPATCHED,
+        JOB_UPDATE,
         CONFIG_CHANGED,
         PROJECT_LOG,
         SKILL_STARTED,

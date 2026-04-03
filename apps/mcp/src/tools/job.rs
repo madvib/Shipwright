@@ -23,6 +23,8 @@ pub fn create_job(req: CreateJobRequest) -> String {
         branch: req.branch,
         spec_path: req.spec_path,
         plan_id: req.plan_id,
+        model: req.model,
+        provider: req.provider,
     };
     let envelope = match EventEnvelope::new(event_types::JOB_CREATED, &job_id, &payload) {
         Ok(e) => e,

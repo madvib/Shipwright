@@ -14,6 +14,8 @@ pub struct JobCreatedPayload {
     pub branch: String,
     pub spec_path: String,
     pub plan_id: Option<String>,
+    pub model: Option<String>,
+    pub provider: Option<String>,
 }
 
 /// Emitted when the job is assigned to a worktree and (optionally) a process.
@@ -66,6 +68,17 @@ pub struct JobFailedPayload {
     pub error: String,
 }
 
+/// Emitted by either side (human, commander, or agent) to send a mid-flight
+/// update, instruction, or course correction. The daemon routes these to the
+/// agent's mailbox.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JobUpdatePayload {
+    pub job_id: String,
+    pub message: String,
+    /// Who sent this update — e.g. "human", "commander", agent mesh ID.
+    pub sender: String,
+}
+
 /// Event type constants for the `job.` namespace.
 pub mod event_types {
     pub const JOB_CREATED: &str = "job.created";
@@ -76,4 +89,5 @@ pub mod event_types {
     pub const JOB_BLOCKED: &str = "job.blocked";
     pub const JOB_MERGED: &str = "job.merged";
     pub const JOB_FAILED: &str = "job.failed";
+    pub const JOB_UPDATE: &str = "job.update";
 }

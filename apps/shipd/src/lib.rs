@@ -113,7 +113,7 @@ pub async fn run_network(host: String, port: u16) -> Result<()> {
             axum::routing::get(project_api::list_session_files),
         )
         .route(
-            "/workspaces/{id}/session-files/*path",
+            "/workspaces/{id}/session-files/{*path}",
             axum::routing::get(project_api::read_session_file)
                 .put(project_api::write_session_file)
                 .delete(project_api::delete_session_file),
