@@ -51,6 +51,7 @@ export function AddSkillDialog({ open, onOpenChange, existingIds, onAdd }: AddSk
       source: 'community',
       content: '',
       vars: {},
+      artifacts: [],
     }
     onAdd(skill)
     onOpenChange(false)

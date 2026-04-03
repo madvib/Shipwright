@@ -28,7 +28,6 @@ export const EditAlwaysApply: Story = {
     rule: {
       file_name: '010-no-compat.md',
       content: 'No backward compatibility without consumers. Make hard breaks in the same change.\n\nDo not keep compatibility aliases, duplicate command surfaces, or transitional wrappers.',
-      always_apply: true,
     },
     onSave: fn(),
     onDelete: fn(),
@@ -43,8 +42,6 @@ export const EditConditionalGlobs: Story = {
     rule: {
       file_name: '030-react-patterns.md',
       content: 'Use functional components with hooks. Prefer composition over inheritance.\nAvoid prop drilling -- use context or state management.',
-      always_apply: false,
-      globs: ['src/**/*.tsx', 'src/**/*.jsx'],
     },
     onSave: fn(),
     onDelete: fn(),
@@ -68,7 +65,6 @@ Keep React component state and API contracts explicit and stable.
 Review changes for regressions, architecture drift, and missing tests before merge.
 Stage explicit files only; keep commit subjects imperative and concise.
 Use commit types consistently: feat, fix, refactor, test, docs, chore.`,
-      always_apply: true,
     },
     onSave: fn(),
     onDelete: fn(),
