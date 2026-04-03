@@ -2,7 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState, useCallback, useRef } from 'react'
 import type { FrontmatterEntry } from '@ship/primitives'
 import { composeFrontmatterDocument, splitFrontmatterDocument } from '@ship/primitives'
-import { Zap, WifiOff } from 'lucide-react'
+import { Zap } from 'lucide-react'
 import { useSkillsIDE } from '#/features/studio/skills-ide/useSkillsIDE'
 import { SkillsFileExplorer } from '#/features/studio/skills-ide/SkillsFileExplorer'
 import { SkillsEditor } from '#/features/studio/skills-ide/SkillsEditor'
@@ -91,20 +91,12 @@ function SkillsIDEPage() {
 
       {/* Full IDE layout */}
       <div className="hidden md:flex flex-1 flex-col h-full min-h-0 overflow-hidden">
-        {!ide.isConnected && (
-          <div className="flex items-center gap-2 px-4 py-1.5 border-b border-amber-500/30 bg-amber-500/10 text-[11px] text-amber-600 dark:text-amber-400 shrink-0">
-            <WifiOff className="size-3 shrink-0" />
-            CLI disconnected — edits saved locally, connect to sync
-          </div>
-        )}
-
         <div className="flex flex-1 min-h-0">
           <SkillsFileExplorer
             filteredSkills={ide.filteredSkills}
             activeTabId={ide.state.activeTabId}
             expandedFolders={ide.state.expandedFolders}
             searchQuery={ide.state.searchQuery}
-            isConnected={ide.isConnected}
             isLoading={ide.isLoading}
             getLibrarySkill={ide.getLibrarySkill}
             onSearchChange={ide.setSearchQuery}
@@ -122,7 +114,6 @@ function SkillsIDEPage() {
             activeTabId={ide.state.activeTabId}
             unsavedIds={ide.state.unsavedIds}
             content={ide.activeContent}
-            isConnected={ide.isConnected}
             isLoading={ide.isLoading}
             previewOpen={ide.state.previewOpen}
             onTabSelect={ide.setActiveTabId}

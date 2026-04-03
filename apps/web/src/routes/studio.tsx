@@ -1,5 +1,5 @@
 import { createFileRoute, Outlet, useMatches, useRouterState } from '@tanstack/react-router'
-import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { PublishPanel } from '#/features/studio/PublishPanel'
 import { useCompiler } from '#/features/compiler/useCompiler'
 import { useLibrary } from '#/features/compiler/useLibrary'
@@ -7,10 +7,6 @@ import { useAgents } from '#/features/agents/useAgents'
 import { agentToLibrary } from '#/features/agents/agent-to-library'
 import { StudioErrorBoundary } from '#/features/studio/StudioErrorBoundary'
 import { PanicSaveProvider } from '#/features/agents/PanicSaveContext'
-
-const EventDebugPanel = import.meta.env.DEV
-  ? lazy(() => import('#/features/studio/events/EventDebugPanel').then((m) => ({ default: m.EventDebugPanel })))
-  : null
 
 export const Route = createFileRoute('/studio')({
   component: StudioLayout,
@@ -95,11 +91,6 @@ function StudioSyncShell() {
           </div>
         )}
       </div>
-      {EventDebugPanel && (
-        <Suspense fallback={null}>
-          <EventDebugPanel />
-        </Suspense>
-      )}
     </main>
   )
 }

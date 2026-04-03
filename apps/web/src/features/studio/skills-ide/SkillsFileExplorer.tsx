@@ -14,7 +14,6 @@ interface Props {
   activeTabId: string | null
   expandedFolders: Set<string>
   searchQuery: string
-  isConnected: boolean
   isLoading: boolean
   getLibrarySkill: (id: string) => LibrarySkill | undefined
   onSearchChange: (q: string) => void
@@ -51,7 +50,7 @@ const GROUP_META: Record<string, { label: string; icon: React.ReactNode }> = {
 
 export function SkillsFileExplorer({
   filteredSkills, activeTabId, expandedFolders, searchQuery,
-  isConnected, isLoading, getLibrarySkill,
+  isLoading, getLibrarySkill,
   onSearchChange, onToggleFolder, onCollapseAll, onOpenFile, onAddFile, onDeleteFile, onCreateSkill,
 }: Props) {
   const [activeFilter, setActiveFilter] = useState<SkillFilter>('all')
@@ -143,13 +142,6 @@ export function SkillsFileExplorer({
               onContextMenu={setContextMenu}
             />
 
-            {!isConnected && finalSkills.length === 0 && filteredSkills.length === 0 && (
-              <div className="px-3.5 py-4 text-center">
-                <p className="text-[10px] text-muted-foreground leading-relaxed">
-                  Connect to CLI to see your skills
-                </p>
-              </div>
-            )}
           </>
         )}
       </div>

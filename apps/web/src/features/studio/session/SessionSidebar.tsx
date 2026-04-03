@@ -5,7 +5,6 @@ import { useState, useRef, useCallback, useMemo } from 'react'
 import {
   FileText, CheckSquare, Image, ChevronDown, ChevronRight, Plus, Folder, MonitorPlay, ExternalLink,
 } from 'lucide-react'
-import { CliStatusPopover } from '#/features/studio/CliStatusPopover'
 import { ArtifactContextMenu } from './ArtifactContextMenu'
 import { GitTab } from './GitTab'
 import { SessionsTab } from './SessionsTab'
@@ -28,7 +27,6 @@ const HIDDEN_FILES = new Set(['diff.txt', 'annotations.json'])
 interface SessionSidebarProps {
   files: SessionFile[]
   activeFile: string | null
-  isConnected: boolean
   onSelectFile: (path: string) => void
   onDeleteFile: (path: string) => void
   onUploadFiles: (files: FileList) => void
@@ -128,7 +126,7 @@ const FILE_ICONS: Record<SessionFile['type'], { icon: typeof FileText; color: st
 }
 
 export function SessionSidebar({
-  files, activeFile, isConnected,
+  files, activeFile,
   onSelectFile, onDeleteFile, onUploadFiles,
   onShowDiff, onSelectCommit,
   gitStatus, gitLog,
@@ -178,7 +176,6 @@ export function SessionSidebar({
             root={root}
             activeFile={activeFile}
             collapsedGroups={collapsedGroups}
-            isConnected={isConnected}
             fileInputRef={fileInputRef}
             onSelectFile={onSelectFile}
             onUploadFiles={onUploadFiles}
@@ -194,11 +191,6 @@ export function SessionSidebar({
         )}
       </div>
 
-      {/* Footer: CLI connection */}
-      <div className="shrink-0 border-t border-border px-2 py-1.5">
-        <CliStatusPopover onAddSkill={() => {}} />
-      </div>
-
       {contextMenu && (
         <ArtifactContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} onDelete={onDeleteFile} />
       )}
@@ -208,13 +200,12 @@ export function SessionSidebar({
 
 // ── Files Tab ──
 
-function FilesTab({ todo, groups, root, activeFile, collapsedGroups, isConnected, fileInputRef, onSelectFile, onUploadFiles, onToggleGroup, onContextMenu }: {
+function FilesTab({ todo, groups, root, activeFile, collapsedGroups, fileInputRef, onSelectFile, onUploadFiles, onToggleGroup, onContextMenu }: {
   todo: SessionFile | null
   groups: NamespaceGroup[]
   root: SessionFile[]
   activeFile: string | null
   collapsedGroups: Set<string>
-  isConnected: boolean
   fileInputRef: React.RefObject<HTMLInputElement | null>
   onSelectFile: (path: string) => void
   onUploadFiles: (files: FileList) => void
@@ -326,8 +317,7 @@ function FilesTab({ todo, groups, root, activeFile, collapsedGroups, isConnected
       <div className="px-3">
         <button
           onClick={() => fileInputRef.current?.click()}
-          disabled={!isConnected}
-          className="flex items-center gap-1.5 w-full mt-2 px-2 py-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-muted/30 transition disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex items-center gap-1.5 w-full mt-2 px-2 py-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-muted/30 transition"
         >
           <Plus className="size-3.5" />
           <span>Add files</span>
