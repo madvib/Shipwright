@@ -91,7 +91,6 @@ pub fn start_workspace_session(
     let branch = ensure_branch_key(branch)?;
 
     // Auto-create workspace record if it doesn't exist yet.
-    // This covers the first `ship use` → MCP session start flow where no record exists.
     if get_workspace(ship_dir, branch)?.is_none() {
         create_workspace(ship_dir, CreateWorkspaceRequest {
             branch: branch.to_string(),

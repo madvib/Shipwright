@@ -131,6 +131,14 @@ pub async fn run_network(host: String, port: u16) -> Result<()> {
             axum::routing::get(project_api::git_log),
         )
         .route(
+            "/workspaces/{id}/agents",
+            axum::routing::get(project_api::list_agents),
+        )
+        .route(
+            "/workspaces/{id}/skills",
+            axum::routing::get(project_api::list_skills),
+        )
+        .route(
             "/workspaces/{id}/activate",
             axum::routing::post(project_api::activate_workspace),
         )
