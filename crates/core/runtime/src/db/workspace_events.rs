@@ -13,7 +13,8 @@ use crate::events::store::EventStore;
 use crate::events::types::event_types;
 use crate::events::types::{
     WorkspaceActivated, WorkspaceAgentChanged, WorkspaceArchived, WorkspaceCompileFailed,
-    WorkspaceCompiled, WorkspaceCreated, WorkspaceDeleted, WorkspaceStatusChanged,
+    WorkspaceCompiled, WorkspaceCreated, WorkspaceDeleted, WorkspaceReconciled,
+    WorkspaceStatusChanged,
 };
 use crate::events::validator::{CallerKind, EmitContext};
 use crate::events::{EventEnvelope, SqliteEventStore};
@@ -84,4 +85,8 @@ pub fn emit_workspace_deleted(branch: &str) -> Result<EventEnvelope> {
 
 pub fn emit_workspace_agent_changed(branch: &str, payload: &WorkspaceAgentChanged) -> Result<EventEnvelope> {
     run_tx(branch, event_types::WORKSPACE_AGENT_CHANGED, payload)
+}
+
+pub fn emit_workspace_reconciled(branch: &str, payload: &WorkspaceReconciled) -> Result<EventEnvelope> {
+    run_tx(branch, event_types::WORKSPACE_RECONCILED, payload)
 }

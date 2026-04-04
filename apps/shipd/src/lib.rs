@@ -81,6 +81,12 @@ pub async fn run_network(host: String, port: u16) -> Result<()> {
         )
         .with_state(kernel.clone());
 
+    let hook_routes = axum::Router::new()
+        .route(
+            "/hooks/checkout",
+            axum::routing::post(rest_api::hooks_checkout),
+        );
+
     let api_routes = axum::Router::new()
         .route("/mesh/register", axum::routing::post(rest_api::mesh_register))
         .route("/mesh/send", axum::routing::post(rest_api::mesh_send))
@@ -155,6 +161,7 @@ pub async fn run_network(host: String, port: u16) -> Result<()> {
 
     let app = Router::new()
         .nest("/api", api_routes)
+        .nest("/api", hook_routes)
         .nest("/api", webhook_routes)
         .nest("/api/runtime", runtime_routes)
         .nest("/api", supervisor_routes)

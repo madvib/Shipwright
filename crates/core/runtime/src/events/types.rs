@@ -57,6 +57,13 @@ pub struct WorkspaceAgentChanged {
     pub agent_id: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorkspaceReconciled {
+    pub is_worktree: bool,
+    pub worktree_path: Option<String>,
+    pub reason: String,
+}
+
 // ── Session aggregate ─────────────────────────────────────────────────────────
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -223,6 +230,7 @@ pub mod event_types {
     pub const WORKSPACE_COMPILE_FAILED: &str = "workspace.compile_failed";
     pub const WORKSPACE_ARCHIVED: &str = "workspace.archived";
     pub const WORKSPACE_AGENT_CHANGED: &str = "workspace.agent_changed";
+    pub const WORKSPACE_RECONCILED: &str = "workspace.reconciled";
     pub const SESSION_STARTED: &str = "session.started";
     pub const SESSION_PROGRESS: &str = "session.progress";
     pub const SESSION_ENDED: &str = "session.ended";
@@ -256,6 +264,7 @@ pub mod event_types {
         WORKSPACE_COMPILE_FAILED,
         WORKSPACE_ARCHIVED,
         WORKSPACE_AGENT_CHANGED,
+        WORKSPACE_RECONCILED,
         SESSION_STARTED,
         SESSION_PROGRESS,
         SESSION_ENDED,
@@ -295,6 +304,6 @@ mod tests {
 
     #[test]
     fn all_constants_have_expected_count() {
-        assert_eq!(ALL.len(), 30, "exactly 30 event type constants required");
+        assert_eq!(ALL.len(), 31, "exactly 31 event type constants required");
     }
 }

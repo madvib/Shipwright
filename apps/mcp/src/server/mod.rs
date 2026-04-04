@@ -321,6 +321,13 @@ impl ShipServer {
             Err(_) => return,
         };
 
+        // Reconcile worktree state against git before session creation.
+        let _ = runtime::reconcile_workspace(
+            &project_dir,
+            &branch,
+            project_root,
+        );
+
         let agent_id = runtime::get_active_agent(Some(project_dir.clone()))
             .ok()
             .flatten()
@@ -515,6 +522,8 @@ impl ShipServer {
                 Ok(b) => b,
                 Err(e) => return format!("Error: {}", e),
             };
+        let project_root = project_dir.parent().unwrap_or(&project_dir);
+        let _ = runtime::reconcile_workspace(&project_dir, &branch, project_root);
         session::start_session(&project_dir, req, &branch)
     }
 

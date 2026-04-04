@@ -157,6 +157,8 @@ fn run_project(provider: Option<String>) -> Result<()> {
     // Seed default @ship/* dependencies and attempt registry install.
     let (deps_seeded, registry_ok) = seed_and_install_deps(&pdir);
 
+    install_post_checkout_hook(&project_root);
+
     let effective_providers = if let Some(ref d) = detected {
         d.as_list().join(", ")
     } else {
@@ -185,6 +187,59 @@ fn run_project(provider: Option<String>) -> Result<()> {
     println!("  ship use <agent-id>     activate an agent");
     println!("  ship compile            re-compile current agent");
     Ok(())
+}
+
+/// Install a git post-checkout hook that notifies shipd of branch changes.
+/// Skips if the hook already exists to avoid clobbering user hooks.
+fn install_post_checkout_hook(project_root: &std::path::Path) {
+    let git_dir = project_root.join(".git");
+    if !git_dir.is_dir() {
+        return;
+    }
+    let hooks_dir = git_dir.join("hooks");
+    let hook_path = hooks_dir.join("post-checkout");
+    if hook_path.exists() {
+        return;
+    }
+    if std::fs::create_dir_all(&hooks_dir).is_err() {
+        return;
+    }
+
+    let hook_script = r#"#!/bin/sh
+# Ship post-checkout hook — notifies shipd of branch changes.
+# Installed by `ship init`. Safe to remove if not needed.
+
+# Only run on branch checkouts (flag=1), not file checkouts (flag=0).
+if [ "$3" != "1" ]; then
+  exit 0
+fi
+
+NEW_BRANCH=$(git branch --show-current 2>/dev/null)
+if [ -z "$NEW_BRANCH" ]; then
+  exit 0
+fi
+
+PORT_FILE="${HOME}/.ship/network.port"
+if [ ! -f "$PORT_FILE" ]; then
+  exit 0
+fi
+PORT=$(cat "$PORT_FILE")
+
+# Fire and forget — fail silently if shipd isn't running.
+curl -sf -X POST "http://127.0.0.1:${PORT}/api/hooks/checkout" \
+  -H "Content-Type: application/json" \
+  -d "{\"branch\":\"${NEW_BRANCH}\",\"path\":\"$(pwd)\"}" \
+  >/dev/null 2>&1 || true
+"#;
+
+    if std::fs::write(&hook_path, hook_script).is_ok() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&hook_path, std::fs::Permissions::from_mode(0o755));
+        }
+        println!("  installed .git/hooks/post-checkout");
+    }
 }
 
 /// Seed default deps and attempt install. Never fails -- returns counts for display.

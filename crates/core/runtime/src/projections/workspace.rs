@@ -3,12 +3,15 @@
 //! This projection maintains the `workspace` table as a read model.
 //! It handles every workspace event type and applies the state change.
 //! On rebuild, the table is truncated and replayed from the event log.
+//!
+//! Handler functions live in `workspace_handlers` to stay under the line cap.
 
 use anyhow::Result;
 use sqlx::SqliteConnection;
 
 use super::async_projection::AsyncProjection;
 use super::registry::Projection;
+use super::workspace_handlers::*;
 use crate::db::block_on;
 use crate::events::types::event_types;
 use crate::events::EventEnvelope;
@@ -30,6 +33,7 @@ const HANDLED: &[&str] = &[
     event_types::WORKSPACE_ARCHIVED,
     event_types::WORKSPACE_STATUS_CHANGED,
     event_types::WORKSPACE_AGENT_CHANGED,
+    event_types::WORKSPACE_RECONCILED,
     event_types::WORKSPACE_DELETED,
 ];
 
@@ -52,6 +56,7 @@ impl Projection for WorkspaceProjection {
             event_types::WORKSPACE_ARCHIVED => apply_status(entity, "archived", conn),
             event_types::WORKSPACE_STATUS_CHANGED => apply_status_changed(entity, &event.payload_json, conn),
             event_types::WORKSPACE_AGENT_CHANGED => apply_agent_changed(entity, &event.payload_json, conn),
+            event_types::WORKSPACE_RECONCILED => apply_reconciled(entity, &event.payload_json, conn),
             event_types::WORKSPACE_DELETED => apply_deleted(entity, conn),
             _ => Ok(()),
         }
@@ -80,221 +85,4 @@ impl AsyncProjection for WorkspaceProjection {
     fn truncate(&self, conn: &mut sqlx::SqliteConnection) -> anyhow::Result<()> {
         Projection::truncate(self, conn)
     }
-}
-
-// ── Handlers ─────────────────────────────────────────────────────────────────
-
-/// workspace.created payload must carry enough to INSERT the full row.
-#[derive(serde::Deserialize)]
-struct CreatedPayload {
-    #[serde(default)]
-    workspace_id: Option<String>,
-    workspace_type: String,
-    status: String,
-    #[serde(default)]
-    active_agent: Option<String>,
-    #[serde(default)]
-    providers: Vec<String>,
-    #[serde(default)]
-    mcp_servers: Vec<String>,
-    #[serde(default)]
-    skills: Vec<String>,
-    #[serde(default)]
-    is_worktree: bool,
-    #[serde(default)]
-    worktree_path: Option<String>,
-}
-
-fn apply_created(entity_id: &str, payload_json: &str, conn: &mut SqliteConnection) -> Result<()> {
-    let p: CreatedPayload = serde_json::from_str(payload_json)?;
-    let now = chrono::Utc::now().to_rfc3339();
-    let workspace_id = p.workspace_id.as_deref().unwrap_or(entity_id);
-    let providers = serde_json::to_string(&p.providers)?;
-    let mcp_servers = serde_json::to_string(&p.mcp_servers)?;
-    let skills = serde_json::to_string(&p.skills)?;
-    block_on(async {
-        sqlx::query(
-            "INSERT INTO workspace \
-             (branch, id, workspace_type, status, active_agent, \
-              providers_json, mcp_servers_json, skills_json, \
-              is_worktree, worktree_path, config_generation, \
-              created_at, updated_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?) \
-             ON CONFLICT(branch) DO UPDATE SET \
-               id               = excluded.id, \
-               workspace_type   = excluded.workspace_type, \
-               status           = excluded.status, \
-               active_agent     = excluded.active_agent, \
-               providers_json   = excluded.providers_json, \
-               mcp_servers_json = excluded.mcp_servers_json, \
-               skills_json      = excluded.skills_json, \
-               is_worktree      = excluded.is_worktree, \
-               worktree_path    = excluded.worktree_path, \
-               updated_at       = excluded.updated_at",
-        )
-        .bind(entity_id)
-        .bind(workspace_id)
-        .bind(&p.workspace_type)
-        .bind(&p.status)
-        .bind(&p.active_agent)
-        .bind(&providers)
-        .bind(&mcp_servers)
-        .bind(&skills)
-        .bind(p.is_worktree)
-        .bind(&p.worktree_path)
-        .bind(&now)
-        .bind(&now)
-        .execute(conn)
-        .await?;
-        Ok(())
-    })
-}
-
-#[derive(serde::Deserialize)]
-struct ActivatedPayload {
-    agent_id: Option<String>,
-    providers: Vec<String>,
-}
-
-fn apply_activated(entity_id: &str, payload_json: &str, conn: &mut SqliteConnection) -> Result<()> {
-    let p: ActivatedPayload = serde_json::from_str(payload_json)?;
-    let now = chrono::Utc::now().to_rfc3339();
-    let providers = serde_json::to_string(&p.providers)?;
-    block_on(async {
-        sqlx::query(
-            "UPDATE workspace SET status = 'active', active_agent = ?, \
-             providers_json = ?, last_activated_at = ?, updated_at = ? \
-             WHERE branch = ?",
-        )
-        .bind(&p.agent_id)
-        .bind(&providers)
-        .bind(&now)
-        .bind(&now)
-        .bind(entity_id)
-        .execute(conn)
-        .await?;
-        Ok(())
-    })
-}
-
-#[derive(serde::Deserialize)]
-struct CompiledPayload {
-    #[allow(dead_code)]
-    config_generation: u32,
-    #[allow(dead_code)]
-    duration_ms: u64,
-}
-
-fn apply_compiled(
-    entity_id: &str,
-    payload_json: &str,
-    event_time: &chrono::DateTime<chrono::Utc>,
-    conn: &mut SqliteConnection,
-) -> Result<()> {
-    let _p: CompiledPayload = serde_json::from_str(payload_json)?;
-    let compiled_at = event_time.to_rfc3339();
-    block_on(async {
-        sqlx::query(
-            "UPDATE workspace SET compiled_at = ?, compile_error = NULL, \
-             config_generation = config_generation + 1, updated_at = ? WHERE branch = ?",
-        )
-        .bind(&compiled_at)
-        .bind(&compiled_at)
-        .bind(entity_id)
-        .execute(conn)
-        .await?;
-        Ok(())
-    })
-}
-
-#[derive(serde::Deserialize)]
-struct CompileFailedPayload {
-    error: String,
-}
-
-fn apply_compile_failed(
-    entity_id: &str,
-    payload_json: &str,
-    event_time: &chrono::DateTime<chrono::Utc>,
-    conn: &mut SqliteConnection,
-) -> Result<()> {
-    let p: CompileFailedPayload = serde_json::from_str(payload_json)?;
-    let compiled_at = event_time.to_rfc3339();
-    block_on(async {
-        sqlx::query(
-            "UPDATE workspace SET compiled_at = ?, compile_error = ?, updated_at = ? \
-             WHERE branch = ?",
-        )
-        .bind(&compiled_at)
-        .bind(&p.error)
-        .bind(&compiled_at)
-        .bind(entity_id)
-        .execute(conn)
-        .await?;
-        Ok(())
-    })
-}
-
-fn apply_status(entity_id: &str, status: &str, conn: &mut SqliteConnection) -> Result<()> {
-    let now = chrono::Utc::now().to_rfc3339();
-    block_on(async {
-        sqlx::query("UPDATE workspace SET status = ?, updated_at = ? WHERE branch = ?")
-            .bind(status)
-            .bind(&now)
-            .bind(entity_id)
-            .execute(conn)
-            .await?;
-        Ok(())
-    })
-}
-
-#[derive(serde::Deserialize)]
-struct StatusChangedPayload {
-    #[allow(dead_code)]
-    old_status: String,
-    new_status: String,
-}
-
-fn apply_status_changed(
-    entity_id: &str,
-    payload_json: &str,
-    conn: &mut SqliteConnection,
-) -> Result<()> {
-    let p: StatusChangedPayload = serde_json::from_str(payload_json)?;
-    apply_status(entity_id, &p.new_status, conn)
-}
-
-#[derive(serde::Deserialize)]
-struct AgentChangedPayload {
-    agent_id: Option<String>,
-}
-
-fn apply_agent_changed(
-    entity_id: &str,
-    payload_json: &str,
-    conn: &mut SqliteConnection,
-) -> Result<()> {
-    let p: AgentChangedPayload = serde_json::from_str(payload_json)?;
-    let now = chrono::Utc::now().to_rfc3339();
-    block_on(async {
-        sqlx::query(
-            "UPDATE workspace SET active_agent = ?, updated_at = ? WHERE branch = ?",
-        )
-        .bind(&p.agent_id)
-        .bind(&now)
-        .bind(entity_id)
-        .execute(conn)
-        .await?;
-        Ok(())
-    })
-}
-
-fn apply_deleted(entity_id: &str, conn: &mut SqliteConnection) -> Result<()> {
-    block_on(async {
-        sqlx::query("DELETE FROM workspace WHERE branch = ?")
-            .bind(entity_id)
-            .execute(conn)
-            .await?;
-        Ok(())
-    })
 }

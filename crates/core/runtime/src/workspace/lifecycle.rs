@@ -118,6 +118,10 @@ pub fn activate_workspace(ship_dir: &Path, branch: &str) -> Result<Workspace> {
     let branch = ensure_branch_key(branch)?;
     let now = Utc::now();
 
+    // Reconcile worktree state against git before activation.
+    let project_root = ship_dir.parent().unwrap_or(ship_dir);
+    let _ = super::reconcile::reconcile_workspace(ship_dir, branch, project_root);
+
     let mut workspace =
         get_workspace(ship_dir, branch)?.unwrap_or_else(|| new_workspace(branch, now));
 
