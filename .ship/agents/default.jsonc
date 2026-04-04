@@ -9,7 +9,7 @@
     "providers": ["claude", "codex", "cursor", "gemini", "opencode"],
   },
   "skills": {
-    "refs": ["ship-permissions", "ship-tutorial"],
+    "refs": ["ship-agents", "ship-tutorial"],
   },
   "mcp": {
     "servers": [],

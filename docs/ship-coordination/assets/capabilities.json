@@ -1,0 +1,47 @@
+[
+  {
+    "id": "session-lifecycle",
+    "status": "actual",
+    "notes": "Start, log progress, end, get, and list sessions via MCP tools"
+  },
+  {
+    "id": "workspace-management",
+    "status": "actual",
+    "notes": "Activate, create, list, and complete workspaces via MCP tools"
+  },
+  {
+    "id": "job-queue",
+    "status": "actual",
+    "notes": "Create, update, list, and get jobs with status transitions (pending, running, complete, failed)"
+  },
+  {
+    "id": "event-logging",
+    "status": "actual",
+    "notes": "Structured event emission to append-only project event log"
+  },
+  {
+    "id": "mesh-communication",
+    "status": "actual",
+    "notes": "Agent-to-agent messaging via mesh send, broadcast, discover, and status tools"
+  },
+  {
+    "id": "worktree-cleanup",
+    "status": "actual",
+    "notes": "List stale worktrees whose branches have been merged or deleted"
+  },
+  {
+    "id": "session-file-management",
+    "status": "actual",
+    "notes": "List, read, write, and delete files in .ship-session/ scratchpad"
+  },
+  {
+    "id": "adr-creation",
+    "status": "actual",
+    "notes": "Create architecture decision records via MCP tool (unstable)"
+  },
+  {
+    "id": "agent-dispatch",
+    "status": "actual",
+    "notes": "Dispatch jobs to specialist agents with stop and steer controls (unstable)"
+  }
+]

@@ -1,58 +1,53 @@
 ---
 name: ship-coordination
 stable-id: ship-coordination
-description: Use when logging progress or tracking work status in the Ship project. Covers ship MCP tools for session management and the CLI coordination protocol.
+audience: internal
+description: Use when logging progress or tracking work status in the Ship project. Covers ship MCP tools for session and workspace management.
 ---
 
 # Ship Coordination Protocol
 
-This project runs 3 parallel work lanes + 1 orchestrator.
-All lanes share a SQLite DB (`~/.ship/platform.db`) — global, not inside project `.ship/`.
+Agents coordinate through MCP tools backed by a per-project SQLite database. The orchestrator (Commander) monitors state and routes work.
 
-## Lane → Orchestrator communication
+## Session lifecycle
 
 Use the ship MCP tools at key milestones:
 
 ```
-start_session    — when beginning a significant task
-log_progress     — at each meaningful checkpoint
-end_session      — when a task or subtask is complete
+start_session    — when beginning a significant task (requires active workspace)
+log_progress     — at each meaningful checkpoint within a session
+end_session      — when a task or subtask is complete (include summary)
+get_session      — check if a session is active on the current branch
+list_sessions    — review recent sessions (filterable by branch)
 ```
 
-Notes and ADRs are human-facing documents. Do NOT use `create_note` for agent coordination, plans, or scratch work. Use `log_progress` or `.ship-session/` files instead.
+## Workspace tools
+
+```
+activate_workspace  — activate a workspace for the current branch
+create_workspace    — create a new workspace (sets up git worktree)
+list_workspaces     — list all workspaces (filterable by status)
+complete_workspace  — finalize a workspace with a handoff summary
+set_agent           — assign an agent to the active workspace
+```
 
 ## What to log
 
-**start_session**: describe the task, branch, goal
-**log_progress**: what was done, what's next, any discoveries that affect other lanes
-**end_session**: what was completed, what was NOT done, what unblocks downstream
+**start_session**: the task, branch, and goal.
+**log_progress**: what was done, what is next, any discoveries that affect other workspaces.
+**end_session**: what was completed, what was not done, what unblocks downstream.
 
-## Cross-lane signals
+Notes and ADRs are human-facing documents. Do not use `create_note` for agent coordination, plans, or scratch work. Use `log_progress` or `.ship-session/` files instead.
 
-When your work unblocks another lane, use `log_progress` with a clear message:
+## Cross-workspace signals
+
+When your work unblocks another workspace, use `log_progress` with a clear message:
 ```
 log_progress "[UNBLOCKS web-import] /api/github/import contract stable — types: ProjectLibrary, errors: 404/422"
 ```
 
-## Lane dependency map
-
-```
-cli-init ──────────────────────────► web-pr (PR needs working CLI)
-server-auth ───────────────────────► web-auth
-server-github (import endpoint) ───► web-import (swap mock for real)
-server-github (PR endpoint) ────────► web-pr
-```
-
 ## Commit discipline
 
-- Push frequently (every completed subtask minimum)
-- Commit messages: `feat:`, `fix:`, `test:`, `chore:` — imperative, concise
-- No AI attribution in commit messages
-
-## CLI coordination (when `ship log` lands)
-
-Once the CLI lane implements `ship log`, prefer CLI over MCP for progress notes:
-```bash
-ship log "ship init: scaffolding complete, idempotent"
-ship log "[UNBLOCKS web-import] /api/github/import returning ProjectLibrary shape"
-```
+- Push frequently (every completed subtask minimum).
+- Commit messages: `feat:`, `fix:`, `test:`, `chore:` — imperative, concise.
+- No AI attribution in commit messages.

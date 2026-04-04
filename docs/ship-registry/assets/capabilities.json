@@ -1,0 +1,62 @@
+[
+  {
+    "id": "package-publish",
+    "status": "actual",
+    "notes": "Publish packages to the registry via POST /api/registry/publish with repo_url"
+  },
+  {
+    "id": "package-search",
+    "status": "actual",
+    "notes": "Search packages by keyword via GET /api/registry/search"
+  },
+  {
+    "id": "package-lookup",
+    "status": "actual",
+    "notes": "Resolve package metadata by path via GET /api/registry/$path"
+  },
+  {
+    "id": "package-install-tracking",
+    "status": "actual",
+    "notes": "Track installs via POST /api/registry/$path.install"
+  },
+  {
+    "id": "package-star",
+    "status": "actual",
+    "notes": "Star/unstar packages via POST /api/registry/$path.star"
+  },
+  {
+    "id": "package-deprecate",
+    "status": "actual",
+    "notes": "Deprecate packages via POST /api/registry/$path.deprecate"
+  },
+  {
+    "id": "namespace-claim",
+    "status": "actual",
+    "notes": "Claim a namespace for publishing via POST /api/registry/claim"
+  },
+  {
+    "id": "github-webhook",
+    "status": "actual",
+    "notes": "GitHub webhook integration for automated package updates"
+  },
+  {
+    "id": "duplicate-detection",
+    "status": "actual",
+    "notes": "Detect duplicate packages via GET /api/registry/duplicates"
+  },
+  {
+    "id": "registry-seed",
+    "status": "actual",
+    "notes": "Seed the registry with @unofficial packages via POST /api/registry/seed"
+  },
+  {
+    "id": "cli-publish",
+    "status": "actual",
+    "notes": "CLI ship publish command with --dry-run preview and --tag for pre-release dist-tags"
+  },
+  {
+    "id": "cli-install",
+    "status": "actual",
+    "notes": "CLI ship install resolves dependencies with --frozen lockfile check and --offline mode"
+  }
+]

@@ -1,0 +1,62 @@
+[
+  {
+    "id": "just-build",
+    "status": "actual",
+    "notes": "Dev build with unstable features for CLI, MCP, and shipd via just build"
+  },
+  {
+    "id": "just-build-release",
+    "status": "actual",
+    "notes": "Stable release build without unstable features via just build-release"
+  },
+  {
+    "id": "just-test",
+    "status": "actual",
+    "notes": "Full test suite (Rust + web) via just test, with just test-rust and just test-web splits"
+  },
+  {
+    "id": "just-watch",
+    "status": "actual",
+    "notes": "File watcher rebuilds Rust on changes via just watch"
+  },
+  {
+    "id": "just-install-dev",
+    "status": "actual",
+    "notes": "Install dev binaries (ship + shipd) to ~/.local/bin via just install-dev"
+  },
+  {
+    "id": "just-lint",
+    "status": "actual",
+    "notes": "Rust clippy with unstable features and -D warnings via just lint"
+  },
+  {
+    "id": "just-fmt",
+    "status": "actual",
+    "notes": "Rust formatting and format check via just fmt and just fmt-check"
+  },
+  {
+    "id": "just-wasm",
+    "status": "actual",
+    "notes": "Build WASM compiler via wasm-pack for browser-side compilation"
+  },
+  {
+    "id": "just-dev",
+    "status": "actual",
+    "notes": "Start Studio dev server (Vite + local D1) via just dev"
+  },
+  {
+    "id": "just-daemon-restart",
+    "status": "actual",
+    "notes": "Rebuild, install, and hard-restart shipd via just daemon-restart"
+  },
+  {
+    "id": "just-db-migrate",
+    "status": "actual",
+    "notes": "Apply D1 migrations locally and remotely via just db-migrate and just db-migrate-remote"
+  },
+  {
+    "id": "just-deploy",
+    "status": "actual",
+    "notes": "Deploy Studio to Cloudflare Workers via just deploy"
+  }
+]

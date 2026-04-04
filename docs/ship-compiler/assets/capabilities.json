@@ -1,0 +1,102 @@
+[
+  {
+    "id": "provider-claude",
+    "status": "actual",
+    "notes": "Emits CLAUDE.md context, .mcp.json, .claude/settings.json patch, .claude/skills/, .claude/agents/"
+  },
+  {
+    "id": "provider-gemini",
+    "status": "actual",
+    "notes": "Emits GEMINI.md context, .gemini/settings.json with MCP and hooks, .gemini/agents/, policy TOML"
+  },
+  {
+    "id": "provider-codex",
+    "status": "actual",
+    "notes": "Emits AGENTS.md context, .codex/config.toml MCP patch, .codex/agents/ TOML, .codex/hooks.json"
+  },
+  {
+    "id": "provider-cursor",
+    "status": "actual",
+    "notes": "Emits per-file .cursor/rules/*.mdc, .cursor/mcp.json, .cursor/agents/, .cursor/hooks.json, cli.json permissions"
+  },
+  {
+    "id": "provider-opencode",
+    "status": "actual",
+    "notes": "Emits AGENTS.md context, opencode.json with model and MCP config, .opencode/skills/"
+  },
+  {
+    "id": "config-resolution",
+    "status": "actual",
+    "notes": "ResolvedConfig merges providers, model, MCP servers, skills, rules, permissions, hooks, env, and provider-specific settings"
+  },
+  {
+    "id": "mcp-server-compilation",
+    "status": "actual",
+    "notes": "Provider-aware MCP server entry compilation with per-provider URL field names and transport detection"
+  },
+  {
+    "id": "skill-file-compilation",
+    "status": "actual",
+    "notes": "Skills compiled to provider-specific SKILL.md paths with frontmatter and template resolution"
+  },
+  {
+    "id": "agent-profile-compilation",
+    "status": "actual",
+    "notes": "Agent profiles compiled to provider-native subagent files (Claude MD, Gemini MD, Cursor MD, Codex TOML)"
+  },
+  {
+    "id": "permissions-compilation",
+    "status": "actual",
+    "notes": "Permission presets compiled to provider-specific formats: Claude settings.json, Gemini policy TOML, Cursor cli.json"
+  },
+  {
+    "id": "hooks-compilation",
+    "status": "actual",
+    "notes": "Hooks compiled to provider-specific formats: Claude settings.json, Gemini settings.json, Cursor hooks.json, Codex hooks.json"
+  },
+  {
+    "id": "plugins-manifest",
+    "status": "actual",
+    "notes": "Plugin install intent compiled as manifest artifact for CLI execution"
+  },
+  {
+    "id": "event-subscription-resolution",
+    "status": "actual",
+    "notes": "Per-skill event subscription namespaces resolved from artifact declarations for actor spawn config"
+  },
+  {
+    "id": "wasm-target",
+    "status": "actual",
+    "notes": "Compiler builds to WASM via wasm-pack for browser-side compilation in Studio"
+  },
+  {
+    "id": "input-validation",
+    "status": "aspirational",
+    "notes": "Validate MCP server configs, permission regex patterns, skill references before compilation"
+  },
+  {
+    "id": "provider-addition-guide",
+    "status": "aspirational",
+    "notes": "Documented guide for adding new providers — descriptor, compile module, permissions, tests"
+  },
+  {
+    "id": "decompile-roundtrip-complete",
+    "status": "aspirational",
+    "notes": "Roundtrip tests for hooks, agents, and all provider features"
+  },
+  {
+    "id": "wasm-event-subscriptions",
+    "status": "aspirational",
+    "notes": "Expose event_subscriptions in WASM CompileResult for Studio integration"
+  },
+  {
+    "id": "actionable-error-messages",
+    "status": "aspirational",
+    "notes": "All compiler errors include what went wrong, which file, and how to fix"
+  },
+  {
+    "id": "community-providers",
+    "status": "aspirational",
+    "notes": "Runtime-registered providers via WASM plugins — same pure function contract, loaded at compile time"
+  }
+]

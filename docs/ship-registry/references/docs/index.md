@@ -55,7 +55,6 @@ Here is a real example from the Ship project's manifest, which exports 18 skills
       "skills/browse",
       "skills/tdd",
       "skills/code-review",
-      "skills/ship-publishing",
       "skills/ship-tutorial"
     ],
     "agents": [

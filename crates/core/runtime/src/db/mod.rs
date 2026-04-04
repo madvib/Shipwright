@@ -1,6 +1,8 @@
-//! Platform DB — single database, schema managed by sqlx migrations.
+//! Platform DB — relational state (workspaces, sessions, jobs, targets).
 //!
-//! One file: `~/.ship/platform.db`.  Migrations in `migrations/`.
+//! Path: `~/.ship/platform.db`.  Migrations in `migrations/`.
+//! Per-actor event stores live under `~/.ship/actors/` and are managed
+//! by `KernelRouter`, not this module.
 
 pub mod actor_events;
 pub mod adrs;
@@ -28,9 +30,10 @@ use sqlx::{Connection, SqliteConnection};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-/// The one database path: `~/.ship/platform.db`.
+/// Platform database path: `~/.ship/platform.db`.
 ///
-/// Never inside a project directory. Tests get automatic isolation
+/// Never inside a project directory. Per-actor event stores are managed
+/// separately by `KernelRouter`. Tests get automatic isolation
 /// via `get_global_dir()`'s test-binary detection (per-thread temp dir).
 pub fn db_path() -> Result<PathBuf> {
     Ok(crate::project::get_global_dir()?.join("platform.db"))

@@ -1,0 +1,72 @@
+[
+  {
+    "id": "shipd-daemon",
+    "status": "actual",
+    "notes": "Axum HTTP server hosting KernelRouter, service mesh, supervisor, and PTY bridge"
+  },
+  {
+    "id": "kernel-router",
+    "status": "actual",
+    "notes": "Central event routing with namespace-scoped delivery, actor stores, mailboxes, and snapshots"
+  },
+  {
+    "id": "event-store",
+    "status": "actual",
+    "notes": "SQLite-backed append-only event store with envelope, validator, filter, and cursor"
+  },
+  {
+    "id": "actor-lifecycle",
+    "status": "actual",
+    "notes": "Actor create, wake, sleep, stop, crash events with supervisor restart logic"
+  },
+  {
+    "id": "service-mesh",
+    "status": "actual",
+    "notes": "Headless service actors for mesh, human gateway, and sync"
+  },
+  {
+    "id": "mesh-api",
+    "status": "actual",
+    "notes": "REST endpoints for mesh register, send, broadcast, discover, status, and SSE events"
+  },
+  {
+    "id": "runtime-api",
+    "status": "actual",
+    "notes": "Read-only REST API for Studio: workspaces, sessions, agents, and SSE event stream"
+  },
+  {
+    "id": "supervisor",
+    "status": "actual",
+    "notes": "Workspace start, job dispatch, terminal launcher, and tmux session management"
+  },
+  {
+    "id": "pty-bridge",
+    "status": "actual",
+    "notes": "WebSocket-to-tmux PTY bridge for workspace terminal access"
+  },
+  {
+    "id": "human-gateway",
+    "status": "actual",
+    "notes": "Telegram adapter for human-in-the-loop notifications via job events"
+  },
+  {
+    "id": "project-api",
+    "status": "actual",
+    "notes": "REST endpoints for session files, git status/diff/log, agents, skills, and workspace activation"
+  },
+  {
+    "id": "job-dispatch",
+    "status": "actual",
+    "notes": "Event-driven job dispatch subscribing to job events from the kernel"
+  },
+  {
+    "id": "global-kernel-router",
+    "status": "actual",
+    "notes": "Global singleton kernel router initialization from ~/.ship/ directory"
+  },
+  {
+    "id": "database-layer",
+    "status": "actual",
+    "notes": "SQLite database with KV store, actor events, session events, workspace state, and ADR storage"
+  }
+]

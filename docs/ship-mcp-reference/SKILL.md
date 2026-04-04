@@ -1,7 +1,7 @@
 ---
 name: ship-mcp-reference
 stable-id: ship-mcp-reference
-description: Use when calling Ship MCP tools — workspace management, session lifecycle, job coordination, targets, capabilities, events. Complete tool reference with parameters.
+description: Use when calling Ship MCP tools — workspace management, session lifecycle, job coordination, events. Complete tool reference with parameters.
 tags: [ship, mcp, reference]
 authors: [ship]
 ---
@@ -21,9 +21,7 @@ The Ship MCP server (`ship mcp serve`) exposes platform tools to agents via the 
 ### Project
 - `open_project` -- register the active project (call once per MCP session)
 
-### Notes and ADRs
-- `create_note` -- project-scoped note with optional branch association
-- `update_note` -- replace note content by filename
+### ADRs
 - `create_adr` -- architecture decision record with context and alternatives
 
 ### Workspaces
@@ -38,34 +36,42 @@ The Ship MCP server (`ship mcp serve`) exposes platform tools to agents via the 
 - `start_session` -- begin a session for the current workspace
 - `end_session` -- end the session with a summary
 - `log_progress` -- record a progress checkpoint (requires active session)
+- `get_session` -- get the active session for a workspace branch
+- `list_sessions` -- list session history for a branch
 
 ### Jobs
 - `create_job` -- create a new job in the queue with kind, scope, acceptance criteria
-- `update_job` -- update status, assignment, priority, or blocking dependencies
-- `list_jobs` -- list jobs, filter by status or branch
-- `append_job_log` -- log progress, warnings, or file ownership to a job
-- `claim_file` -- claim exclusive file ownership for a job (first-wins)
-- `get_file_owner` -- look up which job owns a file
+- `update_job` -- advance a job to the next status
+- `list_jobs` -- list jobs, filter by status
+- `get_job` -- get a single job record by id
 
 ### Skills
 - `list_skills` -- list installed skills, filter by substring
 
-### Targets and Capabilities
-- `create_target` -- create a milestone or surface target
-- `list_targets` -- list targets, filter by kind
-- `get_target` -- get a target with its capability progress board
-- `update_target` -- update target metadata or body markdown
-- `create_capability` -- add a capability to a target
-- `update_capability` -- update capability fields (status, phase, scope)
-- `mark_capability_actual` -- mark delivered with evidence (test, commit, behavior)
-- `list_capabilities` -- list capabilities, filter by target, milestone, or status
-- `delete_capability` -- remove a capability by id
-
 ### Events
-- `list_events` -- query the append-only event log with time, actor, entity, action filters
+- `event` -- emit a domain event (write-only; agents cannot read the event store)
 
-### Compiler
-- `provider_matrix` -- show supported providers and their generated config files
+### Skills (extended)
+- `get_skill_vars` -- get merged variable state for a skill
+- `set_skill_var` -- set a skill variable value
+- `list_skill_vars` -- list skills with configurable variables
+
+### Session Files
+- `write_session_file` -- write a file to .ship-session/
+- `read_session_file` -- read a file from .ship-session/
+- `list_session_files` -- list files in .ship-session/
+
+### Mesh
+- `mesh_send` -- send a directed message to another agent
+- `mesh_broadcast` -- broadcast a message to all agents
+- `mesh_discover` -- discover agents on the mesh
+- `mesh_status` -- update this agent's mesh status
+
+### Dispatch
+- `dispatch_agent` -- spawn an agent in a git worktree
+- `list_agents` -- list running agents
+- `stop_agent` -- stop a running agent
+- `steer_agent` -- inject a message into a running agent
 
 ## Resources
 

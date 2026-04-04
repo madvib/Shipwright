@@ -1,0 +1,32 @@
+[
+  {
+    "id": "project-scan",
+    "status": "actual",
+    "notes": "Scans project state on session start using ship status, ship agent list, and config file detection"
+  },
+  {
+    "id": "provider-config-detection",
+    "status": "actual",
+    "notes": "Detects existing provider configs (CLAUDE.md, .cursorrules, AGENTS.md, GEMINI.md)"
+  },
+  {
+    "id": "situational-greeting",
+    "status": "actual",
+    "notes": "Presents context-aware greeting based on whether this is the Ship repo or a user project"
+  },
+  {
+    "id": "interactive-teaching",
+    "status": "actual",
+    "notes": "Teaches by showing real state rather than reciting documentation"
+  },
+  {
+    "id": "safe-mode",
+    "status": "actual",
+    "notes": "Never runs ship use during tutorial to avoid overwriting the active session"
+  },
+  {
+    "id": "concept-coverage",
+    "status": "actual",
+    "notes": "Covers agents, skills, MCP servers, permissions, compilation pipeline, and registry"
+  }
+]

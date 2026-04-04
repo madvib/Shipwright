@@ -33,28 +33,27 @@ The runtime's `lib.rs` declares these top-level modules:
 
 ## Database Layer
 
-The `db` module contains all SQLite table access. One file per domain:
+The `db` module contains all platform.db table access. One file per domain:
 
 | DB Module | Tables / Concerns |
 |-----------|-------------------|
-| `db::workspace` | Workspace records |
+| `db::workspace_db` | Workspace records |
 | `db::workspace_state` | Workspace upsert operations |
+| `db::workspace_events` | Workspace event projections |
 | `db::session` | Session records |
-| `db::jobs` | Job queue (CRUD, status transitions, logs) |
-| `db::file_claims` | File ownership claims (atomic, first-wins) |
-| `db::targets` | Targets and capabilities |
-| `db::events` | Event stream persistence |
-| `db::notes` | Project notes |
+| `db::session_events` | Session event projections |
+| `db::session_drain` | Session drain operations |
+| `db::actor_events` | Actor lifecycle event persistence |
+| `db::artifact_registry` | Artifact registry |
+| `db::events` | Event stream persistence (platform.db) |
 | `db::adrs` | Architecture decision records |
-| `db::agents` | Agent config and artifact registry |
-| `db::branch` | Branch metadata |
 | `db::branch_context` | Branch docs and links |
 | `db::kv` | General key-value store |
 | `db::managed_state` | Managed state blobs |
 | `db::schema` | Schema definitions |
 | `db::types` | Shared DB type definitions |
 
-The database path is always `~/.ship/platform.db`. The `ensure_db()` function runs sqlx migrations idempotently, sets WAL journal mode and foreign keys, then opens a connection.
+The platform database path is `~/.ship/platform.db`. The `ensure_db()` function runs sqlx migrations idempotently, sets WAL journal mode and foreign keys, then opens a connection. Per-actor event stores live at `~/.ship/actors/{actor_id}/events.db` and are managed by the `KernelRouter` (see Actor Model below). The kernel's own event store lives at `~/.ship/kernel/events.db`.
 
 {% aside type="tip" %}
 Tests get automatic isolation. The `get_global_dir()` function detects test binaries and returns a per-thread temp directory instead of `~/.ship/`.

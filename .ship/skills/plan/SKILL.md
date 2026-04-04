@@ -1,28 +1,32 @@
 ---
 name: plan
 stable-id: plan
-description: Create structured job plans in .ship-session/plans/. Plans become launchable jobs via the daemon.
+description: Create structured job specs in .ship-session/specs/. Specs become launchable jobs via the daemon.
 tags: [planning, jobs]
 authors: [ship]
 ---
 
 # Plan
 
-Write job specs to `.ship-session/plans/`. Each plan is a markdown file with YAML frontmatter that the daemon can launch as a job.
+Write job specs to `.ship-session/specs/`. Each spec is a directory containing a `spec.md` with YAML frontmatter that the daemon can launch as a job, plus optional supporting artifacts.
 
 ## Output location
 
-All plans go in `.ship-session/plans/<slug>.md`. Create the directory if it doesn't exist.
+All specs go in `.ship-session/specs/<feature>/<spec-name>/spec.md`. Create directories as needed.
+
+- `<feature>` maps to a doc skill name (e.g., `ship-skills`, `ship-runtime`) matching `docs/ship-*/`.
+- `<spec-name>` is the specific capability or work item. Must match the `slug` in frontmatter.
+- Supporting artifacts (mockups, diagrams, notes) are peers of `spec.md` in the same directory.
 
 ## Plan format
 
 ```markdown
 ---
-slug: <short-name>
-agent: <agent-profile>
-model: <model-id or null>
-provider: <provider or null>
-mode: autonomous | interactive
+slug: eval-runner
+feature: ship-skills
+agent: rust-runtime
+priority: 2
+mode: autonomous
 depends_on: []
 ---
 
@@ -50,16 +54,18 @@ depends_on: []
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `slug` | yes | Branch and worktree name: `job/<slug>` |
+| `slug` | yes | Branch and worktree name: `job/<slug>`. Must match directory name. |
+| `feature` | yes | Doc skill namespace (e.g., `ship-skills`, `ship-runtime`). Matches `docs/ship-*/`. |
 | `agent` | yes | Ship agent profile to run the job |
-| `model` | no | Model override (e.g., `sonnet`, `opus`) |
-| `provider` | no | Provider override (e.g., `anthropic`, `openai`) |
+| `priority` | no | 1 (highest) to 5 (lowest). Default 3. |
 | `mode` | no | `autonomous` (default) or `interactive` |
 | `depends_on` | no | Array of slugs that must complete first |
 
 ## Rules
 
-- **One plan per file.** Name matches slug: `<slug>.md`.
+- **One spec per directory.** Directory name matches slug.
+- **Supporting artifacts** (diagrams, mockups, notes) are peers of `spec.md` in the same directory.
+- **Feature namespace** matches a doc skill name from `docs/ship-*/`.
 - **Acceptance criteria must be verifiable** without asking a human. "Improve X" is not a criterion. "X passes test Y" is.
 - **File scope is a contract.** The agent must not modify files outside scope. Gate enforces this.
 - **Goal is one paragraph.** If it takes more, the job is too big — split it.
@@ -81,8 +87,8 @@ See `.ship/agents/` for available profiles.
 For feature work, create two plans with a dependency:
 
 ```
-.ship-session/plans/auth-tests.md    (agent: test-writer)
-.ship-session/plans/auth-impl.md     (agent: rust-runtime, depends_on: [auth-tests])
+.ship-session/specs/ship-runtime/auth-tests/spec.md    (agent: test-writer)
+.ship-session/specs/ship-runtime/auth-impl/spec.md     (agent: rust-runtime, depends_on: [auth-tests])
 ```
 
 ## Launching

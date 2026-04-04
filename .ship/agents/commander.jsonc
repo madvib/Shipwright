@@ -8,7 +8,7 @@
     "providers": ["claude", "codex", "cursor", "gemini", "opencode"]
   },
   "skills": {
-    "refs": ["cmdr", "gate", "dispatch", "ship-coordination", "write-adr", "ship-permissions"]
+    "refs": ["cmdr", "gate", "dispatch", "ship-coordination", "write-adr", "ship-agents"]
   },
   "mcp": {
     "servers": ["ship"],

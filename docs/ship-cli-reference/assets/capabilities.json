@@ -1,0 +1,117 @@
+[
+  {
+    "id": "cmd-init",
+    "status": "actual",
+    "notes": "Scaffold .ship/ with --global, --provider, and --force flags"
+  },
+  {
+    "id": "cmd-use",
+    "status": "actual",
+    "notes": "Activate agent with --path, --compile, and --with skill injection"
+  },
+  {
+    "id": "cmd-compile",
+    "status": "actual",
+    "notes": "Compile active agent with --provider filter, --dry-run, and --path options"
+  },
+  {
+    "id": "cmd-validate",
+    "status": "actual",
+    "notes": "Validate .ship/ config with --agent, --json, and --path options"
+  },
+  {
+    "id": "cmd-status",
+    "status": "actual",
+    "notes": "Show active agent and compilation status"
+  },
+  {
+    "id": "cmd-agents",
+    "status": "actual",
+    "notes": "Subcommands: list, create, edit, delete, clone, log"
+  },
+  {
+    "id": "cmd-skills",
+    "status": "actual",
+    "notes": "Subcommands: add, list, remove, create"
+  },
+  {
+    "id": "cmd-vars",
+    "status": "actual",
+    "notes": "Subcommands: set, get, append, reset for skill variable state"
+  },
+  {
+    "id": "cmd-mcp",
+    "status": "actual",
+    "notes": "Subcommands: serve (stdio/http), add, add-stdio, list, remove"
+  },
+  {
+    "id": "cmd-install",
+    "status": "actual",
+    "notes": "Resolve dependencies from ship.toml with --frozen and --offline flags"
+  },
+  {
+    "id": "cmd-publish",
+    "status": "actual",
+    "notes": "Publish package to registry with --dry-run and --tag for pre-releases"
+  },
+  {
+    "id": "cmd-add",
+    "status": "actual",
+    "notes": "Add package dependency or import from Studio share link via --from"
+  },
+  {
+    "id": "cmd-audit",
+    "status": "actual",
+    "notes": "Scan for hidden Unicode prompt injection vectors with --json output"
+  },
+  {
+    "id": "cmd-convert",
+    "status": "actual",
+    "notes": "Convert provider configs (CLAUDE.md, .cursor/) or getship.dev URLs into .ship/ format"
+  },
+  {
+    "id": "cmd-login-auth",
+    "status": "actual",
+    "notes": "Login, logout, whoami commands for registry authentication"
+  },
+  {
+    "id": "cmd-config",
+    "status": "actual",
+    "notes": "Subcommands: get, set, list, path for ~/.ship/config.toml"
+  },
+  {
+    "id": "cmd-docs",
+    "status": "actual",
+    "notes": "Built-in topic help system"
+  },
+  {
+    "id": "cmd-network",
+    "status": "actual",
+    "notes": "Subcommands: serve, status, stop for cross-agent communication daemon"
+  },
+  {
+    "id": "cmd-daemon",
+    "status": "actual",
+    "notes": "Subcommands: start, stop, status for shipd background process"
+  },
+  {
+    "id": "cmd-studio",
+    "status": "actual",
+    "notes": "Launch Studio visual IDE with --port and --open flags"
+  },
+  {
+    "id": "cmd-hook",
+    "status": "actual",
+    "notes": "Hidden hook integration: session-start, before-tool, after-tool, session-end"
+  },
+  {
+    "id": "cmd-events",
+    "status": "actual",
+    "notes": "Unstable: list events with --since, --actor, --entity, --action, --limit, --json filters"
+  },
+  {
+    "id": "cmd-top",
+    "status": "aspirational",
+    "notes": "Unstable: real-time TUI dashboard for workspaces, sessions, and events"
+  }
+]

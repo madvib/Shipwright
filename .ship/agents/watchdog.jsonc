@@ -14,7 +14,7 @@
       "qa-testing",
       "browse",
       "spawn-agent",
-      "ship-permissions",
+      "ship-agents",
       "no-slop",
     ],
   },

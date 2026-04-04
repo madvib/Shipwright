@@ -1,0 +1,57 @@
+[
+  {
+    "id": "agent-crud",
+    "status": "actual",
+    "notes": "Create, list, edit, delete, and clone agents via ship agents subcommands"
+  },
+  {
+    "id": "agent-jsonc-config",
+    "status": "actual",
+    "notes": "Agent definitions in JSONC with identity, skills refs, MCP servers, permissions, rules, and provider_settings"
+  },
+  {
+    "id": "agent-profile-compilation",
+    "status": "actual",
+    "notes": "AgentProfile TOML compiled into provider-native subagent files for Claude, Gemini, Cursor, and Codex"
+  },
+  {
+    "id": "agent-provider-targeting",
+    "status": "actual",
+    "notes": "Agents can target specific providers or all providers when the providers list is empty"
+  },
+  {
+    "id": "agent-permissions",
+    "status": "actual",
+    "notes": "Per-agent permission overrides with preset reference, tools_allow, tools_deny, and tools_ask lists"
+  },
+  {
+    "id": "agent-model-override",
+    "status": "actual",
+    "notes": "Per-agent model override compiled to each provider's model field"
+  },
+  {
+    "id": "agent-provider-settings-passthrough",
+    "status": "actual",
+    "notes": "Per-provider settings passthrough (claude, codex, gemini, cursor, opencode) with Ship-managed key exclusions"
+  },
+  {
+    "id": "agent-rules-inline",
+    "status": "actual",
+    "notes": "Inline rules appended to context file after .ship/rules/*.md files"
+  },
+  {
+    "id": "agent-plugins",
+    "status": "actual",
+    "notes": "Plugin installation intent with project or user scope, emitted as manifest for CLI execution"
+  },
+  {
+    "id": "agent-schema-validation",
+    "status": "actual",
+    "notes": "JSON Schema at schemas/agent.schema.json with upstream provider schema refs for editor autocompletion"
+  },
+  {
+    "id": "agent-log",
+    "status": "actual",
+    "notes": "Hidden ship agents log command appends timestamped entries to .ship/agent.log"
+  }
+]

@@ -22,7 +22,8 @@ Three layers with strict boundaries: transport (CLI, MCP, web), runtime (state m
 |                    Runtime                          |
 |  Workspaces, sessions, events, jobs, file claims   |
 |  Targets, capabilities, skill vars, skill paths    |
-|  SQLite (platform.db) via sqlx, migrations         |
+|  SQLite: platform.db + per-actor stores via        |
+|  KernelRouter, sqlx migrations                     |
 +----------+------------------------------------------+
            |
 +----------v------------------------------------------+
@@ -39,7 +40,7 @@ Dispatchers only. The CLI parses commands via clap and delegates to runtime or c
 
 ### Runtime
 
-Owns all persistent state. The single database lives at `~/.ship/platform.db` (never inside a project directory). Modules: workspaces, sessions, events, jobs, file claims, targets, capabilities, skill vars, skill paths, agents, catalog, config, hooks, plugins, security, registry. SQLite access is via sqlx with compile-time checked queries. Transport layers call runtime functions; they never execute SQL.
+Owns all persistent state. Two storage layers: `~/.ship/platform.db` for relational state (workspaces, sessions, jobs, file claims, targets, capabilities, skill vars) and per-actor SQLite stores under `~/.ship/actors/` for event isolation. The `KernelRouter` manages actor lifecycles, event routing, and namespace-scoped delivery. A kernel store at `~/.ship/kernel/events.db` holds system lifecycle events. SQLite access is via sqlx with compile-time checked queries. Transport layers call runtime functions; they never execute SQL.
 
 ### Compiler
 
@@ -59,7 +60,7 @@ The WASM entry points are `compileLibrary` (single provider) and `compileLibrary
 
 **Events are append-only.** Every state change emits an event. Events are never updated or deleted.
 
-**Single database, global location.** `~/.ship/platform.db` is shared across all projects on the machine. Tests get automatic isolation via per-thread temp directories.
+**Dual storage model.** `~/.ship/platform.db` holds relational state (workspaces, jobs, targets). Per-actor event stores live at `~/.ship/actors/{id}/events.db`, managed by the `KernelRouter`. Tests get automatic isolation via per-thread temp directories.
 
 ## Repository Layout
 

@@ -36,7 +36,7 @@ An agent profile has a required `agent` section and optional sections that compo
     "providers": ["claude", "codex", "cursor", "gemini", "opencode"]
   },
   "skills": {
-    "refs": ["ship-permissions", "ship-tutorial"]
+    "refs": ["ship-agents", "ship-tutorial"]
   },
   "mcp": {
     "servers": []

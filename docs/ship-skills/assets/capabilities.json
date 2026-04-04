@@ -1,0 +1,87 @@
+[
+  {
+    "id": "skill-crud",
+    "status": "actual",
+    "notes": "Add, list, remove, and create skills via ship skills subcommands"
+  },
+  {
+    "id": "skill-frontmatter-compilation",
+    "status": "actual",
+    "notes": "SKILL.md frontmatter emitted with name, description, license, compatibility, allowed-tools, artifacts, and metadata"
+  },
+  {
+    "id": "skill-template-vars",
+    "status": "actual",
+    "notes": "Template variable resolution via {{ var }} syntax with user vars and runtime-injected context"
+  },
+  {
+    "id": "skill-runtime-vars",
+    "status": "actual",
+    "notes": "Runtime context injected as runtime.agents, runtime.providers, runtime.model, runtime.skills"
+  },
+  {
+    "id": "skill-stable-id",
+    "status": "actual",
+    "notes": "Stable storage key for variable state that survives directory renames, injected as {{ stable_id }}"
+  },
+  {
+    "id": "skill-vars-state",
+    "status": "actual",
+    "notes": "Three-scope KV state (global, local, project) with merge order defaults > global > local > project"
+  },
+  {
+    "id": "skill-vars-cli",
+    "status": "actual",
+    "notes": "CLI commands set, get, append, reset for managing skill variable state"
+  },
+  {
+    "id": "skill-event-subscriptions",
+    "status": "actual",
+    "notes": "Compiler resolves per-skill event subscription namespaces from artifact declarations"
+  },
+  {
+    "id": "skill-artifacts",
+    "status": "actual",
+    "notes": "Artifact type declarations (html, pdf, markdown, image, adr, note, json, url, svg) for platform rendering"
+  },
+  {
+    "id": "skill-compatibility",
+    "status": "actual",
+    "notes": "Provider compatibility field for restricting skills to specific providers"
+  },
+  {
+    "id": "skill-schema-validation",
+    "status": "actual",
+    "notes": "JSON Schema at schemas/skill.schema.json for SKILL.md frontmatter validation"
+  },
+  {
+    "id": "skill-registry-install",
+    "status": "actual",
+    "notes": "Install skills from registry, local path, or GitHub URL with optional global scope"
+  },
+  {
+    "id": "eval-runner",
+    "status": "aspirational",
+    "notes": "ship skill eval command to execute evals.json test cases"
+  },
+  {
+    "id": "eval-sandbox",
+    "status": "aspirational",
+    "notes": "Sandboxed execution for third-party skill evals and scripts"
+  },
+  {
+    "id": "computed-dynamic-vars",
+    "status": "aspirational",
+    "notes": "Vars derived from env, git context, OS settings"
+  },
+  {
+    "id": "runtime-vars-published-list",
+    "status": "aspirational",
+    "notes": "Published list of all runtime-injected vars Ship provides (agents, providers, model, skills, etc.)"
+  },
+  {
+    "id": "studio-skill-annotations",
+    "status": "aspirational",
+    "notes": "Annotation capability in Studio Skills IDE — partially implemented"
+  }
+]

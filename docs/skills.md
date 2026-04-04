@@ -15,14 +15,12 @@ ship skill remove my-skill        # remove
 
 ## Ship's exported skills
 
-Ship publishes 13 public skills via `ship add github.com/madvib/ship`:
+Ship publishes 11 public skills via `ship add github.com/madvib/ship`:
 
 | Skill | Purpose |
 |-------|---------|
 | ship-cli-reference | CLI command reference |
 | ship-schema-reference | Config file format reference |
-| ship-permissions | Permission system guide |
-| ship-publishing | Registry and publishing guide |
 | ship-skills-guide | How to write and publish skills |
 | ship-help | Troubleshooting |
 | ship-tutorial | Interactive onboarding |

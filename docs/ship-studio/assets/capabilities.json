@@ -1,0 +1,82 @@
+[
+  {
+    "id": "skills-ide",
+    "status": "actual",
+    "notes": "Full skill editor with file explorer, frontmatter editor, text editor, markdown preview, and syntax highlighting"
+  },
+  {
+    "id": "skill-drafts",
+    "status": "actual",
+    "notes": "Draft system for creating and editing skills before saving to disk"
+  },
+  {
+    "id": "skill-vars-editor",
+    "status": "actual",
+    "notes": "Visual editors for skill variable state with preview panel"
+  },
+  {
+    "id": "session-canvas",
+    "status": "actual",
+    "notes": "Session workspace with canvas, todo, diff viewer, and artifact viewer"
+  },
+  {
+    "id": "annotation-system",
+    "status": "actual",
+    "notes": "Annotation overlay with markers, cards, input, and list views on session artifacts"
+  },
+  {
+    "id": "git-integration",
+    "status": "actual",
+    "notes": "Git tab showing status, diff, and log for the active workspace"
+  },
+  {
+    "id": "chat-draft-area",
+    "status": "actual",
+    "notes": "Chat drafting interface for session communication"
+  },
+  {
+    "id": "terminal-tab",
+    "status": "actual",
+    "notes": "Terminal tab for workspace PTY access"
+  },
+  {
+    "id": "local-mcp-connection",
+    "status": "actual",
+    "notes": "MCP bridge connecting Studio to the local ship daemon for real-time state"
+  },
+  {
+    "id": "event-stream-panel",
+    "status": "actual",
+    "notes": "Real-time event stream panel with debug view using SSE from shipd"
+  },
+  {
+    "id": "publish-dialog",
+    "status": "actual",
+    "notes": "Publish skills and agents to the Ship registry from Studio"
+  },
+  {
+    "id": "push-to-github",
+    "status": "actual",
+    "notes": "Push compiled config to GitHub from Studio"
+  },
+  {
+    "id": "sync-status",
+    "status": "actual",
+    "notes": "Real-time sync status indicator between Studio and local CLI"
+  },
+  {
+    "id": "permissions-editor",
+    "status": "actual",
+    "notes": "Visual editor for agent permission presets"
+  },
+  {
+    "id": "compile-output-download",
+    "status": "actual",
+    "notes": "Download compiled provider output from Studio"
+  },
+  {
+    "id": "daemon-event-listener",
+    "status": "actual",
+    "notes": "Real-time daemon event listener for workspace and session updates"
+  }
+]

@@ -15,13 +15,21 @@ Stable tools are always compiled in. Unstable tools require the `unstable` featu
 
 **set_agent** -- `id` (string, optional). Activate an agent profile or clear it.
 
-## Studio Sync (stable)
+## Studio Sync (StudioServer only)
+
+These tools are registered on the StudioServer, not the full ShipServer.
 
 **pull_agents** -- no params. Returns all local agents with resolved skills, rules, MCP configs.
 
 **list_local_agents** -- no params. Returns agent profile IDs in `.ship/agents/`.
 
 **push_bundle** -- `bundle` (string, required). Write a TransferBundle JSON string to `.ship/`.
+
+**list_project_skills** -- `query` (optional). Returns all skills in `.ship/skills/` with full resolved content as PullSkill JSON.
+
+**write_skill_file** -- `skill_id` (string, required), `file_path` (string, required, relative within skill dir), `content` (string, required).
+
+**delete_skill_file** -- `skill_id` (string, required), `file_path` (string, required). Refuses to delete SKILL.md.
 
 ## Workspaces (stable)
 
@@ -43,15 +51,13 @@ Stable tools are always compiled in. Unstable tools require the `unstable` featu
 
 **log_progress** -- `note` (string, required), `branch` (optional).
 
+**get_session** -- `branch` (optional). Get the active session for a workspace branch.
+
+**list_sessions** -- `branch` (optional). List session history for a branch. Returns all branches if omitted.
+
 ## Skills (stable)
 
 **list_skills** -- `query` (optional substring filter).
-
-**list_project_skills** -- `query` (optional). Returns all skills in `.ship/skills/` with full resolved content as PullSkill JSON.
-
-**write_skill_file** -- `skill_id` (string, required), `file_path` (string, required, relative within skill dir), `content` (string, required).
-
-**delete_skill_file** -- `skill_id` (string, required), `file_path` (string, required). Refuses to delete SKILL.md.
 
 **get_skill_vars** -- `skill_id` (string, required). Returns merged variable state.
 
@@ -61,46 +67,46 @@ Stable tools are always compiled in. Unstable tools require the `unstable` featu
 
 ## Events (stable)
 
-**list_events** -- `since` (optional: ISO 8601 or relative like `1h`, `24h`, `7d`), `actor` (optional, substring), `entity` (optional: workspace/session/note/adr/etc.), `action` (optional: create/update/delete/start/stop), `limit` (optional, default 50, max 200).
+**event** -- `event_type` (string, required, namespaced with dot e.g. "deployment.completed"), `payload` (JSON, required), `elevated` (boolean, optional, default false). Emit a domain event. Reserved prefixes (actor.*, session.*, skill.*, workspace.*, gate.*, job.*, config.*, project.*) are rejected. Actor and workspace are injected from connection context. Agents cannot read the event store via tools -- use `ship://events` resource for read access.
 
-## Notes and ADRs (unstable)
-
-**create_note** -- `title` (string, required), `content` (optional), `branch` (optional).
-
-**update_note** -- `id` (string, required, note filename), `content` (string, required), `scope` (optional: project/user).
+## ADRs (unstable)
 
 **create_adr** -- `title` (string, required), `decision` (string, required).
 
-## Targets and Capabilities (unstable)
-
-**create_target** -- `kind` (string, required: milestone/surface), `title` (string, required), `description` (optional), `goal` (optional), `status` (optional: active/planned/complete/frozen), `phase` (optional), `due_date` (optional, ISO 8601), `body_markdown` (optional), `file_scope` (string[], optional).
-
-**update_target** -- `id` (required), all other target fields optional (patch-style).
-
-**list_targets** -- `kind` (optional: milestone/surface).
-
-**get_target** -- `id` (string, required). Returns target with capability progress board.
-
-**create_capability** -- `target_id` (string, required), `title` (string, required), `milestone_id` (optional), `phase` (optional), `acceptance_criteria` (string[], optional), `file_scope` (string[], optional), `assigned_to` (optional), `priority` (integer, optional).
-
-**update_capability** -- `id` (required), optional: `title`, `status` (aspirational/in_progress/actual), `phase`, `acceptance_criteria`, `file_scope`, `assigned_to`, `priority`.
-
-**delete_capability** -- `id` (string, required).
-
-**mark_capability_actual** -- `id` (string, required), `evidence` (string, required: test name, commit hash, or behavior).
-
-**list_capabilities** -- optional filters: `target_id`, `milestone_id`, `status`, `phase`.
-
-## Jobs (unstable)
+## Jobs (stable)
 
 **create_job** -- `kind` (string, required), `description` (string, required), `branch` (optional), `assigned_to` (optional), `requesting_workspace` (optional), `priority` (integer, optional, higher runs first), `blocked_by` (optional, job id), `touched_files` (string[], optional), `file_scope` (string[], optional), `acceptance_criteria` (string[], optional), `capability_id` (optional), `symlink_name` (optional).
 
 **update_job** -- `id` (required), optional: `status` (pending/running/complete/failed), `assigned_to`, `priority`, `blocked_by`, `touched_files`.
 
-**list_jobs** -- optional: `branch`, `status`.
+**list_jobs** -- optional: `status`.
 
-**append_job_log** -- `job_id` (string, required), `message` (string, required), `level` (optional: info/warn/error).
+**get_job** -- `job_id` (string, required). Returns job JSON or error.
 
-**claim_file** -- `job_id` (string, required), `path` (string, required). Atomic, first-wins.
+## Session Files (stable)
 
-**get_file_owner** -- `path` (string, required). Returns owning job id or "unclaimed".
+**write_session_file** -- `filename` (string, required), `content` (string, required). Write a file to `.ship-session/`. Fires a resource update notification.
+
+**read_session_file** -- `filename` (string, required). Read a file from `.ship-session/`. Returns text content or base64 for binary files.
+
+**list_session_files** -- no params. List all files in `.ship-session/` with metadata (name, path, type, size).
+
+## Mesh (stable)
+
+**mesh_send** -- `target` (string, required), `message` (string, required). Send a directed message to another agent on the mesh.
+
+**mesh_broadcast** -- `message` (string, required), `capability` (optional). Broadcast a message to all agents, optionally filtered by capability.
+
+**mesh_discover** -- `capability` (optional), `status` (optional). Discover agents on the mesh.
+
+**mesh_status** -- `status` (string, required). Update this agent's status on the mesh (active, busy, idle).
+
+## Dispatch (unstable)
+
+**dispatch_agent** -- Spawn an agent: creates a git worktree, compiles provider config, and launches the agent process.
+
+**list_agents** -- no params. List all running agents managed by the dispatch service.
+
+**stop_agent** -- `agent_id` (string, required). Stop a running agent by id.
+
+**steer_agent** -- `agent_id` (string, required), `message` (string, required). Inject a message into a running agent's stdin.

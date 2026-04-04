@@ -1,0 +1,177 @@
+[
+  {
+    "id": "tool-open-project",
+    "status": "actual",
+    "notes": "Set project directory for all subsequent MCP tool calls"
+  },
+  {
+    "id": "tool-get-project-info",
+    "status": "actual",
+    "notes": "Return project metadata, active agent, and compilation status"
+  },
+  {
+    "id": "tool-set-agent",
+    "status": "actual",
+    "notes": "Set the active agent for the current project"
+  },
+  {
+    "id": "tool-start-session",
+    "status": "actual",
+    "notes": "Begin a session on the current branch with workspace validation"
+  },
+  {
+    "id": "tool-end-session",
+    "status": "actual",
+    "notes": "End the active session with a summary"
+  },
+  {
+    "id": "tool-log-progress",
+    "status": "actual",
+    "notes": "Append a progress entry to the active session"
+  },
+  {
+    "id": "tool-get-session",
+    "status": "actual",
+    "notes": "Check if a session is active on the current branch"
+  },
+  {
+    "id": "tool-list-sessions",
+    "status": "actual",
+    "notes": "List recent sessions with branch filtering"
+  },
+  {
+    "id": "tool-activate-workspace",
+    "status": "actual",
+    "notes": "Activate a workspace for the current branch"
+  },
+  {
+    "id": "tool-create-workspace",
+    "status": "actual",
+    "notes": "Create a new workspace with git worktree setup"
+  },
+  {
+    "id": "tool-list-workspaces",
+    "status": "actual",
+    "notes": "List all workspaces filterable by status"
+  },
+  {
+    "id": "tool-complete-workspace",
+    "status": "actual",
+    "notes": "Finalize a workspace with a handoff summary"
+  },
+  {
+    "id": "tool-list-stale-worktrees",
+    "status": "actual",
+    "notes": "Find worktrees whose branches have been merged or deleted"
+  },
+  {
+    "id": "tool-create-job",
+    "status": "actual",
+    "notes": "Create a job with queue, file ownership claims, and capability links"
+  },
+  {
+    "id": "tool-update-job",
+    "status": "actual",
+    "notes": "Update job status (pending, running, complete, failed) with log"
+  },
+  {
+    "id": "tool-list-jobs",
+    "status": "actual",
+    "notes": "List jobs filterable by status"
+  },
+  {
+    "id": "tool-get-job",
+    "status": "actual",
+    "notes": "Get full job details including log entries"
+  },
+  {
+    "id": "tool-event",
+    "status": "actual",
+    "notes": "Emit a structured event to the project event log"
+  },
+  {
+    "id": "tool-list-skills",
+    "status": "actual",
+    "notes": "List skills with active/mode/project filtering and variable state"
+  },
+  {
+    "id": "tool-skill-vars",
+    "status": "actual",
+    "notes": "Get, set, and list skill variable state via MCP"
+  },
+  {
+    "id": "tool-write-skill-file",
+    "status": "actual",
+    "notes": "Write a file into a skill directory"
+  },
+  {
+    "id": "tool-delete-skill-file",
+    "status": "actual",
+    "notes": "Delete a file from a skill directory"
+  },
+  {
+    "id": "tool-git-status",
+    "status": "actual",
+    "notes": "Get git status for the project directory"
+  },
+  {
+    "id": "tool-git-diff",
+    "status": "actual",
+    "notes": "Get git diff output for the project"
+  },
+  {
+    "id": "tool-git-log",
+    "status": "actual",
+    "notes": "Get git log for the project"
+  },
+  {
+    "id": "tool-list-worktrees",
+    "status": "actual",
+    "notes": "List git worktrees for the project"
+  },
+  {
+    "id": "tool-session-files",
+    "status": "actual",
+    "notes": "List, read, write, and delete files in .ship-session/"
+  },
+  {
+    "id": "tool-mesh-send",
+    "status": "actual",
+    "notes": "Send a message to a specific agent via the mesh"
+  },
+  {
+    "id": "tool-mesh-broadcast",
+    "status": "actual",
+    "notes": "Broadcast a message to all or capability-filtered agents"
+  },
+  {
+    "id": "tool-mesh-discover",
+    "status": "actual",
+    "notes": "Discover agents on the mesh filtered by capability or status"
+  },
+  {
+    "id": "tool-mesh-status",
+    "status": "actual",
+    "notes": "Update agent status (active, busy, idle) on the mesh"
+  },
+  {
+    "id": "tool-create-adr",
+    "status": "actual",
+    "notes": "Create an architecture decision record (unstable)"
+  },
+  {
+    "id": "tool-dispatch-agent",
+    "status": "actual",
+    "notes": "Dispatch a job to a specialist agent (unstable)"
+  },
+  {
+    "id": "tool-studio-push-bundle",
+    "status": "actual",
+    "notes": "Push a compiled bundle to Studio for rendering"
+  },
+  {
+    "id": "tool-studio-inbox",
+    "status": "actual",
+    "notes": "Write an inbox file for Studio notification"
+  }
+]

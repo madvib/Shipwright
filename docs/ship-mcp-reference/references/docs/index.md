@@ -15,8 +15,8 @@ The Ship MCP server (`apps/mcp/`) exposes runtime operations to AI agents via th
 
 The primary server. Runs via `ship mcp serve` (stdio) or `ship mcp serve --http --port <N>` (HTTP). Features:
 
-- All stable tools (project, agent, workspace, session, skills, events, studio sync)
-- All unstable tools when compiled with `--features unstable` (notes, ADRs, targets, capabilities, jobs, file claims)
+- All stable tools (project, agent, workspace, session, skills, events, jobs, mesh, session files)
+- All unstable tools when compiled with `--features unstable` (ADRs, dispatch)
 - Resource support (`ship://` URIs) for read-only access to project state
 - Tool gating based on the active agent profile's `active_tools` list
 - Resource change notifications to connected clients
@@ -66,9 +66,9 @@ If a project is not explicitly opened, the server attempts to resolve it from th
 
 The full server gates tool visibility based on the active agent profile.
 
-**Core tools** are always visible regardless of agent configuration. These include: `open_project`, `activate_workspace`, `create_workspace`, `complete_workspace`, `list_stale_worktrees`, `list_workspaces`, `set_agent`, `start_session`, `end_session`, `log_progress`, `list_skills`, `list_events`, `push_bundle`, `pull_agents`, `list_local_agents`, `write_skill_file`, `delete_skill_file`, `list_project_skills`.
+**Core tools** are always visible regardless of agent configuration. These include: `open_project`, `activate_workspace`, `create_workspace`, `complete_workspace`, `list_stale_worktrees`, `list_workspaces`, `set_agent`, `start_session`, `end_session`, `log_progress`, `get_session`, `list_sessions`, `list_skills`, `event`, `mesh_send`, `mesh_broadcast`, `mesh_discover`, `mesh_status`.
 
-**Unstable tools** (compiled with the `unstable` feature flag) are also core: `create_note`, `update_note`, `create_adr`, `create_job`, `update_job`, `list_jobs`, `append_job_log`, `claim_file`, `get_file_owner`, `create_target`, `update_target`, `list_targets`, `get_target`, `create_capability`, `update_capability`, `delete_capability`, `mark_capability_actual`, `list_capabilities`.
+**Unstable tools** (compiled with the `unstable` feature flag) are also core: `create_adr`.
 
 When an agent profile defines an `active_tools` list, only core tools and tools in that list are visible. If `active_tools` is empty, all tools are visible.
 
