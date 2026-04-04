@@ -14,6 +14,7 @@ mod actor;
 mod registry;
 mod session;
 mod workspace;
+mod workspace_handlers;
 
 #[cfg(test)]
 mod tests;

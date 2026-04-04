@@ -10,11 +10,11 @@
 use crate::db::workspace_events::{
     emit_workspace_activated, emit_workspace_agent_changed, emit_workspace_archived,
     emit_workspace_compile_failed, emit_workspace_compiled, emit_workspace_created,
-    emit_workspace_deleted, emit_workspace_status_changed,
+    emit_workspace_deleted, emit_workspace_reconciled, emit_workspace_status_changed,
 };
 use crate::events::types::{
     WorkspaceActivated, WorkspaceAgentChanged, WorkspaceArchived, WorkspaceCompileFailed,
-    WorkspaceCompiled, WorkspaceCreated, WorkspaceStatusChanged,
+    WorkspaceCompiled, WorkspaceCreated, WorkspaceReconciled, WorkspaceStatusChanged,
 };
 use crate::events::EventEnvelope;
 use crate::projections::{Projection, WorkspaceProjection};
@@ -143,6 +143,23 @@ pub fn upsert_workspace_on_status_changed(
 pub fn emit_workspace_archived_event(_ship_dir: &Path, branch: &str) -> Result<()> {
     let payload = WorkspaceArchived {};
     let envelope = emit_workspace_archived(branch, &payload)?;
+    sync_workspace_projection(&envelope);
+    Ok(())
+}
+
+pub fn upsert_workspace_on_reconciled(
+    _ship_dir: &Path,
+    branch: &str,
+    is_worktree: bool,
+    worktree_path: Option<&str>,
+    reason: &str,
+) -> Result<()> {
+    let payload = WorkspaceReconciled {
+        is_worktree,
+        worktree_path: worktree_path.map(str::to_string),
+        reason: reason.to_string(),
+    };
+    let envelope = emit_workspace_reconciled(branch, &payload)?;
     sync_workspace_projection(&envelope);
     Ok(())
 }

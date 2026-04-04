@@ -5,6 +5,7 @@ pub(crate) mod event_upserts;
 pub(crate) mod helpers;
 mod lifecycle;
 mod lifecycle_actors;
+mod reconcile;
 mod session;
 mod session_lifecycle;
 pub(crate) mod types;
@@ -60,5 +61,6 @@ pub use session::{
     get_active_workspace_session, get_workspace_session_record, list_workspace_sessions,
     record_workspace_session_progress,
 };
+pub use reconcile::reconcile_workspace;
 pub use session_lifecycle::{end_workspace_session, start_workspace_session};
 pub use crate::db::workspace_db::{open_workspace_db, workspace_db_path};

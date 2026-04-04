@@ -199,6 +199,61 @@ pub async fn mesh_status_update(
     }
 }
 
+// ---- Checkout hook ----
+
+#[derive(Deserialize)]
+pub struct CheckoutHookReq {
+    pub branch: String,
+    pub path: String,
+}
+
+pub async fn hooks_checkout(
+    Json(req): Json<CheckoutHookReq>,
+) -> impl IntoResponse {
+    let ship_dir_result = runtime::project::get_project_dir(Some(std::path::PathBuf::from(&req.path)));
+    let ship_dir = match ship_dir_result {
+        Ok(d) => d,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(MeshResponse {
+                    ok: false,
+                    data: serde_json::json!(format!("no .ship/ found: {e}")),
+                }),
+            );
+        }
+    };
+
+    let connection_path = std::path::Path::new(&req.path);
+    match runtime::reconcile_workspace(&ship_dir, &req.branch, connection_path) {
+        Ok(Some(ws)) => (
+            StatusCode::OK,
+            Json(MeshResponse {
+                ok: true,
+                data: serde_json::json!({
+                    "branch": ws.branch,
+                    "is_worktree": ws.is_worktree,
+                    "worktree_path": ws.worktree_path,
+                }),
+            }),
+        ),
+        Ok(None) => (
+            StatusCode::OK,
+            Json(MeshResponse {
+                ok: true,
+                data: serde_json::json!("no workspace for branch"),
+            }),
+        ),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(MeshResponse {
+                ok: false,
+                data: serde_json::json!(e.to_string()),
+            }),
+        ),
+    }
+}
+
 /// SSE endpoint — drains an agent's mailbox as server-sent events.
 /// The agent must register first (which spawns the actor + stashes the mailbox).
 /// Only one SSE connection per agent is supported (mailbox is taken, not cloned).
