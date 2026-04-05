@@ -8,9 +8,11 @@ import { getResolvedTheme } from '#/features/studio/session/canvas-helpers'
 interface ViewHostProps {
   /** Raw HTML content of the view (loaded by the parent). */
   html: string
+  /** Active workspace branch ID for file operations. */
+  workspaceId?: string
 }
 
-export function ViewHost({ html }: ViewHostProps) {
+export function ViewHost({ html, workspaceId }: ViewHostProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
 
   // Bridge postMessage requests from the view to daemon HTTP APIs.
@@ -25,13 +27,13 @@ export function ViewHost({ html }: ViewHostProps) {
 
     const { method, params, seq } = msg
     try {
-      const data = await routeRequest(method, params)
+      const data = await routeRequest(method, params, workspaceId)
       iframe.contentWindow.postMessage({ __ship: true, type: 'response', seq, data }, '*')
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err)
       iframe.contentWindow.postMessage({ __ship: true, type: 'response', seq, error }, '*')
     }
-  }, [])
+  }, [workspaceId])
 
   useEffect(() => {
     window.addEventListener('message', handleMessage)
@@ -82,8 +84,11 @@ export function ViewHost({ html }: ViewHostProps) {
 }
 
 // Route SDK method calls to daemon HTTP endpoints.
-async function routeRequest(method: string, params: Record<string, unknown> | undefined): Promise<unknown> {
+async function routeRequest(method: string, params: Record<string, unknown> | undefined, activeWsId?: string): Promise<unknown> {
   switch (method) {
+    case 'workspace.active':
+      return activeWsId ?? null
+
     case 'jobs.list': {
       const res = await fetch(`${DAEMON_BASE_URL}/api/runtime/jobs`)
       if (!res.ok) throw new Error(`jobs.list: ${res.status}`)

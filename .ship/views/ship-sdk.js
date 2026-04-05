@@ -64,6 +64,10 @@ class ShipSDK {
       },
     }
 
+    this.workspace = {
+      active: () => this._request('workspace.active'),
+    }
+
     this.files = {
       list: (workspaceId) => this._request('files.list', { workspace_id: workspaceId }),
       read: (workspaceId, path) => this._request('files.read', { workspace_id: workspaceId, path }),

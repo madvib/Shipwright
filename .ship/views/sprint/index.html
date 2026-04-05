@@ -8,7 +8,6 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400..800&family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..400&display=swap" rel="stylesheet">
-  <script src="https://cdn.tailwindcss.com"></script>
 
   <style>
     :root {
@@ -60,73 +59,48 @@
 </head>
 <body>
   <!-- Overview bar -->
-  <header id="overview" class="flex items-center gap-5 px-4 py-2.5 border-b" style="border-color:var(--border);background:color-mix(in oklch, var(--card) 60%, transparent);backdrop-filter:blur(12px)">
-    <div class="flex items-center gap-2">
+  <header id="overview" style="display:flex;align-items:center;gap:20px;padding:10px 16px;border-bottom:1px solid var(--border);background:color-mix(in oklch, var(--card) 60%, transparent);backdrop-filter:blur(12px)">
+    <div style="display:flex;align-items:center;gap:8px">
       <div style="width:7px;height:7px;border-radius:50%;background:var(--primary)"></div>
       <h1 style="font-size:0.85rem;font-weight:700;margin:0">Sprint</h1>
-      <span id="count-label" style="font-size:0.75rem;color:var(--muted-foreground)">0/0 done</span>
+      <span id="count-label" style="font-size:0.75rem;color:var(--muted-foreground)">loading...</span>
     </div>
     <div style="flex:1;max-width:200px">
       <div style="height:6px;border-radius:999px;background:var(--muted);overflow:hidden">
         <div id="progress-bar" style="height:100%;border-radius:999px;background:var(--status-green);width:0%;transition:width 0.5s"></div>
       </div>
     </div>
-    <div class="flex items-center gap-4" style="font-size:0.75rem;color:var(--muted-foreground)">
+    <div style="display:flex;align-items:center;gap:16px;font-size:0.75rem;color:var(--muted-foreground)">
       <span><span id="stat-progress" style="color:var(--status-blue)">0</span> in progress</span>
       <span><span id="stat-blocked" style="color:var(--status-amber)">0</span> blocked</span>
       <span><span id="stat-failed" style="color:var(--status-red)">0</span> failed</span>
     </div>
-    <button id="add-job-btn" class="btn" style="margin-left:auto;font-size:0.75rem;padding:0.3rem 0.7rem">Add Job</button>
   </header>
 
   <!-- Main layout -->
-  <div class="flex" style="height:calc(100% - 45px)">
+  <div style="display:flex;height:calc(100% - 45px)">
     <!-- DAG -->
     <div id="dag-container" style="flex:1;overflow:auto;padding:16px">
       <svg id="dag-svg" style="min-width:100%;min-height:100%"></svg>
     </div>
 
-    <!-- Detail panel (hidden until selection) -->
-    <aside id="detail-panel" class="card" style="display:none;width:280px;border-left:1px solid var(--border);border-radius:0;overflow-y:auto;padding:16px;flex-shrink:0"></aside>
+    <!-- Detail panel -->
+    <aside id="detail-panel" class="card" style="display:none;width:300px;border-left:1px solid var(--border);border-radius:0;overflow-y:auto;padding:16px;flex-shrink:0"></aside>
   </div>
-
-  <!-- Create job dialog -->
-  <dialog id="create-dialog" style="position:fixed;inset:0;margin:auto;width:380px;background:var(--card);color:var(--foreground);border:1px solid var(--border);border-radius:var(--radius);padding:20px;z-index:50">
-    <h2 style="font-family:var(--font-display);font-size:1rem;font-weight:700;margin:0 0 16px">Add Job</h2>
-    <form id="create-form" style="display:flex;flex-direction:column;gap:12px">
-      <label style="font-size:0.75rem;color:var(--muted-foreground)">Slug *
-        <input name="slug" required style="display:block;width:100%;margin-top:4px;padding:6px 10px;border-radius:var(--radius);border:1px solid var(--border);background:var(--background);color:var(--foreground);font-size:0.85rem" placeholder="auth-tests">
-      </label>
-      <label style="font-size:0.75rem;color:var(--muted-foreground)">Agent *
-        <input name="agent" required style="display:block;width:100%;margin-top:4px;padding:6px 10px;border-radius:var(--radius);border:1px solid var(--border);background:var(--background);color:var(--foreground);font-size:0.85rem" placeholder="rust-runtime">
-      </label>
-      <label style="font-size:0.75rem;color:var(--muted-foreground)">Branch
-        <input name="branch" style="display:block;width:100%;margin-top:4px;padding:6px 10px;border-radius:var(--radius);border:1px solid var(--border);background:var(--background);color:var(--foreground);font-size:0.85rem" placeholder="job/auth-tests">
-      </label>
-      <label style="font-size:0.75rem;color:var(--muted-foreground)">Spec path
-        <input name="spec_path" value=".ship-session/job-spec.md" style="display:block;width:100%;margin-top:4px;padding:6px 10px;border-radius:var(--radius);border:1px solid var(--border);background:var(--background);color:var(--foreground);font-size:0.85rem">
-      </label>
-      <div id="deps-container" style="display:none">
-        <span style="font-size:0.75rem;color:var(--muted-foreground)">Depends on</span>
-        <div id="deps-list" style="max-height:100px;overflow-y:auto;margin-top:4px"></div>
-      </div>
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
-        <button type="button" id="cancel-btn" class="btn ghost" style="font-size:0.75rem;padding:0.3rem 0.7rem">Cancel</button>
-        <button type="submit" class="btn" style="font-size:0.75rem;padding:0.3rem 0.7rem">Create</button>
-      </div>
-    </form>
-  </dialog>
-  <div id="dialog-backdrop" style="display:none;position:fixed;inset:0;background:oklch(0 0 0 / 50%);z-index:49"></div>
 
   <script src="../ship-sdk.js"></script>
   <script>
     // ── State ──────────────────────────────────────────
+    let specs = []
     let jobs = []
-    let selectedJobId = null
+    let items = []
+    let selectedSlug = null
+    let wsId = null
 
-    const NODE_W = 148, NODE_H = 38, GAP_X = 20, GAP_Y = 52, PAD = 20
+    const NODE_W = 160, NODE_H = 42, GAP_X = 20, GAP_Y = 52, PAD = 20
 
     const STATUS_COLOR = {
+      spec:         'var(--muted-foreground)',
       pending:      'var(--muted-foreground)',
       dispatched:   'var(--status-blue)',
       completed:    'var(--status-green)',
@@ -136,64 +110,129 @@
       failed:       'var(--status-red)',
     }
     const STATUS_LABEL = {
-      pending: 'Pending', dispatched: 'Dispatched', completed: 'Completed',
-      gate_pending: 'Gate Pending', blocked: 'Blocked', merged: 'Merged', failed: 'Failed',
+      spec: 'Spec Only', pending: 'Pending', dispatched: 'Running',
+      completed: 'Done', gate_pending: 'Gate', blocked: 'Blocked',
+      merged: 'Merged', failed: 'Failed',
+    }
+
+    // ── Frontmatter parser ────────────────────────────
+    function parseFrontmatter(content) {
+      const m = content.match(/^---\n([\s\S]*?)\n---/)
+      if (!m) return null
+      const fm = {}
+      for (const line of m[1].split('\n')) {
+        const idx = line.indexOf(':')
+        if (idx === -1) continue
+        const key = line.slice(0, idx).trim()
+        let val = line.slice(idx + 1).trim()
+        if (val.startsWith('[') && val.endsWith(']')) {
+          val = val.slice(1, -1).split(',').map(s => s.trim()).filter(Boolean)
+        }
+        fm[key] = val
+      }
+      return fm
     }
 
     // ── Data fetching ─────────────────────────────────
-    async function loadJobs() {
+    async function loadData() {
       try {
-        jobs = await ship.jobs.list()
+        if (!wsId) wsId = await ship.workspace.active()
+
+        const [jobList, fileResult] = await Promise.all([
+          ship.jobs.list().catch(() => []),
+          wsId ? ship.files.list(wsId).catch(() => []) : Promise.resolve([]),
+        ])
+
+        jobs = Array.isArray(jobList) ? jobList : []
+        const jobBySlug = new Map(jobs.map(j => [j.slug, j]))
+
+        // Parse file list — the API returns { ok, data: [...] } or just [...]
+        const files = Array.isArray(fileResult) ? fileResult
+          : (fileResult?.data || [])
+
+        const specFiles = files.filter(f =>
+          f.path && /^specs\/[^/]+\/[^/]+\/spec\.md$/.test(f.path)
+        )
+
+        specs = []
+        for (const f of specFiles) {
+          try {
+            const result = await ship.files.read(wsId, f.path)
+            const text = typeof result === 'string' ? result
+              : (result?.data?.content || result?.content || '')
+            const fm = parseFrontmatter(text)
+            if (fm && fm.slug) {
+              specs.push({ ...fm, spec_path: '.ship-session/' + f.path })
+            }
+          } catch { /* skip */ }
+        }
+
+        // Merge: specs are primary, jobs overlay status
+        items = specs.map(spec => {
+          const job = jobBySlug.get(spec.slug)
+          return {
+            slug: spec.slug,
+            agent: spec.agent || 'unknown',
+            feature: spec.feature || '',
+            priority: spec.priority || '',
+            depends_on: Array.isArray(spec.depends_on) ? spec.depends_on : [],
+            spec_path: spec.spec_path,
+            created: spec.created || '',
+            mode: spec.mode || 'autonomous',
+            status: job ? job.status : 'spec',
+            job: job || null,
+          }
+        })
+
         render()
       } catch (e) {
-        console.error('Failed to load jobs:', e)
+        console.error('Failed to load data:', e)
       }
     }
 
-    // Initial load + poll every 5s (SSE also triggers re-render)
-    loadJobs()
-    setInterval(loadJobs, 5000)
-
-    ship.events.onStream((envelope) => {
-      if (envelope.event_type?.startsWith('job.')) loadJobs()
+    loadData()
+    setInterval(loadData, 10000)
+    ship.events.onStream(env => {
+      if (env.event_type?.startsWith('job.')) loadData()
     })
 
     // ── Overview bar ──────────────────────────────────
     function updateOverview() {
-      const total = jobs.length
-      const done = jobs.filter(j => j.status === 'completed' || j.status === 'merged').length
-      const progress = jobs.filter(j => j.status === 'dispatched' || j.status === 'gate_pending').length
-      const blocked = jobs.filter(j => j.status === 'blocked').length
-      const failed = jobs.filter(j => j.status === 'failed').length
+      const total = items.length
+      const done = items.filter(i => i.status === 'completed' || i.status === 'merged').length
+      const active = items.filter(i => i.status === 'dispatched' || i.status === 'gate_pending').length
+      const blocked = items.filter(i => i.status === 'blocked').length
+      const failed = items.filter(i => i.status === 'failed').length
       const pct = total > 0 ? Math.round((done / total) * 100) : 0
 
       document.getElementById('count-label').textContent = `${done}/${total} done`
-      document.getElementById('progress-bar').style.width = `${pct}%`
-      document.getElementById('stat-progress').textContent = progress
+      document.getElementById('progress-bar').style.width = pct + '%'
+      document.getElementById('stat-progress').textContent = active
       document.getElementById('stat-blocked').textContent = blocked
       document.getElementById('stat-failed').textContent = failed
     }
 
-    // ── DAG layout (topological sort) ─────────────────
+    // ── DAG layout ────────────────────────────────────
     function layoutDAG() {
-      if (!jobs.length) return { nodes: [], edges: [] }
+      if (!items.length) return { nodes: [], edges: [] }
 
-      const bySlug = new Map(jobs.map(j => [j.slug, j]))
+      const bySlug = new Map(items.map(i => [i.slug, i]))
       const deps = new Map()
-      for (const j of jobs) {
-        deps.set(j.slug, new Set((j.depends_on || []).filter(d => bySlug.has(d))))
+      for (const i of items) {
+        deps.set(i.slug, new Set((i.depends_on || []).filter(d => bySlug.has(d))))
       }
 
+      // Topological layers
       const layers = []
       const assigned = new Set()
-      const remaining = new Set(jobs.map(j => j.slug))
+      const remaining = new Set(items.map(i => i.slug))
 
       while (remaining.size > 0) {
         const layer = []
         for (const slug of remaining) {
           if ([...deps.get(slug)].every(d => assigned.has(d))) layer.push(slug)
         }
-        if (layer.length === 0) { layer.push(...remaining); remaining.clear() }
+        if (!layer.length) { layer.push(...remaining); remaining.clear() }
         layer.sort()
         layers.push(layer)
         for (const s of layer) { assigned.add(s); remaining.delete(s) }
@@ -204,7 +243,7 @@
       for (let li = 0; li < layers.length; li++) {
         for (let ci = 0; ci < layers[li].length; ci++) {
           const slug = layers[li][ci]
-          const node = { job: bySlug.get(slug), x: PAD + ci * (NODE_W + GAP_X), y: PAD + li * (NODE_H + GAP_Y) }
+          const node = { item: bySlug.get(slug), x: PAD + ci * (NODE_W + GAP_X), y: PAD + li * (NODE_H + GAP_Y) }
           nodes.push(node)
           nodeBySlug.set(slug, node)
         }
@@ -212,7 +251,7 @@
 
       const edges = []
       for (const node of nodes) {
-        for (const dep of (node.job.depends_on || [])) {
+        for (const dep of (node.item.depends_on || [])) {
           const from = nodeBySlug.get(dep)
           if (from) edges.push({ from, to: node })
         }
@@ -236,7 +275,7 @@
         text.setAttribute('text-anchor', 'middle')
         text.setAttribute('fill', 'var(--muted-foreground)')
         text.setAttribute('font-size', '14')
-        text.textContent = 'No jobs in the queue'
+        text.textContent = 'No specs found in .ship-session/specs/'
         svg.appendChild(text)
         return
       }
@@ -248,7 +287,7 @@
 
       // Arrowhead marker
       const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs')
-      defs.innerHTML = `<marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="var(--muted-foreground)" opacity="0.5"/></marker>`
+      defs.innerHTML = '<marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="var(--muted-foreground)" opacity="0.5"/></marker>'
       svg.appendChild(defs)
 
       // Edges
@@ -270,12 +309,11 @@
       for (const node of nodes) {
         const g = document.createElementNS('http://www.w3.org/2000/svg', 'g')
         g.style.cursor = 'pointer'
-        g.addEventListener('click', () => { selectedJobId = node.job.job_id; render() })
+        g.addEventListener('click', () => { selectedSlug = node.item.slug; render() })
 
-        const isSelected = node.job.job_id === selectedJobId
-        const color = STATUS_COLOR[node.job.status] || 'var(--muted-foreground)'
+        const isSelected = node.item.slug === selectedSlug
+        const color = STATUS_COLOR[node.item.status] || 'var(--muted-foreground)'
 
-        // Background rect
         const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
         rect.setAttribute('x', node.x)
         rect.setAttribute('y', node.y)
@@ -295,7 +333,7 @@
         circle.setAttribute('fill', color)
         g.appendChild(circle)
 
-        // Label
+        // Slug label
         const text = document.createElementNS('http://www.w3.org/2000/svg', 'text')
         text.setAttribute('x', node.x + 26)
         text.setAttribute('y', node.y + NODE_H / 2 + 1)
@@ -303,8 +341,8 @@
         text.setAttribute('fill', 'var(--foreground)')
         text.setAttribute('font-size', '11')
         text.setAttribute('font-family', 'var(--font-body)')
-        const slug = node.job.slug
-        text.textContent = slug.length > 15 ? slug.slice(0, 14) + '\u2026' : slug
+        const label = node.item.slug.length > 18 ? node.item.slug.slice(0, 16) + '..' : node.item.slug
+        text.textContent = label
         g.appendChild(text)
 
         svg.appendChild(g)
@@ -314,43 +352,51 @@
     // ── Detail panel ──────────────────────────────────
     function renderDetail() {
       const panel = document.getElementById('detail-panel')
-      const job = jobs.find(j => j.job_id === selectedJobId)
+      const item = items.find(i => i.slug === selectedSlug)
 
-      if (!job) {
+      if (!item) {
         panel.style.display = 'none'
         return
       }
 
       panel.style.display = 'block'
-      const color = STATUS_COLOR[job.status]
-      const canLaunch = job.status === 'pending'
+      const color = STATUS_COLOR[item.status]
+      const canLaunch = item.status === 'spec'
+      const isRunning = item.status === 'dispatched'
 
       let html = `
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <h2 style="font-family:var(--font-display);font-size:0.9rem;font-weight:700;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(job.slug)}</h2>
-          <span class="badge" style="color:${color};border-color:${color}">${STATUS_LABEL[job.status]}</span>
+          <h2 style="font-family:var(--font-display);font-size:0.9rem;font-weight:700;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(item.slug)}</h2>
+          <span class="badge" style="color:${color};border-color:${color}">${STATUS_LABEL[item.status]}</span>
         </div>
         <dl style="font-size:0.75rem;display:flex;flex-direction:column;gap:10px">
-          ${field('Agent', job.agent)}
-          ${field('Branch', job.branch)}
-          ${field('Spec', job.spec_path)}
-          ${job.depends_on?.length ? field('Depends on', job.depends_on.join(', ')) : ''}
-          ${job.worktree ? field('Worktree', job.worktree) : ''}
-          ${job.blocker ? `<div><dt style="color:var(--muted-foreground);margin-bottom:2px">Blocker</dt><dd style="margin:0;color:var(--status-amber)">${esc(job.blocker)}</dd></div>` : ''}
-          ${job.error ? `<div><dt style="color:var(--muted-foreground);margin-bottom:2px">Error</dt><dd style="margin:0;color:var(--status-red);word-break:break-word">${esc(job.error)}</dd></div>` : ''}
-          ${field('Created', new Date(job.created_at).toLocaleString())}
-          ${field('Updated', new Date(job.updated_at).toLocaleString())}
-        </dl>
+          ${field('Agent', item.agent)}
+          ${field('Feature', item.feature)}
+          ${field('Priority', 'P' + item.priority)}
+          ${field('Spec', item.spec_path)}
+          ${item.depends_on.length ? field('Depends on', item.depends_on.join(', ')) : ''}
+          ${item.created ? field('Created', item.created) : ''}
       `
 
+      if (item.job) {
+        html += field('Branch', item.job.branch)
+        html += field('Status', item.job.status)
+        if (item.job.worktree) html += field('Worktree', item.job.worktree)
+        if (item.job.blocker) html += `<div><dt style="color:var(--muted-foreground);margin-bottom:2px">Blocker</dt><dd style="margin:0;color:var(--status-amber)">${esc(item.job.blocker)}</dd></div>`
+        if (item.job.error) html += `<div><dt style="color:var(--muted-foreground);margin-bottom:2px">Error</dt><dd style="margin:0;color:var(--status-red);word-break:break-word">${esc(item.job.error)}</dd></div>`
+        html += field('Dispatched', new Date(item.job.updated_at).toLocaleString())
+      }
+
+      html += '</dl>'
+
       if (canLaunch) {
-        html += `<button id="launch-btn" class="btn" style="width:100%;margin-top:16px;justify-content:center;font-size:0.8rem;background:var(--status-blue);color:#fff">Launch</button>`
+        html += `<button id="launch-btn" class="btn" style="width:100%;margin-top:16px;justify-content:center;font-size:0.8rem;background:var(--status-blue);color:#fff">Launch Job</button>`
       }
 
       panel.innerHTML = html
 
       if (canLaunch) {
-        document.getElementById('launch-btn').addEventListener('click', () => launchJob(job))
+        document.getElementById('launch-btn').addEventListener('click', () => launchSpec(item))
       }
     }
 
@@ -365,86 +411,20 @@
     }
 
     // ── Actions ───────────────────────────────────────
-    async function launchJob(job) {
+    async function launchSpec(item) {
       try {
         await ship.jobs.create({
-          slug: job.slug,
-          agent: job.agent,
-          branch: job.branch,
-          spec_path: job.spec_path,
-          depends_on: job.depends_on,
+          slug: item.slug,
+          agent: item.agent,
+          branch: 'job/' + item.slug,
+          spec_path: item.spec_path,
+          depends_on: item.depends_on.length ? item.depends_on : null,
         })
-        loadJobs()
+        await loadData()
       } catch (e) {
         console.error('Launch failed:', e)
       }
     }
-
-    // ── Create dialog ─────────────────────────────────
-    const dialog = document.getElementById('create-dialog')
-    const backdrop = document.getElementById('dialog-backdrop')
-    const form = document.getElementById('create-form')
-
-    document.getElementById('add-job-btn').addEventListener('click', () => {
-      // Populate deps checkboxes
-      const container = document.getElementById('deps-container')
-      const list = document.getElementById('deps-list')
-      if (jobs.length) {
-        container.style.display = 'block'
-        list.innerHTML = jobs.map(j => `
-          <label style="display:flex;align-items:center;gap:6px;font-size:0.75rem;cursor:pointer;padding:2px 0">
-            <input type="checkbox" name="dep" value="${esc(j.slug)}">
-            <span style="font-family:monospace">${esc(j.slug)}</span>
-          </label>
-        `).join('')
-      } else {
-        container.style.display = 'none'
-      }
-
-      // Auto-fill branch from slug
-      const slugInput = form.elements.slug
-      const branchInput = form.elements.branch
-      slugInput.oninput = () => {
-        if (!branchInput.value || branchInput.value.startsWith('job/')) {
-          branchInput.value = `job/${slugInput.value}`
-        }
-      }
-
-      dialog.showModal()
-      backdrop.style.display = 'block'
-    })
-
-    document.getElementById('cancel-btn').addEventListener('click', () => {
-      dialog.close()
-      backdrop.style.display = 'none'
-    })
-
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault()
-      const fd = new FormData(form)
-      const slug = fd.get('slug')
-      const agent = fd.get('agent')
-      const branch = fd.get('branch') || `job/${slug}`
-      const specPath = fd.get('spec_path') || '.ship-session/job-spec.md'
-      const depCheckboxes = form.querySelectorAll('input[name="dep"]:checked')
-      const depsOn = [...depCheckboxes].map(cb => cb.value)
-
-      const jobId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
-      try {
-        await ship.events.emit('job.created', jobId, {
-          job_id: jobId,
-          slug, agent, branch,
-          spec_path: specPath,
-          depends_on: depsOn.length ? depsOn : null,
-        })
-        form.reset()
-        dialog.close()
-        backdrop.style.display = 'none'
-        loadJobs()
-      } catch (err) {
-        console.error('Create failed:', err)
-      }
-    })
 
     // ── Render ────────────────────────────────────────
     function render() {
@@ -453,8 +433,7 @@
       renderDetail()
     }
 
-    // Theme change — re-render (CSS vars handle colors, but SVG may need redraw)
-    window.addEventListener('message', (e) => {
+    window.addEventListener('message', e => {
       if (e.data?.type === 'theme') render()
     })
   </script>
