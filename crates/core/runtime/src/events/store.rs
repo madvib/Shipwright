@@ -14,6 +14,40 @@ pub trait EventStore: Send + Sync {
     fn query_aggregate(&self, entity_id: &str) -> Result<Vec<EventEnvelope>>;
 }
 
+/// Append an event using an existing connection (no new connection opened).
+/// Used by transactional callers that need event+projection in one tx.
+pub fn append_event_with_conn(
+    event: &EventEnvelope,
+    conn: &mut sqlx::SqliteConnection,
+) -> Result<()> {
+    let created_at = event.created_at.to_rfc3339();
+    block_on(async {
+        sqlx::query(
+            "INSERT INTO events \
+             (id, event_type, entity_id, actor, payload_json, version, \
+              causation_id, workspace_id, session_id, \
+              actor_id, parent_actor_id, elevated, created_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&event.id)
+        .bind(&event.event_type)
+        .bind(&event.entity_id)
+        .bind(&event.actor)
+        .bind(&event.payload_json)
+        .bind(event.version as i64)
+        .bind(&event.causation_id)
+        .bind(&event.workspace_id)
+        .bind(&event.session_id)
+        .bind(&event.actor_id)
+        .bind(&event.parent_actor_id)
+        .bind(event.elevated as i64)
+        .bind(&created_at)
+        .execute(conn)
+        .await
+    })?;
+    Ok(())
+}
+
 pub struct SqliteEventStore {
     db_path: PathBuf,
 }

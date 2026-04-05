@@ -1,3 +1,12 @@
+//! Event payload types — immutable once persisted.
+//!
+//! New payload fields must be `Option<T>` (or `#[serde(default)]`) so existing
+//! v1 events deserialize correctly. The `version` field on `EventEnvelope` is
+//! always 1 — reserved for future schema evolution where projections would
+//! match on version to handle incompatible changes.
+//!
+//! See test `event_versioning_v1_compiled_without_new_fields` for enforcement.
+
 use serde::{Deserialize, Serialize};
 
 // ── Workspace aggregate ───────────────────────────────────────────────────────

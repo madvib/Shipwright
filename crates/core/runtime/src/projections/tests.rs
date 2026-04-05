@@ -350,4 +350,58 @@ mod workspace_tests {
 
         assert_eq!(before, after, "rebuild must reproduce identical state");
     }
+
+    #[test]
+    fn transactional_rollback_on_projection_failure() {
+        // AC#4/S4: If projection fails, the event must also be rolled back.
+        // We emit a workspace.activated event for a nonexistent branch via
+        // the transactional path. The projection UPDATE affects 0 rows
+        // (not an error), so instead we craft a malformed payload that
+        // will fail deserialization in the projection handler.
+        use crate::db::{ensure_db, open_db};
+        use crate::events::store::append_event_with_conn;
+        use crate::projections::{Projection, WorkspaceProjection};
+
+        let ship_dir = crate::project::get_global_dir().unwrap();
+        let base = ship_dir.parent().unwrap().to_path_buf();
+        crate::project::init_project(base).unwrap();
+        ensure_db().unwrap();
+
+        // Create an event with a payload that will fail projection apply
+        // (workspace.activated requires agent_id and providers fields).
+        let bad_envelope = EventEnvelope::new(
+            event_types::WORKSPACE_ACTIVATED,
+            "feature/txn-rollback-test",
+            &serde_json::json!("not-a-valid-payload"),
+        )
+        .unwrap()
+        .elevate();
+
+        let event_id = bad_envelope.id.clone();
+
+        // Simulate the transactional path.
+        let mut conn = open_db().unwrap();
+        block_on(async { sqlx::query("BEGIN IMMEDIATE").execute(&mut conn).await }).unwrap();
+
+        append_event_with_conn(&bad_envelope, &mut conn).unwrap();
+
+        let proj = WorkspaceProjection::new();
+        let apply_result = proj.apply(&bad_envelope, &mut conn);
+        assert!(apply_result.is_err(), "projection must fail on bad payload");
+
+        // Rollback since projection failed.
+        block_on(async { sqlx::query("ROLLBACK").execute(&mut conn).await }).unwrap();
+        drop(conn);
+
+        // Verify the event was NOT persisted.
+        let mut check_conn = open_db().unwrap();
+        let count: i64 = block_on(async {
+            sqlx::query_scalar("SELECT COUNT(*) FROM events WHERE id = ?")
+                .bind(&event_id)
+                .fetch_one(&mut check_conn)
+                .await
+        })
+        .unwrap();
+        assert_eq!(count, 0, "event must be rolled back when projection fails");
+    }
 }

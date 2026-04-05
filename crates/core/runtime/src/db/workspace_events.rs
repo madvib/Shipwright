@@ -1,15 +1,15 @@
 //! Event-sourced workspace state writes.
 //!
-//! Each function builds an EventEnvelope, persists it to platform.db via
-//! SqliteEventStore, and routes it through KernelRouter (when initialized)
-//! for delivery to actor mailboxes.
+//! Each function builds an EventEnvelope, persists the event and applies the
+//! workspace projection in a single SQLite transaction on one connection.
+//! Kernel routing happens after commit (fire-and-forget).
 //!
 //! ADR GHihs2tn: all workspace lifecycle transitions must emit typed events.
 
 use anyhow::Result;
 
-use crate::db::block_on_anyhow;
-use crate::events::store::EventStore;
+use crate::db::{block_on, block_on_anyhow, open_db};
+use crate::events::store::append_event_with_conn;
 use crate::events::types::event_types;
 use crate::events::types::{
     WorkspaceActivated, WorkspaceAgentChanged, WorkspaceArchived, WorkspaceCompileFailed,
@@ -17,7 +17,8 @@ use crate::events::types::{
     WorkspaceStarted, WorkspaceStatusChanged, WorkspaceTmuxAssigned,
 };
 use crate::events::validator::{CallerKind, EmitContext};
-use crate::events::{EventEnvelope, SqliteEventStore};
+use crate::events::EventEnvelope;
+use crate::projections::{Projection, WorkspaceProjection};
 
 fn run_tx<P: serde::Serialize>(
     branch: &str,
@@ -29,10 +30,24 @@ fn run_tx<P: serde::Serialize>(
         .with_actor_id(branch)
         .elevate();
 
-    // Persist to platform.db for the reading path (CLI, sync, projections).
-    SqliteEventStore::new()?.append(&envelope)?;
+    // Single connection, single transaction: event + projection.
+    let mut conn = open_db()?;
+    block_on(async { sqlx::query("BEGIN IMMEDIATE").execute(&mut conn).await })?;
 
-    // Route to actor mailboxes if the kernel router is running.
+    if let Err(e) = append_event_with_conn(&envelope, &mut conn) {
+        let _ = block_on(async { sqlx::query("ROLLBACK").execute(&mut conn).await });
+        return Err(e);
+    }
+
+    let proj = WorkspaceProjection::new();
+    if let Err(e) = proj.apply(&envelope, &mut conn) {
+        let _ = block_on(async { sqlx::query("ROLLBACK").execute(&mut conn).await });
+        return Err(e);
+    }
+
+    block_on(async { sqlx::query("COMMIT").execute(&mut conn).await })?;
+
+    // Route to actor mailboxes after commit (fire-and-forget).
     let ctx = EmitContext {
         caller_kind: CallerKind::Runtime,
         skill_id: None,

@@ -4,6 +4,7 @@
 
 pub mod helpers;
 pub mod job_dispatch;
+pub mod job_pipeline;
 pub mod terminal_launcher;
 
 use axum::{

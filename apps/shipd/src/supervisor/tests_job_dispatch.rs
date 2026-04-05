@@ -288,6 +288,7 @@ async fn completing_dependency_unblocks_pending_job() {
             model: None,
             provider: None,
             depends_on: Some(vec!["upstream-a".to_string(), "upstream-b".to_string()]),
+            pipeline: None,
         },
     );
 
@@ -296,7 +297,7 @@ async fn completing_dependency_unblocks_pending_job() {
         event_types::JOB_COMPLETED,
         serde_json::json!({"job_id": "j-up-a", "slug": "upstream-a"}),
     );
-    super::dispatch_unblocked_jobs(&kernel, &completed_event, &mut pending).await;
+    super::super::job_pipeline::dispatch_unblocked_jobs(&kernel, &completed_event, &mut pending).await;
 
     // Still pending — upstream-b remains
     assert!(pending.contains_key("downstream"));
@@ -308,7 +309,7 @@ async fn completing_dependency_unblocks_pending_job() {
         event_types::JOB_COMPLETED,
         serde_json::json!({"job_id": "j-up-b", "slug": "upstream-b"}),
     );
-    super::dispatch_unblocked_jobs(&kernel, &completed_event_b, &mut pending).await;
+    super::super::job_pipeline::dispatch_unblocked_jobs(&kernel, &completed_event_b, &mut pending).await;
 
     assert!(
         !pending.contains_key("downstream"),
