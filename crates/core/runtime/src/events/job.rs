@@ -6,6 +6,15 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
+/// A single phase in a job pipeline.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct PipelinePhase {
+    pub agent: String,
+    pub goal: String,
+    #[serde(default)]
+    pub model: Option<String>,
+}
+
 /// Emitted when a job is created. `entity_id` in the envelope is the job_id.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct JobCreatedPayload {
@@ -19,6 +28,10 @@ pub struct JobCreatedPayload {
     pub provider: Option<String>,
     #[serde(default)]
     pub depends_on: Option<Vec<String>>,
+    /// Multi-phase pipeline. If set, overrides `agent` — each phase dispatches
+    /// sequentially in the same worktree. Phase 0 uses `agent` field as default.
+    #[serde(default)]
+    pub pipeline: Option<Vec<PipelinePhase>>,
 }
 
 /// Emitted when the job is assigned to a worktree and (optionally) a process.

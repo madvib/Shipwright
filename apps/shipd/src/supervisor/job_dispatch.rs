@@ -5,8 +5,9 @@
 //! routes the message to the agent's mailbox via mesh. When `job.completed` or
 //! `job.merged` arrives, cleans up tmux/worktree/branch resources.
 
-use runtime::events::job::JobCreatedPayload;
+use runtime::events::job::{JobCreatedPayload, PipelinePhase};
 use runtime::events::{ActorConfig, CallerKind, EmitContext, EventEnvelope};
+use runtime::projections::job::load_jobs;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -64,7 +65,15 @@ async fn handle_job_event(
     match envelope.event_type.as_str() {
         "job.created" => handle_job_created(kernel, envelope, pending).await,
         "job.update" => handle_job_update(kernel, envelope).await,
-        "job.completed" | "job.merged" => {
+        "job.completed" => {
+            // Check if this is a pipeline job with more phases
+            if !try_advance_pipeline(kernel, envelope).await {
+                // No more phases — clean up and unblock dependents
+                handle_job_cleanup(envelope).await;
+                dispatch_unblocked_jobs(kernel, envelope, pending).await;
+            }
+        }
+        "job.merged" => {
             handle_job_cleanup(envelope).await;
             dispatch_unblocked_jobs(kernel, envelope, pending).await;
         }
@@ -107,9 +116,20 @@ async fn dispatch_job(
 ) {
     let slug = &payload.slug;
     let branch = &payload.branch;
-    let agent = &payload.agent;
     let spec_path = &payload.spec_path;
-    tracing::info!(slug, branch, agent, "job-dispatch: handling job.created");
+
+    // Determine active agent — pipeline phase 0 overrides the top-level agent
+    let (agent, phase_idx) = if let Some(ref pipeline) = payload.pipeline {
+        if let Some(phase) = pipeline.first() {
+            (phase.agent.as_str(), Some(0usize))
+        } else {
+            (payload.agent.as_str(), None)
+        }
+    } else {
+        (payload.agent.as_str(), None)
+    };
+
+    tracing::info!(slug, branch, agent, phase = ?phase_idx, "job-dispatch: dispatching job");
 
     // 1. Create git worktree
     let worktree_path = worktrees_dir().join(slug);
@@ -118,22 +138,13 @@ async fn dispatch_job(
         return;
     }
 
-    // 2. Copy spec file into worktree as .ship-session/job-spec.md
+    // 2. Copy spec + inject phase context
     let session_dir = worktree_path.join(".ship-session");
     if let Err(e) = std::fs::create_dir_all(&session_dir) {
         tracing::error!(slug, "job-dispatch: failed to create .ship-session: {e}");
         return;
     }
-    let src_spec = std::path::Path::new(spec_path);
-    let dst_spec = session_dir.join("job-spec.md");
-    if src_spec.exists() {
-        if let Err(e) = std::fs::copy(src_spec, &dst_spec) {
-            tracing::error!(slug, "job-dispatch: spec copy failed: {e}");
-            return;
-        }
-    } else {
-        tracing::warn!(slug, spec_path, "job-dispatch: spec file not found, skipping copy");
-    }
+    write_phase_spec(&worktree_path, spec_path, &payload.pipeline, phase_idx);
 
     // 3. Run `ship use {agent}` in the worktree
     if let Err(e) = compile_agent_config(&worktree_path, agent) {
@@ -223,6 +234,158 @@ fn spawn_agent_with_mesh_id(tmux_session: &str, slug: &str) {
             .args(["send-keys", "-t", &session, "1", "Enter"])
             .status();
     });
+}
+
+/// Write the job spec to the worktree, optionally injecting pipeline phase context.
+fn write_phase_spec(
+    worktree_path: &std::path::Path,
+    spec_path: &str,
+    pipeline: &Option<Vec<PipelinePhase>>,
+    phase_idx: Option<usize>,
+) {
+    let dst_spec = worktree_path.join(".ship-session").join("job-spec.md");
+
+    // Read the original spec
+    let src = std::path::Path::new(spec_path);
+    let mut content = if src.exists() {
+        std::fs::read_to_string(src).unwrap_or_default()
+    } else {
+        // Try relative to worktree parent (main repo)
+        let parent = worktree_path.parent().and_then(|p| p.parent());
+        if let Some(root) = parent {
+            let alt = root.join(spec_path);
+            std::fs::read_to_string(&alt).unwrap_or_default()
+        } else {
+            String::new()
+        }
+    };
+
+    // Inject phase context if this is a pipeline job
+    if let (Some(pipeline), Some(idx)) = (pipeline, phase_idx) {
+        let total = pipeline.len();
+        let current = &pipeline[idx];
+        let mut phase_header = format!(
+            "## Current Phase\n\nPhase {} of {}: {}\nAgent: {}\nGoal: {}\n",
+            idx + 1, total, current.goal, current.agent, current.goal,
+        );
+
+        if idx > 0 {
+            phase_header.push_str("\nPrior phases completed:\n");
+            for (i, p) in pipeline[..idx].iter().enumerate() {
+                phase_header.push_str(&format!("- Phase {} ({}): {}\n", i + 1, p.agent, p.goal));
+            }
+        }
+
+        phase_header.push('\n');
+
+        // Insert after frontmatter (after second ---)
+        if let Some(end) = content.find("---\n").and_then(|first| {
+            content[first + 4..].find("---\n").map(|second| first + 4 + second + 4)
+        }) {
+            content.insert_str(end, &phase_header);
+        } else {
+            content = format!("{phase_header}\n{content}");
+        }
+    }
+
+    if let Err(e) = std::fs::write(&dst_spec, &content) {
+        tracing::error!("job-dispatch: failed to write job-spec.md: {e}");
+    }
+}
+
+/// Check if a completed job has a pipeline with more phases.
+/// If so, dispatch the next phase in the same worktree. Returns true if advanced.
+async fn try_advance_pipeline(
+    kernel: &Arc<Mutex<runtime::events::KernelRouter>>,
+    envelope: &EventEnvelope,
+) -> bool {
+    let payload: serde_json::Value = match serde_json::from_str(&envelope.payload_json) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+
+    let slug = match payload["slug"].as_str() {
+        Some(s) => s.to_string(),
+        None => return false,
+    };
+
+    // Load current job state to check pipeline
+    let jobs = match load_jobs() {
+        Ok(j) => j,
+        Err(_) => return false,
+    };
+
+    let job = match jobs.values().find(|j| j.slug == slug) {
+        Some(j) => j.clone(),
+        None => return false,
+    };
+
+    let pipeline = match &job.pipeline {
+        Some(p) if p.len() > 1 => p,
+        _ => return false,
+    };
+
+    // Determine current phase (default 0 if not tracked)
+    let current = job.current_phase.unwrap_or(0);
+    let next = current + 1;
+
+    if next >= pipeline.len() {
+        tracing::info!(slug, "job-dispatch: pipeline complete (all {} phases done)", pipeline.len());
+        return false; // All phases done — let normal completion flow handle it
+    }
+
+    let next_phase = &pipeline[next];
+    tracing::info!(
+        slug,
+        phase = next,
+        agent = next_phase.agent,
+        goal = next_phase.goal,
+        "job-dispatch: advancing pipeline to next phase"
+    );
+
+    let worktree_path = worktrees_dir().join(&slug);
+    if !worktree_path.exists() {
+        tracing::error!(slug, "job-dispatch: worktree missing for pipeline advance");
+        return false;
+    }
+
+    // Rewrite the spec with next phase context
+    write_phase_spec(&worktree_path, &job.spec_path, &job.pipeline, Some(next));
+
+    // Re-run ship use with the new agent
+    if let Err(e) = compile_agent_config(&worktree_path, &next_phase.agent) {
+        tracing::error!(slug, agent = next_phase.agent, "job-dispatch: ship use failed for phase: {e}");
+        return false;
+    }
+
+    // Re-dispatch in the existing tmux session
+    let tmux_session = format!("job-{slug}");
+    spawn_agent_with_mesh_id(&tmux_session, &slug);
+
+    // Emit job.dispatched for the new phase
+    // (Re-use the existing payload but the worktree stays the same)
+    let dispatched_payload = runtime::events::job::JobDispatchedPayload {
+        job_id: job.job_id.clone(),
+        worktree: worktree_path.to_string_lossy().to_string(),
+        pid: None,
+    };
+    let dispatched_envelope = match EventEnvelope::new(
+        runtime::events::job::event_types::JOB_DISPATCHED,
+        &job.job_id,
+        &dispatched_payload,
+    ) {
+        Ok(e) => e,
+        Err(_) => return true,
+    };
+    let ctx = EmitContext {
+        caller_kind: CallerKind::Mcp,
+        skill_id: None,
+        workspace_id: None,
+        session_id: None,
+    };
+    let _ = kernel.lock().await.route(dispatched_envelope, &ctx).await;
+
+    true
 }
 
 /// Clean up worktree, tmux session, and branch for a completed/merged job.

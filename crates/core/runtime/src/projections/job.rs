@@ -42,6 +42,12 @@ pub struct JobRecord {
     pub error: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Pipeline phases (if multi-phase job).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pipeline: Option<Vec<crate::events::job::PipelinePhase>>,
+    /// Index of the currently active pipeline phase.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_phase: Option<usize>,
 }
 
 /// Apply a single event to an existing `JobRecord`.
@@ -122,6 +128,8 @@ pub fn project(events: &[EventEnvelope]) -> HashMap<String, JobRecord> {
                             .filter_map(|v| v.as_str().map(str::to_string))
                             .collect()
                     });
+                let pipeline: Option<Vec<crate::events::job::PipelinePhase>> =
+                    serde_json::from_value(p["pipeline"].clone()).ok();
                 let record = JobRecord {
                     job_id: job_id.clone(),
                     slug: p["slug"].as_str().unwrap_or("").to_string(),
@@ -135,6 +143,8 @@ pub fn project(events: &[EventEnvelope]) -> HashMap<String, JobRecord> {
                     error: None,
                     created_at: event.created_at,
                     updated_at: event.created_at,
+                    pipeline,
+                    current_phase: None,
                 };
                 map.insert(job_id, record);
             }
