@@ -203,40 +203,44 @@ async fn dispatch_job(
 
     tracing::info!(slug, branch, agent, phase = ?phase_idx, "job-dispatch: dispatching job");
 
-    // 1. Create git worktree
     let worktree_path = worktrees_dir().join(slug);
-    if let Err(e) = create_worktree(&worktree_path, branch, None) {
-        tracing::error!(slug, "job-dispatch: worktree creation failed: {e}");
-        return;
+
+    // Steps 1-6 involve external processes (git, ship, tmux) — skip in test context
+    if !cfg!(test) {
+        // 1. Create git worktree
+        if let Err(e) = create_worktree(&worktree_path, branch, None) {
+            tracing::error!(slug, "job-dispatch: worktree creation failed: {e}");
+            return;
+        }
+
+        // 2. Copy spec + inject phase context
+        let session_dir = worktree_path.join(".ship-session");
+        if let Err(e) = std::fs::create_dir_all(&session_dir) {
+            tracing::error!(slug, "job-dispatch: failed to create .ship-session: {e}");
+            return;
+        }
+        write_phase_spec(&worktree_path, spec_path, &payload.pipeline, phase_idx);
+
+        // 3. Run `ship use {agent}` in the worktree
+        if let Err(e) = compile_agent_config(&worktree_path, agent) {
+            tracing::error!(slug, agent, "job-dispatch: ship use failed: {e}");
+            return;
+        }
+
+        // 4. Create tmux session and spawn terminal
+        let tmux_session = format!("job-{slug}");
+        if let Err(e) = ensure_tmux_session(&tmux_session, &worktree_path) {
+            tracing::error!(slug, "job-dispatch: tmux session creation failed: {e}");
+            return;
+        }
+
+        // 5. Send agent command with SHIP_MESH_ID in environment
+        spawn_agent_with_mesh_id(&tmux_session, slug);
+
+        // 6. Launch terminal (respects SHIP_DEFAULT_TERMINAL)
+        let (strategy, launched) = terminal_launcher::launch(&tmux_session);
+        tracing::info!(slug, strategy, launched, "job-dispatch: terminal launch attempted");
     }
-
-    // 2. Copy spec + inject phase context
-    let session_dir = worktree_path.join(".ship-session");
-    if let Err(e) = std::fs::create_dir_all(&session_dir) {
-        tracing::error!(slug, "job-dispatch: failed to create .ship-session: {e}");
-        return;
-    }
-    write_phase_spec(&worktree_path, spec_path, &payload.pipeline, phase_idx);
-
-    // 3. Run `ship use {agent}` in the worktree
-    if let Err(e) = compile_agent_config(&worktree_path, agent) {
-        tracing::error!(slug, agent, "job-dispatch: ship use failed: {e}");
-        return;
-    }
-
-    // 4. Create tmux session and spawn terminal
-    let tmux_session = format!("job-{slug}");
-    if let Err(e) = ensure_tmux_session(&tmux_session, &worktree_path) {
-        tracing::error!(slug, "job-dispatch: tmux session creation failed: {e}");
-        return;
-    }
-
-    // 5. Send agent command with SHIP_MESH_ID in environment
-    spawn_agent_with_mesh_id(&tmux_session, slug);
-
-    // 6. Launch terminal (respects SHIP_DEFAULT_TERMINAL)
-    let (strategy, launched) = terminal_launcher::launch(&tmux_session);
-    tracing::info!(slug, strategy, launched, "job-dispatch: terminal launch attempted");
 
     // 7. Emit job.dispatched
     emit_job_dispatched(kernel, payload, &worktree_path, slug).await;
