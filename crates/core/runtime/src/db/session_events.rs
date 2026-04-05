@@ -15,6 +15,7 @@ use crate::db::block_on_anyhow;
 use crate::events::store::EventStore;
 use crate::events::types::event_types;
 use crate::events::types::{SessionEnded, SessionProgress, SessionRecorded, SessionStarted};
+use crate::projections::{Projection, SessionProjection};
 use crate::events::validator::{CallerKind, EmitContext};
 use crate::events::{EventEnvelope, SqliteEventStore};
 
@@ -131,4 +132,31 @@ pub fn insert_session_recorded_event(
         payload,
     )?;
     emit_session(envelope, workspace_id)
+}
+
+/// Emit a session drain/tool-count event and apply the projection synchronously.
+pub fn emit_session_drain_event<P: serde::Serialize>(
+    event_type: &str,
+    session_id: &str,
+    workspace_id: &str,
+    payload: &P,
+) -> Result<EventEnvelope> {
+    let envelope = session_envelope(event_type, session_id, workspace_id, payload)?;
+    SqliteEventStore::new()?.append(&envelope)?;
+
+    // Apply projection synchronously for immediate read-back consistency.
+    let proj = SessionProjection::new();
+    match crate::db::open_db() {
+        Ok(mut conn) => {
+            if let Err(e) = proj.apply(&envelope, &mut conn) {
+                eprintln!(
+                    "[session-drain] projection error for {}: {}",
+                    envelope.event_type, e
+                );
+            }
+        }
+        Err(e) => eprintln!("[session-drain] db open error: {e}"),
+    }
+
+    Ok(envelope)
 }

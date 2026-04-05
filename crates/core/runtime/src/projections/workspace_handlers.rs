@@ -38,7 +38,6 @@ pub(super) struct ActivatedPayload {
 
 #[derive(serde::Deserialize)]
 pub(super) struct CompiledPayload {
-    #[allow(dead_code)]
     pub config_generation: u32,
     #[allow(dead_code)]
     pub duration_ms: u64,
@@ -67,6 +66,17 @@ pub(super) struct ReconciledPayload {
     pub worktree_path: Option<String>,
     #[allow(dead_code)]
     pub reason: String,
+}
+
+#[derive(serde::Deserialize)]
+pub(super) struct TmuxAssignedPayload {
+    pub tmux_session_name: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+pub(super) struct StartedPayload {
+    pub worktree_path: String,
+    pub tmux_session_name: String,
 }
 
 // ── Handlers ────────────────────────────────────────────────────────────────
@@ -151,14 +161,15 @@ pub(super) fn apply_compiled(
     event_time: &chrono::DateTime<chrono::Utc>,
     conn: &mut SqliteConnection,
 ) -> Result<()> {
-    let _p: CompiledPayload = serde_json::from_str(payload_json)?;
+    let p: CompiledPayload = serde_json::from_str(payload_json)?;
     let compiled_at = event_time.to_rfc3339();
     block_on(async {
         sqlx::query(
             "UPDATE workspace SET compiled_at = ?, compile_error = NULL, \
-             config_generation = config_generation + 1, updated_at = ? WHERE branch = ?",
+             config_generation = ?, updated_at = ? WHERE branch = ?",
         )
         .bind(&compiled_at)
+        .bind(p.config_generation)
         .bind(&compiled_at)
         .bind(entity_id)
         .execute(conn)
@@ -260,10 +271,59 @@ pub(super) fn apply_reconciled(
 
 pub(super) fn apply_deleted(entity_id: &str, conn: &mut SqliteConnection) -> Result<()> {
     block_on(async {
+        // Delete associated sessions first, then the workspace row.
+        sqlx::query(
+            "DELETE FROM workspace_session WHERE workspace_branch = ?",
+        )
+        .bind(entity_id)
+        .execute(&mut *conn)
+        .await?;
         sqlx::query("DELETE FROM workspace WHERE branch = ?")
             .bind(entity_id)
             .execute(conn)
             .await?;
+        Ok(())
+    })
+}
+
+pub(super) fn apply_tmux_assigned(
+    entity_id: &str,
+    payload_json: &str,
+    conn: &mut SqliteConnection,
+) -> Result<()> {
+    let p: TmuxAssignedPayload = serde_json::from_str(payload_json)?;
+    let now = chrono::Utc::now().to_rfc3339();
+    block_on(async {
+        sqlx::query(
+            "UPDATE workspace SET tmux_session_name = ?, updated_at = ? WHERE branch = ?",
+        )
+        .bind(&p.tmux_session_name)
+        .bind(&now)
+        .bind(entity_id)
+        .execute(conn)
+        .await?;
+        Ok(())
+    })
+}
+
+pub(super) fn apply_started(
+    entity_id: &str,
+    payload_json: &str,
+    conn: &mut SqliteConnection,
+) -> Result<()> {
+    let p: StartedPayload = serde_json::from_str(payload_json)?;
+    let now = chrono::Utc::now().to_rfc3339();
+    block_on(async {
+        sqlx::query(
+            "UPDATE workspace SET worktree_path = ?, tmux_session_name = ?, \
+             is_worktree = 1, updated_at = ? WHERE branch = ?",
+        )
+        .bind(&p.worktree_path)
+        .bind(&p.tmux_session_name)
+        .bind(&now)
+        .bind(entity_id)
+        .execute(conn)
+        .await?;
         Ok(())
     })
 }

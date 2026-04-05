@@ -171,4 +171,183 @@ mod workspace_tests {
             "report must list rebuilt projections"
         );
     }
+
+    // ── Idempotency tests ─────────────────────────────────────────────
+
+    #[test]
+    fn compiled_projection_is_idempotent() {
+        let mut conn = setup();
+        let bus = bus();
+        let branch = "feature/idem-compiled";
+
+        bus.dispatch(&workspace_created_event(branch), &mut conn);
+
+        let event = workspace_compiled_event(branch);
+        bus.dispatch(&event, &mut conn);
+        bus.dispatch(&event, &mut conn); // apply same event twice
+
+        let config_gen: Option<i64> = block_on(async {
+            sqlx::query_scalar("SELECT config_generation FROM workspace WHERE branch = ?")
+                .bind(branch)
+                .fetch_optional(&mut conn)
+                .await
+        })
+        .unwrap();
+        assert_eq!(config_gen, Some(1), "applying same compiled event twice must not double-increment");
+    }
+
+    #[test]
+    fn tmux_assigned_projection_applies() {
+        let mut conn = setup();
+        let bus = bus();
+        let branch = "feature/tmux-test";
+
+        bus.dispatch(&workspace_created_event(branch), &mut conn);
+
+        let event = EventEnvelope::new(
+            event_types::WORKSPACE_TMUX_ASSIGNED,
+            branch,
+            &serde_json::json!({ "tmux_session_name": "ship-tmux" }),
+        )
+        .unwrap()
+        .with_context(Some(branch), None)
+        .elevate();
+        bus.dispatch(&event, &mut conn);
+
+        let name: Option<String> = block_on(async {
+            sqlx::query_scalar("SELECT tmux_session_name FROM workspace WHERE branch = ?")
+                .bind(branch)
+                .fetch_optional(&mut conn)
+                .await
+        })
+        .unwrap()
+        .flatten();
+        assert_eq!(name.as_deref(), Some("ship-tmux"));
+    }
+
+    #[test]
+    fn started_projection_sets_worktree_fields() {
+        let mut conn = setup();
+        let bus = bus();
+        let branch = "feature/started-test";
+
+        bus.dispatch(&workspace_created_event(branch), &mut conn);
+
+        let event = EventEnvelope::new(
+            event_types::WORKSPACE_STARTED,
+            branch,
+            &serde_json::json!({
+                "worktree_path": "/tmp/worktrees/started-test",
+                "tmux_session_name": "ship-started"
+            }),
+        )
+        .unwrap()
+        .with_context(Some(branch), None)
+        .elevate();
+        bus.dispatch(&event, &mut conn);
+
+        let row: Option<(i64, Option<String>, Option<String>)> = block_on(async {
+            sqlx::query_as(
+                "SELECT is_worktree, worktree_path, tmux_session_name \
+                 FROM workspace WHERE branch = ?",
+            )
+            .bind(branch)
+            .fetch_optional(&mut conn)
+            .await
+        })
+        .unwrap();
+        let (is_wt, wt_path, tmux) = row.unwrap();
+        assert_eq!(is_wt, 1);
+        assert_eq!(wt_path.as_deref(), Some("/tmp/worktrees/started-test"));
+        assert_eq!(tmux.as_deref(), Some("ship-started"));
+    }
+
+    #[test]
+    fn event_versioning_v1_compiled_without_new_fields() {
+        // Scenario S7: v1 compiled event (with config_generation + duration_ms)
+        // replays correctly even if future v2 adds fields with serde defaults.
+        let mut conn = setup();
+        let bus = bus();
+        let branch = "feature/versioning-test";
+
+        bus.dispatch(&workspace_created_event(branch), &mut conn);
+
+        // Simulate a v1 event payload with only the original fields.
+        let v1_event = EventEnvelope::new(
+            event_types::WORKSPACE_COMPILED,
+            branch,
+            &serde_json::json!({
+                "config_generation": 5,
+                "duration_ms": 100
+            }),
+        )
+        .unwrap()
+        .with_context(Some(branch), None)
+        .elevate();
+
+        bus.dispatch(&v1_event, &mut conn);
+
+        let config_gen: Option<i64> = block_on(async {
+            sqlx::query_scalar("SELECT config_generation FROM workspace WHERE branch = ?")
+                .bind(branch)
+                .fetch_optional(&mut conn)
+                .await
+        })
+        .unwrap();
+        assert_eq!(config_gen, Some(5), "v1 event must set config_generation from payload");
+    }
+
+    #[test]
+    fn rebuild_preserves_tmux_and_worktree_state() {
+        let mut conn = setup();
+        let bus = bus();
+        let branch = "feature/rebuild-tmux";
+
+        let events = vec![
+            workspace_created_event(branch),
+            EventEnvelope::new(
+                event_types::WORKSPACE_STARTED,
+                branch,
+                &serde_json::json!({
+                    "worktree_path": "/tmp/wt/rebuild",
+                    "tmux_session_name": "ship-rebuild"
+                }),
+            )
+            .unwrap()
+            .with_context(Some(branch), None)
+            .elevate(),
+            workspace_compiled_event(branch),
+        ];
+
+        for e in &events {
+            bus.dispatch(e, &mut conn);
+        }
+
+        // Capture state before rebuild.
+        let before: Option<(Option<String>, Option<String>, i64)> = block_on(async {
+            sqlx::query_as(
+                "SELECT tmux_session_name, worktree_path, config_generation \
+                 FROM workspace WHERE branch = ?",
+            )
+            .bind(branch)
+            .fetch_optional(&mut conn)
+            .await
+        })
+        .unwrap();
+
+        bus.rebuild(&events, &mut conn).unwrap();
+
+        let after: Option<(Option<String>, Option<String>, i64)> = block_on(async {
+            sqlx::query_as(
+                "SELECT tmux_session_name, worktree_path, config_generation \
+                 FROM workspace WHERE branch = ?",
+            )
+            .bind(branch)
+            .fetch_optional(&mut conn)
+            .await
+        })
+        .unwrap();
+
+        assert_eq!(before, after, "rebuild must reproduce identical state");
+    }
 }

@@ -10,11 +10,13 @@
 use crate::db::workspace_events::{
     emit_workspace_activated, emit_workspace_agent_changed, emit_workspace_archived,
     emit_workspace_compile_failed, emit_workspace_compiled, emit_workspace_created,
-    emit_workspace_deleted, emit_workspace_reconciled, emit_workspace_status_changed,
+    emit_workspace_deleted, emit_workspace_reconciled, emit_workspace_started,
+    emit_workspace_status_changed, emit_workspace_tmux_assigned,
 };
 use crate::events::types::{
     WorkspaceActivated, WorkspaceAgentChanged, WorkspaceArchived, WorkspaceCompileFailed,
-    WorkspaceCompiled, WorkspaceCreated, WorkspaceReconciled, WorkspaceStatusChanged,
+    WorkspaceCompiled, WorkspaceCreated, WorkspaceReconciled, WorkspaceStarted,
+    WorkspaceStatusChanged, WorkspaceTmuxAssigned,
 };
 use crate::events::EventEnvelope;
 use crate::projections::{Projection, WorkspaceProjection};
@@ -171,6 +173,34 @@ pub fn emit_workspace_agent_changed_event(
 ) -> Result<()> {
     let payload = WorkspaceAgentChanged { agent_id: agent_id.map(str::to_string) };
     let envelope = emit_workspace_agent_changed(branch, &payload)?;
+    sync_workspace_projection(&envelope);
+    Ok(())
+}
+
+pub fn upsert_workspace_on_tmux_assigned(
+    _ship_dir: &Path,
+    branch: &str,
+    tmux_session_name: Option<&str>,
+) -> Result<()> {
+    let payload = WorkspaceTmuxAssigned {
+        tmux_session_name: tmux_session_name.map(str::to_string),
+    };
+    let envelope = emit_workspace_tmux_assigned(branch, &payload)?;
+    sync_workspace_projection(&envelope);
+    Ok(())
+}
+
+pub fn upsert_workspace_on_started(
+    _ship_dir: &Path,
+    branch: &str,
+    worktree_path: &str,
+    tmux_session_name: &str,
+) -> Result<()> {
+    let payload = WorkspaceStarted {
+        worktree_path: worktree_path.to_string(),
+        tmux_session_name: tmux_session_name.to_string(),
+    };
+    let envelope = emit_workspace_started(branch, &payload)?;
     sync_workspace_projection(&envelope);
     Ok(())
 }

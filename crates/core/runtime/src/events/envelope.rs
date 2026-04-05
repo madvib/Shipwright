@@ -26,7 +26,6 @@ pub struct EventEnvelope {
     pub actor: String,
     pub payload_json: String,
     pub version: u32,
-    pub correlation_id: Option<String>,
     pub causation_id: Option<String>,
     pub workspace_id: Option<String>,
     pub session_id: Option<String>,
@@ -47,7 +46,6 @@ impl EventEnvelope {
             actor: "ship".to_string(),
             payload_json,
             version: 1,
-            correlation_id: None,
             causation_id: None,
             workspace_id: None,
             session_id: None,
@@ -57,11 +55,6 @@ impl EventEnvelope {
             elevated: false,
             created_at: Utc::now(),
         })
-    }
-
-    pub fn with_correlation(mut self, correlation_id: &str) -> Self {
-        self.correlation_id = Some(correlation_id.to_string());
-        self
     }
 
     pub fn with_causation(mut self, causation_id: &str) -> Self {

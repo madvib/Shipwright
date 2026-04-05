@@ -23,7 +23,6 @@ fn test_round_trip() -> anyhow::Result<()> {
         "entity-a",
         &SessionStarted { goal: Some("build the thing".into()), ..Default::default() },
     )?
-    .with_correlation("corr-1")
     .with_context(Some("ws-1"), Some("sess-1"));
 
     store.append(&ev)?;
@@ -35,7 +34,6 @@ fn test_round_trip() -> anyhow::Result<()> {
     assert_eq!(got.actor, ev.actor);
     assert_eq!(got.payload_json, ev.payload_json);
     assert_eq!(got.version, ev.version);
-    assert_eq!(got.correlation_id, ev.correlation_id);
     assert_eq!(got.workspace_id, ev.workspace_id);
     assert_eq!(got.session_id, ev.session_id);
     Ok(())
@@ -101,25 +99,6 @@ fn test_filter_by_workspace_id() -> anyhow::Result<()> {
     let results = store.query(&EventFilter { workspace_id: Some("ws-scoped".into()), ..Default::default() })?;
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].workspace_id.as_deref(), Some("ws-scoped"));
-    Ok(())
-}
-
-#[test]
-fn test_correlation_chain() -> anyhow::Result<()> {
-    let (_tmp, store) = setup();
-    let corr = "corr-chain-id";
-    for i in 0..5 {
-        let ev = EventEnvelope::new(event_types::SESSION_PROGRESS, "chain-entity", &SessionProgress { message: format!("step {i}") })?
-            .with_correlation(corr);
-        store.append(&ev)?;
-    }
-    let results = store.query_correlation(corr)?;
-    assert_eq!(results.len(), 5);
-    // ULID order
-    let ids: Vec<&str> = results.iter().map(|e| e.id.as_str()).collect();
-    let mut sorted = ids.clone();
-    sorted.sort_unstable();
-    assert_eq!(ids, sorted);
     Ok(())
 }
 
@@ -223,8 +202,6 @@ fn test_concurrent_appends() -> anyhow::Result<()> {
 fn test_empty_queries() -> anyhow::Result<()> {
     let (_tmp, store) = setup();
     let results = store.query_aggregate("no-such-entity")?;
-    assert!(results.is_empty());
-    let results = store.query_correlation("no-such-corr")?;
     assert!(results.is_empty());
     let results = store.query(&EventFilter { event_type: Some("nonexistent.type".into()), ..Default::default() })?;
     assert!(results.is_empty());

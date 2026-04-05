@@ -64,6 +64,17 @@ pub struct WorkspaceReconciled {
     pub reason: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorkspaceTmuxAssigned {
+    pub tmux_session_name: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorkspaceStarted {
+    pub worktree_path: String,
+    pub tmux_session_name: String,
+}
+
 // ── Session aggregate ─────────────────────────────────────────────────────────
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -98,6 +109,24 @@ pub struct SessionEnded {
     #[serde(default)]
     pub compile_error: Option<String>,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SessionDrainStarted {
+    pub drained_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SessionDrainCompleted {
+    pub ended_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SessionDrainAborted {
+    pub resumed_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SessionToolCountIncremented {}
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct SessionRecorded {
@@ -231,10 +260,16 @@ pub mod event_types {
     pub const WORKSPACE_ARCHIVED: &str = "workspace.archived";
     pub const WORKSPACE_AGENT_CHANGED: &str = "workspace.agent_changed";
     pub const WORKSPACE_RECONCILED: &str = "workspace.reconciled";
+    pub const WORKSPACE_TMUX_ASSIGNED: &str = "workspace.tmux_assigned";
+    pub const WORKSPACE_STARTED: &str = "workspace.started";
     pub const SESSION_STARTED: &str = "session.started";
     pub const SESSION_PROGRESS: &str = "session.progress";
     pub const SESSION_ENDED: &str = "session.ended";
     pub const SESSION_RECORDED: &str = "session.recorded";
+    pub const SESSION_DRAIN_STARTED: &str = "session.drain_started";
+    pub const SESSION_DRAIN_COMPLETED: &str = "session.drain_completed";
+    pub const SESSION_DRAIN_ABORTED: &str = "session.drain_aborted";
+    pub const SESSION_TOOL_COUNT_INCREMENTED: &str = "session.tool_count_incremented";
     pub const ACTOR_CREATED: &str = "actor.created";
     pub const ACTOR_WOKE: &str = "actor.woke";
     pub const ACTOR_SLEPT: &str = "actor.slept";
@@ -265,10 +300,16 @@ pub mod event_types {
         WORKSPACE_ARCHIVED,
         WORKSPACE_AGENT_CHANGED,
         WORKSPACE_RECONCILED,
+        WORKSPACE_TMUX_ASSIGNED,
+        WORKSPACE_STARTED,
         SESSION_STARTED,
         SESSION_PROGRESS,
         SESSION_ENDED,
         SESSION_RECORDED,
+        SESSION_DRAIN_STARTED,
+        SESSION_DRAIN_COMPLETED,
+        SESSION_DRAIN_ABORTED,
+        SESSION_TOOL_COUNT_INCREMENTED,
         ACTOR_CREATED,
         ACTOR_WOKE,
         ACTOR_SLEPT,
@@ -304,6 +345,6 @@ mod tests {
 
     #[test]
     fn all_constants_have_expected_count() {
-        assert_eq!(ALL.len(), 31, "exactly 31 event type constants required");
+        assert_eq!(ALL.len(), 37, "exactly 37 event type constants required");
     }
 }

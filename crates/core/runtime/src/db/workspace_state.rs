@@ -1,7 +1,7 @@
-//! Workspace state CRUD — the primary workspace persistence layer.
+//! Workspace state reads — projection table queries.
 //!
-//! These functions are used by `crate::workspace` for all workspace lifecycle
-//! operations.  They write to the unified `workspace` table in platform.db.
+//! All writes go through events and projections. These functions read from the
+//! `workspace` projection table in platform.db.
 
 use anyhow::Result;
 use sqlx::Row;
@@ -120,78 +120,6 @@ pub fn list_workspaces_db() -> Result<Vec<WorkspaceDbListRow>> {
         ));
     }
     Ok(result)
-}
-
-/// Set tmux_session_name for the workspace identified by branch.
-///
-/// Returns `true` if the workspace was found and updated, `false` if not found.
-pub fn set_workspace_tmux_session_db(branch: &str, session_name: Option<&str>) -> Result<bool> {
-    let mut conn = open_db()?;
-    let rows_affected = block_on(async {
-        sqlx::query("UPDATE workspace SET tmux_session_name = ? WHERE branch = ?")
-            .bind(session_name)
-            .bind(branch)
-            .execute(&mut conn)
-            .await
-    })?
-    .rows_affected();
-    Ok(rows_affected > 0)
-}
-
-/// Update both worktree_path and tmux_session_name for a workspace in one call.
-/// Sets is_worktree = 1 implicitly. Returns true if the workspace was found and updated.
-pub fn set_workspace_started_db(
-    branch: &str,
-    worktree_path: &str,
-    tmux_session: &str,
-) -> Result<bool> {
-    let mut conn = open_db()?;
-    let rows_affected = block_on(async {
-        sqlx::query(
-            "UPDATE workspace SET worktree_path = ?, tmux_session_name = ?, is_worktree = 1 WHERE branch = ?",
-        )
-        .bind(worktree_path)
-        .bind(tmux_session)
-        .bind(branch)
-        .execute(&mut conn)
-        .await
-    })?
-    .rows_affected();
-    Ok(rows_affected > 0)
-}
-
-/// Delete workspace state for a branch, including any session history.
-pub fn delete_workspace_db(branch: &str) -> Result<bool> {
-    let mut conn = open_db()?;
-    let workspace_id = block_on(async {
-        sqlx::query_scalar::<_, String>(
-            "SELECT COALESCE(id, branch) FROM workspace WHERE branch = ?",
-        )
-        .bind(branch)
-        .fetch_optional(&mut conn)
-        .await
-    })?;
-
-    let Some(workspace_id) = workspace_id else {
-        return Ok(false);
-    };
-
-    let deleted = block_on(async {
-        sqlx::query("DELETE FROM workspace_session WHERE workspace_id = ? OR workspace_branch = ?")
-            .bind(&workspace_id)
-            .bind(branch)
-            .execute(&mut conn)
-            .await?;
-
-        let result = sqlx::query("DELETE FROM workspace WHERE branch = ?")
-            .bind(branch)
-            .execute(&mut conn)
-            .await?;
-
-        Ok::<bool, sqlx::Error>(result.rows_affected() > 0)
-    })?;
-
-    Ok(deleted)
 }
 
 /// Retrieve the tmux_session_name for a workspace by id or branch.

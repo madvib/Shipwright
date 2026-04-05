@@ -12,7 +12,6 @@ pub trait EventStore: Send + Sync {
     fn get(&self, id: &str) -> Result<Option<EventEnvelope>>;
     fn query(&self, filter: &EventFilter) -> Result<Vec<EventEnvelope>>;
     fn query_aggregate(&self, entity_id: &str) -> Result<Vec<EventEnvelope>>;
-    fn query_correlation(&self, correlation_id: &str) -> Result<Vec<EventEnvelope>>;
 }
 
 pub struct SqliteEventStore {
@@ -27,7 +26,7 @@ impl SqliteEventStore {
 }
 
 const COLS: &str = "id, event_type, entity_id, actor, payload_json, version, \
-    correlation_id, causation_id, workspace_id, session_id, \
+    causation_id, workspace_id, session_id, \
     actor_id, parent_actor_id, elevated, created_at";
 
 /// Query a single DB file with the given filter. Returns empty vec if the DB
@@ -48,9 +47,6 @@ fn query_one_db(path: &Path, filter: &EventFilter) -> Result<Vec<EventEnvelope>>
     }
     if let Some(ref v) = filter.session_id {
         qb.push(" AND session_id = ").push_bind(v.clone());
-    }
-    if let Some(ref v) = filter.correlation_id {
-        qb.push(" AND correlation_id = ").push_bind(v.clone());
     }
     if let Some(ref v) = filter.actor_id {
         qb.push(" AND actor_id = ").push_bind(v.clone());
@@ -100,9 +96,9 @@ impl EventStore for SqliteEventStore {
             sqlx::query(
                 "INSERT INTO events \
                  (id, event_type, entity_id, actor, payload_json, version, \
-                  correlation_id, causation_id, workspace_id, session_id, \
+                  causation_id, workspace_id, session_id, \
                   actor_id, parent_actor_id, elevated, created_at) \
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&event.id)
             .bind(&event.event_type)
@@ -110,7 +106,6 @@ impl EventStore for SqliteEventStore {
             .bind(&event.actor)
             .bind(&event.payload_json)
             .bind(event.version as i64)
-            .bind(&event.correlation_id)
             .bind(&event.causation_id)
             .bind(&event.workspace_id)
             .bind(&event.session_id)
@@ -180,20 +175,13 @@ impl EventStore for SqliteEventStore {
         })
     }
 
-    fn query_correlation(&self, correlation_id: &str) -> Result<Vec<EventEnvelope>> {
-        self.query(&EventFilter {
-            correlation_id: Some(correlation_id.to_string()),
-            ..Default::default()
-        })
-    }
 }
 
 fn row_to_envelope(row: &sqlx::sqlite::SqliteRow) -> Result<EventEnvelope> {
     // Columns: id(0) event_type(1) entity_id(2) actor(3) payload_json(4) version(5)
-    //          correlation_id(6) causation_id(7) workspace_id(8) session_id(9)
-    //          actor_id(10) parent_actor_id(11) elevated(12) created_at(13)
-    //          target_actor_id(14)
-    let created_at_str: String = row.get(13);
+    //          causation_id(6) workspace_id(7) session_id(8)
+    //          actor_id(9) parent_actor_id(10) elevated(11) created_at(12)
+    let created_at_str: String = row.get(12);
     let created_at = created_at_str
         .parse::<DateTime<Utc>>()
         .or_else(|_| {
@@ -209,13 +197,12 @@ fn row_to_envelope(row: &sqlx::sqlite::SqliteRow) -> Result<EventEnvelope> {
         actor: row.get(3),
         payload_json: row.get(4),
         version: row.get::<i64, _>(5) as u32,
-        correlation_id: row.get(6),
-        causation_id: row.get(7),
-        workspace_id: row.get(8),
-        session_id: row.get(9),
-        actor_id: row.get(10),
-        parent_actor_id: row.get(11),
-        elevated: row.get::<i64, _>(12) != 0,
+        causation_id: row.get(6),
+        workspace_id: row.get(7),
+        session_id: row.get(8),
+        actor_id: row.get(9),
+        parent_actor_id: row.get(10),
+        elevated: row.get::<i64, _>(11) != 0,
         created_at,
         target_actor_id: None,
     })

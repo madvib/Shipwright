@@ -14,7 +14,7 @@ use crate::events::types::event_types;
 use crate::events::types::{
     WorkspaceActivated, WorkspaceAgentChanged, WorkspaceArchived, WorkspaceCompileFailed,
     WorkspaceCompiled, WorkspaceCreated, WorkspaceDeleted, WorkspaceReconciled,
-    WorkspaceStatusChanged,
+    WorkspaceStarted, WorkspaceStatusChanged, WorkspaceTmuxAssigned,
 };
 use crate::events::validator::{CallerKind, EmitContext};
 use crate::events::{EventEnvelope, SqliteEventStore};
@@ -89,4 +89,12 @@ pub fn emit_workspace_agent_changed(branch: &str, payload: &WorkspaceAgentChange
 
 pub fn emit_workspace_reconciled(branch: &str, payload: &WorkspaceReconciled) -> Result<EventEnvelope> {
     run_tx(branch, event_types::WORKSPACE_RECONCILED, payload)
+}
+
+pub fn emit_workspace_tmux_assigned(branch: &str, payload: &WorkspaceTmuxAssigned) -> Result<EventEnvelope> {
+    run_tx(branch, event_types::WORKSPACE_TMUX_ASSIGNED, payload)
+}
+
+pub fn emit_workspace_started(branch: &str, payload: &WorkspaceStarted) -> Result<EventEnvelope> {
+    run_tx(branch, event_types::WORKSPACE_STARTED, payload)
 }

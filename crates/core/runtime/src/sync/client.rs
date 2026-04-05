@@ -128,7 +128,6 @@ mod tests {
             actor: "ship".to_string(),
             payload_json: "{}".to_string(),
             version: 1,
-            correlation_id: None,
             causation_id: None,
             workspace_id: Some("ws-1".to_string()),
             session_id: None,

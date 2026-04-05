@@ -1,9 +1,7 @@
 //! Session drain primitives for MCP lifecycle management.
 //!
-//! These functions use direct SQL instead of the event/projection path.
-//! This is intentional: drain operations are on the MCP hot path and must
-//! complete quickly. The event log is append-only and would add unnecessary
-//! I/O for what are essentially status transitions.
+//! Write operations emit events; projections apply the state changes.
+//! Read operations query the workspace_session projection table directly.
 
 use anyhow::{Result, anyhow};
 use chrono::Utc;
@@ -11,6 +9,11 @@ use sqlx::Row;
 
 use super::types::WorkspaceSessionDb;
 use super::{block_on, open_db};
+use crate::db::session_events::emit_session_drain_event;
+use crate::events::types::{
+    SessionDrainAborted, SessionDrainCompleted, SessionDrainStarted,
+    SessionToolCountIncremented, event_types,
+};
 
 const S_COLS: &str =
     "id, workspace_id, workspace_branch, status, started_at, ended_at, \
@@ -63,50 +66,31 @@ pub fn find_draining_session(
     Ok(row.as_ref().map(parse_row))
 }
 
-/// Transition an active session to "draining" status.
-/// Idempotent: draining sessions remain draining.
+/// Transition an active session to "draining" status via event emission.
 pub fn drain_session(session_id: &str) -> Result<()> {
-    let mut conn = open_db()?;
+    let workspace_id = lookup_session_workspace(session_id)?;
     let now = Utc::now().to_rfc3339();
-    let affected = block_on(async {
-        sqlx::query(
-            "UPDATE workspace_session \
-             SET status = 'draining', drained_at = ?, updated_at = ? \
-             WHERE id = ? AND status IN ('active', 'draining')",
-        )
-        .bind(&now)
-        .bind(&now)
-        .bind(session_id)
-        .execute(&mut conn)
-        .await
-    })?
-    .rows_affected();
-    if affected == 0 {
-        return Err(anyhow!("session '{session_id}' not found or already ended"));
-    }
+    let payload = SessionDrainStarted { drained_at: now };
+    emit_session_drain_event(
+        event_types::SESSION_DRAIN_STARTED,
+        session_id,
+        &workspace_id,
+        &payload,
+    )?;
     Ok(())
 }
 
-/// Resume a draining session back to active.
-/// Idempotent: active sessions remain active.
+/// Resume a draining session back to active via event emission.
 pub fn resume_session(session_id: &str) -> Result<()> {
-    let mut conn = open_db()?;
+    let workspace_id = lookup_session_workspace(session_id)?;
     let now = Utc::now().to_rfc3339();
-    let affected = block_on(async {
-        sqlx::query(
-            "UPDATE workspace_session \
-             SET status = 'active', drained_at = NULL, updated_at = ? \
-             WHERE id = ? AND status IN ('draining', 'active')",
-        )
-        .bind(&now)
-        .bind(session_id)
-        .execute(&mut conn)
-        .await
-    })?
-    .rows_affected();
-    if affected == 0 {
-        return Err(anyhow!("session '{session_id}' not found or already ended"));
-    }
+    let payload = SessionDrainAborted { resumed_at: now };
+    emit_session_drain_event(
+        event_types::SESSION_DRAIN_ABORTED,
+        session_id,
+        &workspace_id,
+        &payload,
+    )?;
     Ok(())
 }
 
@@ -115,34 +99,54 @@ pub fn resume_session(session_id: &str) -> Result<()> {
 pub fn cleanup_stale_draining(grace_secs: i64) -> Result<u64> {
     let mut conn = open_db()?;
     let cutoff = (Utc::now() - chrono::Duration::seconds(grace_secs)).to_rfc3339();
-    let now = Utc::now().to_rfc3339();
-    let result = block_on(async {
+    let rows = block_on(async {
         sqlx::query(
-            "UPDATE workspace_session \
-             SET status = 'ended', ended_at = ?, updated_at = ? \
+            "SELECT id, workspace_id FROM workspace_session \
              WHERE status = 'draining' AND drained_at < ?",
         )
-        .bind(&now)
-        .bind(&now)
         .bind(&cutoff)
-        .execute(&mut conn)
+        .fetch_all(&mut conn)
         .await
     })?;
-    Ok(result.rows_affected())
+    let count = rows.len() as u64;
+    let now = Utc::now().to_rfc3339();
+    for row in &rows {
+        let sid: String = row.get(0);
+        let wid: String = row.get(1);
+        let payload = SessionDrainCompleted { ended_at: now.clone() };
+        let _ = emit_session_drain_event(
+            event_types::SESSION_DRAIN_COMPLETED,
+            &sid,
+            &wid,
+            &payload,
+        );
+    }
+    Ok(count)
 }
 
-/// Atomically increment tool_call_count for a session.
+/// Increment tool_call_count for a session via event emission.
 pub fn increment_tool_count(session_id: &str) -> Result<()> {
+    let workspace_id = lookup_session_workspace(session_id)?;
+    let payload = SessionToolCountIncremented {};
+    emit_session_drain_event(
+        event_types::SESSION_TOOL_COUNT_INCREMENTED,
+        session_id,
+        &workspace_id,
+        &payload,
+    )?;
+    Ok(())
+}
+
+/// Look up the workspace_id for a session.
+fn lookup_session_workspace(session_id: &str) -> Result<String> {
     let mut conn = open_db()?;
-    block_on(async {
-        sqlx::query(
-            "UPDATE workspace_session \
-             SET tool_call_count = tool_call_count + 1 \
-             WHERE id = ?",
+    let wid = block_on(async {
+        sqlx::query_scalar::<_, String>(
+            "SELECT workspace_id FROM workspace_session WHERE id = ?",
         )
         .bind(session_id)
-        .execute(&mut conn)
+        .fetch_optional(&mut conn)
         .await
     })?;
-    Ok(())
+    wid.ok_or_else(|| anyhow!("session '{session_id}' not found"))
 }

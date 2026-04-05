@@ -17,7 +17,7 @@ use crate::events::envelope::EventEnvelope;
 use crate::events::filter::EventFilter;
 
 const COLS: &str = "id, event_type, entity_id, actor, payload_json, version, \
-    correlation_id, causation_id, workspace_id, session_id, \
+    causation_id, workspace_id, session_id, \
     actor_id, parent_actor_id, elevated, created_at, target_actor_id";
 
 /// A scoped event handle bound to a single actor's SQLite DB.
@@ -130,9 +130,9 @@ pub(crate) fn raw_append(db_path: &Path, event: &EventEnvelope) -> Result<()> {
         sqlx::query(
             "INSERT INTO events \
              (id, event_type, entity_id, actor, payload_json, version, \
-              correlation_id, causation_id, workspace_id, session_id, \
+              causation_id, workspace_id, session_id, \
               actor_id, parent_actor_id, elevated, created_at, target_actor_id) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&event.id)
         .bind(&event.event_type)
@@ -140,7 +140,6 @@ pub(crate) fn raw_append(db_path: &Path, event: &EventEnvelope) -> Result<()> {
         .bind(&event.actor)
         .bind(&event.payload_json)
         .bind(event.version as i64)
-        .bind(&event.correlation_id)
         .bind(&event.causation_id)
         .bind(&event.workspace_id)
         .bind(&event.session_id)
@@ -172,9 +171,6 @@ fn query_db(db_path: &Path, filter: &EventFilter) -> Result<Vec<EventEnvelope>> 
     if let Some(ref v) = filter.session_id {
         qb.push(" AND session_id = ").push_bind(v.clone());
     }
-    if let Some(ref v) = filter.correlation_id {
-        qb.push(" AND correlation_id = ").push_bind(v.clone());
-    }
     if let Some(ref v) = filter.actor_id {
         qb.push(" AND actor_id = ").push_bind(v.clone());
     }
@@ -197,7 +193,7 @@ fn query_db(db_path: &Path, filter: &EventFilter) -> Result<Vec<EventEnvelope>> 
 }
 
 fn row_to_envelope(row: &sqlx::sqlite::SqliteRow) -> Result<EventEnvelope> {
-    let created_at_str: String = row.get(13);
+    let created_at_str: String = row.get(12);
     let created_at = created_at_str
         .parse::<DateTime<Utc>>()
         .or_else(|_| {
@@ -212,15 +208,14 @@ fn row_to_envelope(row: &sqlx::sqlite::SqliteRow) -> Result<EventEnvelope> {
         actor: row.get(3),
         payload_json: row.get(4),
         version: row.get::<i64, _>(5) as u32,
-        correlation_id: row.get(6),
-        causation_id: row.get(7),
-        workspace_id: row.get(8),
-        session_id: row.get(9),
-        actor_id: row.get(10),
-        parent_actor_id: row.get(11),
-        elevated: row.get::<i64, _>(12) != 0,
+        causation_id: row.get(6),
+        workspace_id: row.get(7),
+        session_id: row.get(8),
+        actor_id: row.get(9),
+        parent_actor_id: row.get(10),
+        elevated: row.get::<i64, _>(11) != 0,
         created_at,
-        target_actor_id: row.get(14),
+        target_actor_id: row.get(13),
     })
 }
 
