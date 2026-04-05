@@ -161,6 +161,108 @@ async fn non_job_events_not_delivered_to_subscriber() {
     );
 }
 
+/// Pipeline job advances to phase 1 when phase 0 completes.
+///
+/// Sets up a 2-phase pipeline job (test-writer → rust-runtime), persists
+/// job.created + job.dispatched to the event store, then calls
+/// `try_advance_pipeline` with a job.completed event. Asserts that:
+/// 1. `try_advance_pipeline` returns true (pipeline advanced)
+/// 2. A `job.dispatched` event for phase 1 is routed to the subscriber
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn pipeline_advances_to_next_phase() {
+    use runtime::events::store::{EventStore, SqliteEventStore};
+
+    let dir = TempDir::new().unwrap();
+    let slug = "pipeline-adv-test";
+    let job_id = "j-pipeline-adv";
+
+    // Isolated worktree and global dir inside temp
+    let worktree_root = dir.path().join("worktrees");
+    let worktree_path = worktree_root.join(slug);
+    let global_dir = dir.path().join("global");
+    std::fs::create_dir_all(worktree_path.join(".ship-session")).unwrap();
+    std::fs::create_dir_all(&global_dir).unwrap();
+
+    // Write a minimal spec so write_phase_spec can read it
+    std::fs::write(
+        worktree_path.join(".ship-session").join("job-spec.md"),
+        "---\nslug: pipeline-adv-test\n---\n# Pipeline Test\n",
+    )
+    .unwrap();
+
+    // Point env vars to temp locations for isolation
+    // Safety: test-only; env var mutation is inherently global.
+    unsafe {
+        std::env::set_var("SHIP_WORKTREE_DIR", &worktree_root);
+        std::env::set_var("SHIP_GLOBAL_DIR", &global_dir);
+    }
+
+    // Persist events so load_jobs() finds the pipeline job in Dispatched state
+    let store = SqliteEventStore::new().expect("test DB must initialize");
+
+    let created = ev(
+        event_types::JOB_CREATED,
+        serde_json::json!({
+            "job_id": job_id,
+            "slug": slug,
+            "agent": "test-writer",
+            "branch": "job/pipeline-adv-test",
+            "spec_path": ".ship-session/job-spec.md",
+            "plan_id": null,
+            "pipeline": [
+                { "agent": "test-writer", "goal": "Write failing tests" },
+                { "agent": "rust-runtime", "goal": "Make tests pass" }
+            ]
+        }),
+    );
+    store.append(&created).unwrap();
+
+    let dispatched = ev(
+        event_types::JOB_DISPATCHED,
+        serde_json::json!({
+            "job_id": job_id,
+            "worktree": worktree_path.to_string_lossy(),
+            "pid": null,
+        }),
+    );
+    store.append(&dispatched).unwrap();
+
+    // Set up kernel with a subscriber to capture routed events
+    let mut router = KernelRouter::new(dir.path().join(".ship")).unwrap();
+    let (_actor_store, mut mb) = router
+        .spawn_actor("service.job-dispatch", job_dispatch_config())
+        .unwrap();
+    let kernel = Arc::new(tokio::sync::Mutex::new(router));
+
+    // Simulate phase 0 completion
+    let completed = ev(
+        event_types::JOB_COMPLETED,
+        serde_json::json!({ "job_id": job_id, "slug": slug }),
+    );
+
+    let advanced = super::try_advance_pipeline(&kernel, &completed).await;
+
+    // Clean up env vars
+    unsafe {
+        std::env::remove_var("SHIP_WORKTREE_DIR");
+        std::env::remove_var("SHIP_GLOBAL_DIR");
+    }
+
+    assert!(
+        advanced,
+        "try_advance_pipeline must return true for a 2-phase pipeline completing phase 0"
+    );
+
+    let phase1_event = mb
+        .try_recv()
+        .expect("job.dispatched for phase 1 must be routed to subscriber");
+    assert_eq!(phase1_event.event_type, event_types::JOB_DISPATCHED);
+
+    let payload: serde_json::Value =
+        serde_json::from_str(&phase1_event.payload_json).unwrap();
+    assert_eq!(payload["job_id"].as_str(), Some(job_id));
+}
+
 /// `job.created` with model/provider in the payload projects to a valid
 /// pending JobRecord.
 #[test]
@@ -288,6 +390,7 @@ async fn completing_dependency_unblocks_pending_job() {
             model: None,
             provider: None,
             depends_on: Some(vec!["upstream-a".to_string(), "upstream-b".to_string()]),
+            pipeline: None,
         },
     );
 
