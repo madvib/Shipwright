@@ -740,7 +740,7 @@ impl ShipServer {
         merged, failed (requires error)."
     )]
     async fn update_job(&self, Parameters(req): Parameters<UpdateJobRequest>) -> String {
-        job_tools::update_job(req)
+        job_tools::update_job(req).await
     }
 
     #[tool(

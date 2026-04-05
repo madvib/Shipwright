@@ -68,16 +68,6 @@ function SessionPage() {
     selectedCommitHash ? `${selectedCommitHash}^..${selectedCommitHash}` : undefined,
   )
 
-  // Auto-open canvas.html on first load
-  useEffect(() => {
-    if (openTabs.length > 0 || files.length === 0) return
-    const canvasFile = files.find((f) => f.name === 'canvas.html')
-    if (canvasFile) {
-      setOpenTabs([{ path: canvasFile.path, name: canvasFile.name, type: canvasFile.type }])
-      setActiveTabPath(canvasFile.path)
-    }
-  }, [files]) // eslint-disable-line react-hooks/exhaustive-deps
-
   const activeTab = openTabs.find((t) => t.path === activeTabPath) ?? null
   const activeFile = activeTabPath ? files.find((f) => f.path === activeTabPath) : null
   const { data: fileContent } = useSessionFileContent(activeTabPath)
@@ -111,6 +101,7 @@ function SessionPage() {
     if (!file) return
     setSelectedCommitHash(null)
     setViewMode('file')
+    setActiveView(null)
     setActiveTabPath(path)
     setOpenTabs((prev) => {
       if (prev.some((t) => t.path === path)) return prev

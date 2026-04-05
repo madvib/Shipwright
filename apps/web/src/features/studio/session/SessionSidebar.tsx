@@ -100,20 +100,25 @@ function groupByNamespace(files: SessionFile[]): {
       const subGroups: SubGroup[] = Array.from(bySub.entries())
         .map(([sub, subFiles]) => ({
           name: sub,
-          files: subFiles.sort((a, b) => b.modifiedAt - a.modifiedAt),
+          files: subFiles.sort(stableFileSort),
           latestAt: Math.max(...subFiles.map((f) => f.modifiedAt)),
         }))
-        .sort((a, b) => b.latestAt - a.latestAt)
+        .sort((a, b) => a.name.localeCompare(b.name))
       return {
         name,
         subGroups,
-        rootFiles: rootFiles.sort((a, b) => b.modifiedAt - a.modifiedAt),
+        rootFiles: rootFiles.sort(stableFileSort),
         latestAt: Math.max(...nsFiles.map((f) => f.modifiedAt)),
       }
     })
-    .sort((a, b) => b.latestAt - a.latestAt)
+    .sort((a, b) => a.name.localeCompare(b.name))
 
-  return { todo, groups, root: root.sort((a, b) => b.modifiedAt - a.modifiedAt) }
+  return { todo, groups, root: root.sort(stableFileSort) }
+}
+
+/** Alphabetical sort with path as stable key. No timestamp jitter. */
+function stableFileSort(a: SessionFile, b: SessionFile): number {
+  return a.path.localeCompare(b.path)
 }
 
 // ── File type icons ──

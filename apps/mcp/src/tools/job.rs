@@ -51,7 +51,7 @@ pub async fn create_job(req: CreateJobRequest) -> String {
 }
 
 /// Emit the appropriate event for the requested status transition.
-pub fn update_job(req: UpdateJobRequest) -> String {
+pub async fn update_job(req: UpdateJobRequest) -> String {
     let store = match SqliteEventStore::new() {
         Ok(s) => s,
         Err(e) => return format!("Error opening event store: {e}"),
@@ -174,6 +174,12 @@ pub fn update_job(req: UpdateJobRequest) -> String {
     if let Err(e) = store.append(&envelope) {
         return format!("Error persisting event: {e}");
     }
+
+    // Route via daemon's kernel for subscriber delivery (job-dispatch, unblock deps).
+    if let Err(e) = crate::network_client::event_route(&envelope, None, None).await {
+        tracing::warn!("job.{} daemon routing failed: {e}", req.status);
+    }
+
     format!("Job {} updated to status '{}'", req.job_id, req.status)
 }
 
