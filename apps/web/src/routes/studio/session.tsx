@@ -1,7 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useCallback, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Layers } from 'lucide-react'
 import { useDaemon } from '#/features/studio/hooks/useDaemon'
+import { DAEMON_BASE_URL } from '#/lib/daemon-config'
 import { SessionCanvas } from '#/features/studio/session/SessionCanvas'
 import { ArtifactViewer } from '#/features/studio/session/ArtifactViewer'
 import { DiffViewer } from '#/features/studio/session/DiffViewer'
@@ -16,6 +18,7 @@ import { useDiffContent } from '#/features/studio/session/useDiffContent'
 import { useGitStatus, useGitLog, useGitDiff } from '#/features/studio/session/useGitInfo'
 import { SessionSkeleton } from '#/features/studio/session/SessionSkeleton'
 import { DropZoneOverlay } from '#/features/studio/session/DropZoneOverlay'
+import { ViewHost } from '#/features/studio/views/ViewHost'
 
 export const Route = createFileRoute('/studio/session')({
   component: SessionPage,
@@ -45,6 +48,20 @@ function SessionPage() {
   const [activeTabPath, setActiveTabPath] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('file')
   const [selectedCommitHash, setSelectedCommitHash] = useState<string | null>(null)
+  const [activeView, setActiveView] = useState<string | null>(null)
+
+  // Fetch view HTML when a view is active
+  const { data: viewHtml } = useQuery({
+    queryKey: ['view', activeView],
+    queryFn: async () => {
+      const res = await fetch(`${DAEMON_BASE_URL}/api/runtime/view/${activeView}`)
+      if (!res.ok) return null
+      const body = await res.json() as { ok: boolean; data: { html: string } }
+      return body.data.html
+    },
+    enabled: activeView != null,
+    staleTime: 60_000,
+  })
 
   const ann = useAnnotations(activeTabPath)
   const { data: commitDiff } = useGitDiff(
@@ -106,6 +123,12 @@ function SessionPage() {
     setActiveTabPath(path)
     setSelectedCommitHash(null)
     setViewMode('file')
+    setActiveView(null)
+  }, [])
+
+  const handleOpenView = useCallback((viewName: string) => {
+    setActiveView(viewName)
+    setViewMode('file')
   }, [])
 
   const {
@@ -121,9 +144,10 @@ function SessionPage() {
   })
 
   const isHtml = activeTab?.type === 'html'
-  const showCanvas = viewMode === 'file' && isHtml
-  const showArtifact = viewMode === 'file' && activeFile != null && !isHtml
-  const showDiff = viewMode === 'diff'
+  const showView = activeView != null && viewHtml != null
+  const showCanvas = !showView && viewMode === 'file' && isHtml
+  const showArtifact = !showView && viewMode === 'file' && activeFile != null && !isHtml
+  const showDiff = !showView && viewMode === 'diff'
   const activeDiffText = selectedCommitHash ? commitDiff : diffText
 
   return (
@@ -153,6 +177,7 @@ function SessionPage() {
             onUploadFiles={handleUploadFiles}
             onShowDiff={handleShowDiff}
             onSelectCommit={handleSelectCommit}
+            onOpenView={handleOpenView}
             gitStatus={gitStatus}
             gitLog={gitLog}
           />
@@ -170,6 +195,9 @@ function SessionPage() {
               />
 
               <div className="flex-1 flex flex-col min-h-0 min-w-0">
+                {showView && (
+                  <ViewHost html={viewHtml} />
+                )}
                 {showCanvas && (
                   <SessionCanvas
                     key={activeTabPath}
@@ -218,7 +246,7 @@ function SessionPage() {
                       </div>
                     )
                 )}
-                {!showCanvas && !showArtifact && !showDiff && (
+                {!showView && !showCanvas && !showArtifact && !showDiff && (
                   <div className="flex items-center justify-center h-full text-muted-foreground">
                     <div className="text-center">
                       <Layers className="size-8 mx-auto mb-3 opacity-40" />

@@ -32,7 +32,7 @@ export function DaemonEventListener() {
             void queryClient.invalidateQueries({ queryKey: daemonKeys.workspaces })
           }
           if (envelope.event_type?.startsWith('job.')) {
-            void queryClient.invalidateQueries({ queryKey: ['daemon', 'jobs'] })
+            void queryClient.invalidateQueries({ queryKey: daemonKeys.jobs })
           }
           queryClient.setQueryData<EventEnvelope[]>(mcpKeys.events(), (prev) => {
             const next = [envelope, ...(prev ?? [])]

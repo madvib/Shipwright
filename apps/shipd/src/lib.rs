@@ -103,6 +103,13 @@ pub async fn run_network(host: String, port: u16) -> Result<()> {
         .route("/workspaces", axum::routing::get(runtime_api::list_workspaces))
         .route("/sessions", axum::routing::get(runtime_api::list_sessions))
         .route("/agents", axum::routing::get(runtime_api::list_agents))
+        .route(
+            "/jobs",
+            axum::routing::get(runtime_api::list_jobs)
+                .post(runtime_api::create_job),
+        )
+        .route("/views", axum::routing::get(runtime_api::list_views))
+        .route("/view/{name}", axum::routing::get(runtime_api::serve_view))
         .route("/events", axum::routing::get(runtime_api::event_stream))
         .route(
             "/workspaces/{id}/pty",

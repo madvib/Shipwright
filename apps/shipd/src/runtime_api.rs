@@ -5,12 +5,13 @@
 
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
 };
 use axum::response::sse::{Event, KeepAlive, Sse};
-use runtime::events::ActorConfig;
+use runtime::events::{ActorConfig, CallerKind, EmitContext, EventEnvelope};
+use runtime::events::job::{JobCreatedPayload, event_types};
 use serde::Deserialize;
 
 use crate::rest_api::{ApiState, MeshResponse};
@@ -123,6 +124,192 @@ pub async fn list_agents(State(state): State<ApiState>) -> impl IntoResponse {
             data: serde_json::json!({ "agents": agents }),
         }),
     )
+}
+
+// ---- Views ----
+
+/// GET /api/runtime/views — list available views from .ship/views/.
+pub async fn list_views() -> impl IntoResponse {
+    let project_dir = match runtime::project::get_project_dir(None) {
+        Ok(p) => p,
+        Err(_) => {
+            return (
+                StatusCode::OK,
+                Json(MeshResponse { ok: true, data: serde_json::json!({ "views": [] }) }),
+            );
+        }
+    };
+
+    let views_dir = project_dir.join("views");
+    let mut views = Vec::new();
+
+    if let Ok(entries) = std::fs::read_dir(&views_dir) {
+        for entry in entries.flatten() {
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                let name = entry.file_name().to_string_lossy().to_string();
+                let index = entry.path().join("index.html");
+                if index.exists() {
+                    views.push(serde_json::json!({ "name": name }));
+                }
+            }
+        }
+    }
+
+    (
+        StatusCode::OK,
+        Json(MeshResponse { ok: true, data: serde_json::json!({ "views": views }) }),
+    )
+}
+
+/// GET /api/runtime/view/{name} — serve a view's index.html from .ship/views/{name}/.
+///
+/// Reads the view HTML and inlines the ship-sdk script so the view can
+/// communicate with Studio via postMessage.
+pub async fn serve_view(
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    let project_dir = match runtime::project::get_project_dir(None) {
+        Ok(p) => p,
+        Err(_) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(MeshResponse { ok: false, data: serde_json::json!("no project root found") }),
+            );
+        }
+    };
+
+    // Reject path traversal attempts
+    if name.contains("..") || name.contains('/') || name.contains('\\') {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(MeshResponse { ok: false, data: serde_json::json!("invalid view name") }),
+        );
+    }
+
+    // get_project_dir returns the .ship/ directory
+    let view_path = project_dir.join("views").join(&name).join("index.html");
+    let sdk_path = project_dir.join("views/ship-sdk.js");
+
+    let html = match std::fs::read_to_string(&view_path) {
+        Ok(h) => h,
+        Err(_) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(MeshResponse { ok: false, data: serde_json::json!(format!("view '{name}' not found")) }),
+            );
+        }
+    };
+
+    // Inline the SDK script so the view doesn't need to resolve relative paths
+    let html = if let Ok(sdk) = std::fs::read_to_string(&sdk_path) {
+        html.replace(
+            r#"<script src="../ship-sdk.js"></script>"#,
+            &format!("<script>\n{sdk}\n</script>"),
+        )
+    } else {
+        html
+    };
+
+    (
+        StatusCode::OK,
+        Json(MeshResponse { ok: true, data: serde_json::json!({ "html": html }) }),
+    )
+}
+
+// ---- Job request types ----
+
+#[derive(Deserialize)]
+pub struct CreateJobRequest {
+    pub slug: String,
+    pub agent: String,
+    pub branch: String,
+    pub spec_path: String,
+    pub depends_on: Option<Vec<String>>,
+}
+
+/// GET /api/runtime/jobs
+pub async fn list_jobs(State(_state): State<ApiState>) -> impl IntoResponse {
+    match runtime::projections::job::load_jobs() {
+        Ok(jobs) => {
+            let data: Vec<_> = jobs.into_values().collect();
+            (
+                StatusCode::OK,
+                Json(MeshResponse {
+                    ok: true,
+                    data: serde_json::json!({ "jobs": data }),
+                }),
+            )
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(MeshResponse {
+                ok: false,
+                data: serde_json::json!(e.to_string()),
+            }),
+        ),
+    }
+}
+
+/// POST /api/runtime/jobs — emit job.created event through the kernel.
+///
+/// The kernel persists the event and routes it to subscribers.
+/// The job_dispatch service handles all heavy lifting (worktree creation,
+/// dependency resolution, agent spawning).
+pub async fn create_job(
+    State(state): State<ApiState>,
+    Json(req): Json<CreateJobRequest>,
+) -> impl IntoResponse {
+    let job_id = runtime::gen_ulid();
+    let payload = JobCreatedPayload {
+        job_id: job_id.clone(),
+        slug: req.slug,
+        agent: req.agent,
+        branch: req.branch,
+        spec_path: req.spec_path,
+        plan_id: None,
+        model: None,
+        provider: None,
+        depends_on: req.depends_on,
+    };
+
+    let envelope = match EventEnvelope::new(event_types::JOB_CREATED, &job_id, &payload)
+        .map(|e| e.with_actor_id("studio"))
+    {
+        Ok(e) => e,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(MeshResponse {
+                    ok: false,
+                    data: serde_json::json!(e.to_string()),
+                }),
+            );
+        }
+    };
+
+    let ctx = EmitContext {
+        caller_kind: CallerKind::Mcp,
+        skill_id: None,
+        workspace_id: None,
+        session_id: None,
+    };
+
+    match state.kernel.lock().await.route(envelope, &ctx).await {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(MeshResponse {
+                ok: true,
+                data: serde_json::json!({ "job_id": &job_id }),
+            }),
+        ),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(MeshResponse {
+                ok: false,
+                data: serde_json::json!(e.to_string()),
+            }),
+        ),
+    }
 }
 
 /// Stops an actor when dropped — used to clean up the SSE stream actor.

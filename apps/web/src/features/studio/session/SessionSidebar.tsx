@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { ArtifactContextMenu } from './ArtifactContextMenu'
 import { GitTab } from './GitTab'
-import { SessionsTab } from './SessionsTab'
+import { useViews } from '#/features/studio/hooks/useDaemon'
 import { useSkillsLibrary } from '#/features/studio/skills-ide/useSkillsLibrary'
 import type { ArtifactMenuState } from './ArtifactContextMenu'
 import type { SessionFile } from './types'
@@ -20,7 +20,7 @@ function parseArtifacts(content: string): string[] {
   return m[1].split(',').map((s) => s.trim().replace(/['"]/g, ''))
 }
 
-type SidebarTab = 'files' | 'git' | 'sessions'
+type SidebarTab = 'files' | 'git' | 'sessions' | string
 
 const HIDDEN_FILES = new Set(['diff.txt', 'annotations.json'])
 
@@ -32,6 +32,7 @@ interface SessionSidebarProps {
   onUploadFiles: (files: FileList) => void
   onShowDiff: () => void
   onSelectCommit: (hash: string) => void
+  onOpenView?: (viewName: string) => void
   gitStatus: GitStatusResult | null | undefined
   gitLog: GitLogEntry[] | null | undefined
 }
@@ -128,13 +129,15 @@ const FILE_ICONS: Record<SessionFile['type'], { icon: typeof FileText; color: st
 export function SessionSidebar({
   files, activeFile,
   onSelectFile, onDeleteFile, onUploadFiles,
-  onShowDiff, onSelectCommit,
+  onShowDiff, onSelectCommit, onOpenView,
   gitStatus, gitLog,
 }: SessionSidebarProps) {
   const [tab, setTab] = useState<SidebarTab>('files')
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [contextMenu, setContextMenu] = useState<ArtifactMenuState | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const { data: views } = useViews()
+  const viewNames = views?.map((v) => v.name) ?? []
 
   const toggleGroup = (label: string) => {
     setCollapsedGroups((prev) => {
@@ -153,9 +156,9 @@ export function SessionSidebar({
 
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-card/30">
-      {/* Tab bar — h-9 matches SessionTabBar height */}
+      {/* Tab bar — three fixed tabs: files, git, views */}
       <div className="flex items-center border-b border-border shrink-0 h-9">
-        {(['files', 'git', 'sessions'] as const).map((t) => (
+        {(['files', 'git', 'views'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -186,8 +189,8 @@ export function SessionSidebar({
         {tab === 'git' && (
           <GitTab gitStatus={gitStatus} gitLog={gitLog} onShowDiff={onShowDiff} onSelectCommit={onSelectCommit} />
         )}
-        {tab === 'sessions' && (
-          <SessionsTab />
+        {tab === 'views' && (
+          <ViewsTab viewNames={viewNames} onOpenView={onOpenView} />
         )}
       </div>
 
@@ -324,6 +327,34 @@ function FilesTab({ todo, groups, root, activeFile, collapsedGroups, fileInputRe
         </button>
         <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => { if (e.target.files?.length) onUploadFiles(e.target.files); e.target.value = '' }} />
       </div>
+    </div>
+  )
+}
+
+// ── Views Tab ──
+
+function ViewsTab({ viewNames, onOpenView }: { viewNames: string[]; onOpenView?: (name: string) => void }) {
+  if (viewNames.length === 0) {
+    return (
+      <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+        <p className="mb-1">No views installed</p>
+        <p className="text-[10px] opacity-60">Add views to .ship/views/</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="py-1.5 space-y-0.5">
+      {viewNames.map((name) => (
+        <button
+          key={name}
+          onClick={() => onOpenView?.(name)}
+          className="flex items-center gap-2 w-full px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
+        >
+          <MonitorPlay className="size-3.5 shrink-0 text-indigo-500" />
+          <span className="capitalize truncate">{name}</span>
+        </button>
+      ))}
     </div>
   )
 }
