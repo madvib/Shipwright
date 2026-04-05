@@ -2,6 +2,9 @@
 //!
 //! Route: POST /api/supervisor/workspaces/:id/start
 
+pub mod adapters;
+mod dispatch_handlers;
+mod dispatch_pipeline;
 pub mod helpers;
 pub mod job_dispatch;
 pub mod terminal_launcher;

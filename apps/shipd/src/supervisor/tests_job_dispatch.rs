@@ -1,10 +1,15 @@
+use async_trait::async_trait;
 use runtime::events::job::event_types;
 use runtime::events::kernel_router::{ActorConfig, KernelRouter};
 use runtime::events::validator::{CallerKind, EmitContext};
 use runtime::events::EventEnvelope;
 use runtime::projections::job::{project, JobStatus};
+use runtime::services::dispatch_ports::{ExecutorHandle, IsolationStrategy, JobContext, JobExecutor};
+use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::TempDir;
+
+use super::DispatchContext;
 
 fn runtime_ctx() -> EmitContext {
     EmitContext {
@@ -32,6 +37,39 @@ fn setup() -> (TempDir, KernelRouter) {
 
 fn ev(event_type: &str, payload: serde_json::Value) -> EventEnvelope {
     EventEnvelope::new(event_type, "test-entity", &payload).unwrap()
+}
+
+/// No-op isolation for tests that don't exercise dispatch (DAG, routing tests).
+struct NoopIsolation;
+
+#[async_trait]
+impl IsolationStrategy for NoopIsolation {
+    async fn prepare(&self, job: &JobContext) -> anyhow::Result<PathBuf> {
+        Ok(job.work_dir.clone())
+    }
+    async fn cleanup(&self, _job: &JobContext) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+/// No-op executor for tests that don't exercise dispatch.
+struct NoopExecutor;
+
+#[async_trait]
+impl JobExecutor for NoopExecutor {
+    async fn spawn(&self, _ctx: &JobContext) -> anyhow::Result<ExecutorHandle> {
+        Ok(ExecutorHandle { pid: None, inner: Box::new(()) })
+    }
+    async fn is_alive(&self, _handle: &ExecutorHandle) -> bool { false }
+    async fn stop(&self, _handle: &ExecutorHandle) -> anyhow::Result<()> { Ok(()) }
+    async fn send(&self, _handle: &ExecutorHandle, _msg: &str) -> anyhow::Result<()> { Ok(()) }
+}
+
+fn noop_dctx() -> DispatchContext {
+    DispatchContext {
+        isolation: Arc::new(NoopIsolation),
+        executor: Arc::new(NoopExecutor),
+    }
 }
 
 /// Kernel routing delivers `job.created` to an actor subscribed to `job.`.
@@ -240,7 +278,8 @@ async fn pipeline_advances_to_next_phase() {
         serde_json::json!({ "job_id": job_id, "slug": slug }),
     );
 
-    let advanced = super::try_advance_pipeline(&kernel, &completed).await;
+    let dctx = noop_dctx();
+    let advanced = super::try_advance_pipeline(&kernel, &completed, &dctx).await;
 
     // Clean up env vars
     unsafe {
@@ -268,11 +307,6 @@ async fn pipeline_advances_to_next_phase() {
 #[cfg(feature = "unstable")]
 mod ports {
     use super::*;
-    use async_trait::async_trait;
-    use runtime::services::dispatch::{
-        ExecutorHandle, IsolationStrategy, JobContext, JobExecutor,
-    };
-    use std::path::PathBuf;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     struct RecordingIsolation {
@@ -374,15 +408,17 @@ mod ports {
         assert_eq!(exec.spawn_count.load(Ordering::SeqCst), 1);
     }
 
-    /// Dispatch must delegate to IsolationStrategy::prepare during job creation.
-    ///
-    /// FAILS: dispatch_job uses inline worktree/tmux helpers, not IsolationStrategy.
-    /// Phase 2 wires dispatch_job to accept trait objects.
+    /// Dispatch delegates to IsolationStrategy::prepare during job creation.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn dispatch_delegates_to_isolation() {
         let dir = TempDir::new().unwrap();
         let isolation = Arc::new(RecordingIsolation::new(dir.path().join("worktree")));
-        let _executor = Arc::new(RecordingExecutor::new());
+        let executor = Arc::new(RecordingExecutor::new());
+
+        let dctx = super::super::DispatchContext {
+            isolation: isolation.clone(),
+            executor: executor.clone(),
+        };
 
         let (_dir2, router) = super::setup();
         let kernel = Arc::new(tokio::sync::Mutex::new(router));
@@ -400,8 +436,7 @@ mod ports {
             }),
         );
 
-        // dispatch_job currently ignores isolation/executor traits
-        super::super::handle_job_created(&kernel, &event, &mut pending).await;
+        super::super::handle_job_created(&kernel, &event, &mut pending, &dctx).await;
 
         assert!(
             isolation.prepare_count.load(Ordering::SeqCst) > 0,
@@ -409,15 +444,17 @@ mod ports {
         );
     }
 
-    /// Dispatch must delegate to JobExecutor::spawn during job creation.
-    ///
-    /// FAILS: dispatch_job spawns via tmux send-keys, not JobExecutor::spawn.
-    /// Phase 2 wires dispatch_job to accept trait objects.
+    /// Dispatch delegates to JobExecutor::spawn during job creation.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn dispatch_delegates_to_executor() {
         let dir = TempDir::new().unwrap();
-        let _isolation = Arc::new(RecordingIsolation::new(dir.path().join("worktree")));
+        let isolation = Arc::new(RecordingIsolation::new(dir.path().join("worktree")));
         let executor = Arc::new(RecordingExecutor::new());
+
+        let dctx = super::super::DispatchContext {
+            isolation: isolation.clone(),
+            executor: executor.clone(),
+        };
 
         let (_dir2, router) = super::setup();
         let kernel = Arc::new(tokio::sync::Mutex::new(router));
@@ -435,7 +472,7 @@ mod ports {
             }),
         );
 
-        super::super::handle_job_created(&kernel, &event, &mut pending).await;
+        super::super::handle_job_created(&kernel, &event, &mut pending, &dctx).await;
 
         assert!(
             executor.spawn_count.load(Ordering::SeqCst) > 0,
@@ -443,10 +480,7 @@ mod ports {
         );
     }
 
-    /// Pipeline advancement must use JobExecutor::spawn for the next phase.
-    ///
-    /// FAILS: try_advance_pipeline calls spawn_agent_with_mesh_id directly.
-    /// Phase 2 wires pipeline advancement through JobExecutor.
+    /// Pipeline advancement uses JobExecutor::spawn for the next phase.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn pipeline_advance_uses_executor() {
         use runtime::events::store::{EventStore, SqliteEventStore};
@@ -454,7 +488,13 @@ mod ports {
         let dir = TempDir::new().unwrap();
         let slug = "pipe-exec-test";
         let job_id = "j-pipe-exec";
+        let isolation = Arc::new(RecordingIsolation::new(dir.path().join("worktree")));
         let executor = Arc::new(RecordingExecutor::new());
+
+        let dctx = super::super::DispatchContext {
+            isolation: isolation.clone(),
+            executor: executor.clone(),
+        };
 
         let worktree_root = dir.path().join("worktrees");
         let worktree_path = worktree_root.join(slug);
@@ -504,7 +544,7 @@ mod ports {
             event_types::JOB_COMPLETED,
             serde_json::json!({ "job_id": job_id, "slug": slug }),
         );
-        super::super::try_advance_pipeline(&kernel, &completed).await;
+        super::super::try_advance_pipeline(&kernel, &completed, &dctx).await;
 
         unsafe {
             std::env::remove_var("SHIP_WORKTREE_DIR");
@@ -593,7 +633,8 @@ async fn job_with_depends_on_is_deferred() {
         }),
     );
 
-    super::handle_job_created(&kernel, &event, &mut pending).await;
+    let dctx = noop_dctx();
+    super::handle_job_created(&kernel, &event, &mut pending, &dctx).await;
     assert!(
         pending.contains_key("downstream"),
         "job with depends_on must be stored in pending"
@@ -619,7 +660,8 @@ async fn job_without_depends_on_not_deferred() {
         }),
     );
 
-    super::handle_job_created(&kernel, &event, &mut pending).await;
+    let dctx = noop_dctx();
+    super::handle_job_created(&kernel, &event, &mut pending, &dctx).await;
     assert!(
         !pending.contains_key("no-deps"),
         "job without depends_on must not be deferred"
@@ -649,12 +691,14 @@ async fn completing_dependency_unblocks_pending_job() {
         },
     );
 
+    let dctx = noop_dctx();
+
     // Complete upstream-a
     let completed_event = ev(
         event_types::JOB_COMPLETED,
         serde_json::json!({"job_id": "j-up-a", "slug": "upstream-a"}),
     );
-    super::dispatch_unblocked_jobs(&kernel, &completed_event, &mut pending).await;
+    super::dispatch_unblocked_jobs(&kernel, &completed_event, &mut pending, &dctx).await;
 
     // Still pending — upstream-b remains
     assert!(pending.contains_key("downstream"));
@@ -666,7 +710,7 @@ async fn completing_dependency_unblocks_pending_job() {
         event_types::JOB_COMPLETED,
         serde_json::json!({"job_id": "j-up-b", "slug": "upstream-b"}),
     );
-    super::dispatch_unblocked_jobs(&kernel, &completed_event_b, &mut pending).await;
+    super::dispatch_unblocked_jobs(&kernel, &completed_event_b, &mut pending, &dctx).await;
 
     assert!(
         !pending.contains_key("downstream"),
