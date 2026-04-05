@@ -187,7 +187,7 @@ export function SessionSidebar({
           <GitTab gitStatus={gitStatus} gitLog={gitLog} onShowDiff={onShowDiff} onSelectCommit={onSelectCommit} />
         )}
         {tab === 'sessions' && (
-          <SessionsTab gitStatus={gitStatus} />
+          <SessionsTab />
         )}
       </div>
 

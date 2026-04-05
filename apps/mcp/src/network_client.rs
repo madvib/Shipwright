@@ -89,6 +89,34 @@ pub async fn mesh_status(agent_id: &str, status: &str) -> Result<String> {
     })).await
 }
 
+/// Spawn an actor in the daemon's KernelRouter with the given config.
+/// The daemon stashes the mailbox for SSE delivery via /mesh/events/{actor_id}.
+pub async fn actor_spawn(
+    actor_id: &str,
+    config: &runtime::events::ActorConfig,
+    capabilities: Option<Vec<String>>,
+) -> Result<String> {
+    post("/actor/spawn", serde_json::json!({
+        "actor_id": actor_id,
+        "config": config,
+        "capabilities": capabilities,
+    })).await
+}
+
+/// Route a pre-built EventEnvelope through the daemon's KernelRouter.
+/// This ensures events reach daemon subscribers (job-dispatch, workspace-sync, etc).
+pub async fn event_route(
+    envelope: &runtime::events::EventEnvelope,
+    workspace_id: Option<&str>,
+    session_id: Option<&str>,
+) -> Result<String> {
+    post("/events/route", serde_json::json!({
+        "envelope": envelope,
+        "workspace_id": workspace_id,
+        "session_id": session_id,
+    })).await
+}
+
 /// Open an SSE stream for mesh events targeted at this agent.
 /// Returns a receiver that yields EventEnvelopes as they arrive.
 /// The background task runs until the connection drops or the receiver is dropped.

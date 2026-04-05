@@ -47,8 +47,6 @@ pub struct ShipServer {
     relay: std::sync::Arc<tokio::sync::Mutex<RelayState>>,
     /// Actor-scoped event store for this connection.
     pub actor_store: std::sync::Arc<tokio::sync::Mutex<Option<runtime::events::ActorStore>>>,
-    /// Mailbox for this connection's actor. Taken once by start_event_relay.
-    pub actor_mailbox: std::sync::Arc<tokio::sync::Mutex<Option<runtime::events::Mailbox>>>,
     /// MCP provider name from clientInfo (e.g. "claude-code", "cursor").
     pub mcp_provider: std::sync::Arc<tokio::sync::Mutex<Option<String>>>,
     /// Active session ID for this connection (set by auto_session_start).
@@ -96,7 +94,6 @@ impl ShipServer {
                 handle: None,
             })),
             actor_store: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
-            actor_mailbox: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
             mcp_provider: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
             session_id: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
         }
@@ -110,18 +107,17 @@ impl ShipServer {
         *self.notification_peer.lock().await = Some(peer);
     }
 
-    /// Register this agent actor with the local KernelRouter.
-    /// Session/workspace events stay local. Mesh operations forward to ship-network daemon.
+    /// Spawn this agent's actor in the daemon's KernelRouter.
     ///
     /// Called from `on_initialized`. Derives the actor_id from the active agent
-    /// profile, falling back to `"agent.mcp"`.
+    /// profile, falling back to `"agent.mcp"`. Creates a local `ActorStore` for
+    /// event persistence but delegates mailbox ownership to the daemon.
     pub async fn spawn_agent_actor(&self) {
         let project_dir = match self.get_effective_project_dir().await {
             Ok(d) => d,
             Err(_) => return,
         };
 
-        // Initialize local KernelRouter for session/workspace events (per-session, not per-agent).
         let global_dir = match runtime::project::get_global_dir() {
             Ok(d) => d,
             Err(e) => {
@@ -129,17 +125,10 @@ impl ShipServer {
                 return;
             }
         };
-        let kr = match runtime::events::init_kernel_router(global_dir) {
-            Ok(kr) => kr,
-            Err(e) => {
-                tracing::warn!("failed to initialize KernelRouter: {e}");
-                return;
-            }
-        };
 
         let actor_id = self.resolve_actor_id().await;
 
-        // Compute skill-derived subscriptions: ship.* platform events + custom skill namespaces.
+        // Compute skill-derived subscriptions
         let skills_list = runtime::list_skills(&project_dir).unwrap_or_default();
         let skill_subs =
             runtime::events::artifact_events::skill_event_subscriptions(&skills_list);
@@ -164,41 +153,45 @@ impl ShipServer {
 
         let config = runtime::events::ActorConfig {
             namespace: actor_id.clone(),
-            // Allow writing any non-system namespace (enforced by the event tool).
             write_namespaces: vec!["".to_string()],
             read_namespaces: vec!["agent.".to_string()],
             subscribe_namespaces,
         };
 
-        let mut kr_guard = kr.lock().await;
-        let _ = kr_guard.stop_actor(&actor_id);
-
-        match kr_guard.spawn_actor(&actor_id, config) {
-            Ok((store, mailbox)) => {
-                *self.actor_store.lock().await = Some(store);
-                *self.actor_mailbox.lock().await = Some(mailbox);
-            }
-            Err(e) => {
-                tracing::warn!("failed to spawn agent actor '{actor_id}': {e}");
-                return;
-            }
-        }
-
-        // Auto-register this agent on the ship-network daemon.
+        // Mesh capabilities from skills
         let capabilities: Vec<String> = skills_list.iter().map(|s| s.id.clone()).collect();
         let capabilities = if capabilities.is_empty() {
             vec!["general".to_string()]
         } else {
             capabilities
         };
-        match crate::network_client::mesh_register(&actor_id, capabilities).await {
-            Ok(_) => tracing::info!(actor_id, "registered on mesh via ship-network"),
-            Err(e) => tracing::warn!(actor_id, "mesh registration failed (daemon may not be running): {e}"),
+
+        // Spawn actor in daemon's kernel (includes mesh registration)
+        match crate::network_client::actor_spawn(&actor_id, &config, Some(capabilities)).await {
+            Ok(_) => tracing::info!(actor_id, "actor spawned in daemon kernel"),
+            Err(e) => {
+                tracing::warn!(actor_id, "daemon actor spawn failed (daemon may not be running): {e}");
+            }
+        }
+
+        // Create local ActorStore for event persistence
+        match runtime::events::ActorStore::open(
+            &actor_id,
+            &global_dir,
+            config.write_namespaces.clone(),
+            config.read_namespaces.clone(),
+        ) {
+            Ok(store) => {
+                *self.actor_store.lock().await = Some(store);
+            }
+            Err(e) => {
+                tracing::warn!(actor_id, "failed to open local ActorStore: {e}");
+            }
         }
     }
 
-    /// Wire the EventRelay for this connection. Takes the mailbox from the
-    /// spawned actor and starts the relay task. Call once per MCP connection.
+    /// Wire the EventRelay for this connection using the daemon's SSE stream
+    /// as the event source. Call once per MCP connection.
     pub async fn start_event_relay(&self) {
         let mut relay_state = self.relay.lock().await;
 
@@ -207,14 +200,30 @@ impl ShipServer {
             return;
         }
 
-        let mailbox = self.actor_mailbox.lock().await.take();
-        let Some(mailbox) = mailbox else {
-            return; // Actor not yet spawned
+        let actor_id = self.resolve_actor_id().await;
+
+        // Connect to daemon's SSE stream for this actor's events
+        let sse_rx = match crate::network_client::mesh_subscribe(&actor_id) {
+            Ok(rx) => rx,
+            Err(e) => {
+                tracing::warn!(actor_id, "daemon SSE subscribe failed: {e}");
+                return;
+            }
         };
 
-        let relay = notification_relay::EventRelay::new();
+        // Bridge SSE unbounded receiver into a bounded Mailbox
+        let (tx, rx) = tokio::sync::mpsc::channel(256);
+        tokio::spawn(async move {
+            let mut sse_rx = sse_rx;
+            while let Some(event) = sse_rx.recv().await {
+                if tx.send(event).await.is_err() {
+                    break; // Mailbox receiver dropped
+                }
+            }
+        });
+        let mailbox = runtime::events::Mailbox::from_receiver(rx);
 
-        // Share the peers Arc so we can add/remove peers later
+        let relay = notification_relay::EventRelay::new();
         relay_state.peers = relay.peers();
 
         // Select push adapter based on detected provider, register as peer.
@@ -227,33 +236,12 @@ impl ShipServer {
                 id: "mcp-agent".to_string(),
                 actor_id: "mcp".to_string(),
                 adapter,
-                allowed_events: std::collections::HashSet::new(), // system peer
+                allowed_events: std::collections::HashSet::new(),
             };
             relay.add_peer(peer_handle).await;
         }
 
         relay_state.handle = Some(relay.spawn(mailbox));
-
-        // Subscribe to mesh events from ship-network daemon.
-        // These arrive via SSE and get pushed through the same relay peers.
-        let actor_id = self.resolve_actor_id().await;
-        let peers_for_mesh = relay_state.peers.clone();
-        tokio::spawn(async move {
-            let mut rx = match crate::network_client::mesh_subscribe(&actor_id) {
-                Ok(rx) => rx,
-                Err(e) => {
-                    tracing::warn!("mesh subscribe failed: {e}");
-                    return;
-                }
-            };
-            while let Some(event) = rx.recv().await {
-                let peers = peers_for_mesh.read().await;
-                for peer in peers.iter() {
-                    peer.adapter.push_event(&event).await;
-                }
-            }
-            tracing::info!("mesh event subscription ended");
-        });
     }
 
     /// Resolve a unique actor_id for this connection.
@@ -807,18 +795,13 @@ impl ShipServer {
             }
         }
 
-        // Route via KernelRouter for mailbox delivery.
-        let ctx = runtime::events::EmitContext {
-            caller_kind: runtime::events::CallerKind::Mcp,
-            skill_id: None,
-            workspace_id: Some(workspace_id),
-            session_id: None,
-        };
-        let Some(kr) = runtime::events::kernel_router() else {
-            return "Error: KernelRouter not initialized".to_string();
-        };
-        if let Err(e) = kr.lock().await.route(envelope.clone(), &ctx).await {
-            return format!("Error routing event: {}", e);
+        // Route via daemon's KernelRouter for subscriber delivery.
+        if let Err(e) = crate::network_client::event_route(
+            &envelope,
+            Some(&workspace_id),
+            None,
+        ).await {
+            return format!("Error routing event via daemon: {}", e);
         }
 
         self.notify_resource_updated("ship://events").await;
@@ -894,7 +877,6 @@ impl ShipServer {
 }
 
 
-/// Route a mesh EventEnvelope through the global KernelRouter.
 // ---- Server entry point ----
 
 pub async fn run_server() -> Result<()> {

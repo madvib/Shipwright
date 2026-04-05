@@ -47,6 +47,21 @@ impl ActorStore {
         }
     }
 
+    /// Open (or create) an ActorStore for the given actor.
+    ///
+    /// `base_dir` is the global Ship directory (e.g. `~/.ship`).
+    /// The DB is created at `{base_dir}/actors/{actor_id}/events.db`.
+    pub fn open(
+        actor_id: &str,
+        base_dir: &Path,
+        write_namespaces: Vec<String>,
+        read_namespaces: Vec<String>,
+    ) -> Result<Self> {
+        let db_path = base_dir.join("actors").join(actor_id).join("events.db");
+        init_actor_db(&db_path)?;
+        Ok(Self::new(actor_id, db_path, write_namespaces, read_namespaces))
+    }
+
     pub fn actor_id(&self) -> &str {
         &self.actor_id
     }

@@ -15,8 +15,8 @@ use crate::requests::{CreateJobRequest, GetJobRequest, ListJobsRequest, UpdateJo
 
 /// Emit `job.created` and return the new job_id as a JSON string.
 ///
-/// Persists to the event store AND routes through the KernelRouter so
-/// daemon subscribers (job-dispatch) see the event.
+/// Persists to the event store AND routes through the daemon's KernelRouter
+/// via HTTP so daemon subscribers (job-dispatch, workspace-sync) see the event.
 pub async fn create_job(req: CreateJobRequest) -> String {
     let job_id = runtime::gen_ulid();
     let payload = JobCreatedPayload {
@@ -42,17 +42,9 @@ pub async fn create_job(req: CreateJobRequest) -> String {
         return format!("Error persisting job.created: {e}");
     }
 
-    // Route through kernel for subscriber delivery (daemon job-dispatch).
-    if let Some(kr) = runtime::events::kernel_router() {
-        let ctx = runtime::events::EmitContext {
-            caller_kind: runtime::events::CallerKind::Mcp,
-            skill_id: None,
-            workspace_id: None,
-            session_id: None,
-        };
-        if let Err(e) = kr.lock().await.route(envelope, &ctx).await {
-            tracing::warn!("job.created kernel routing failed: {e}");
-        }
+    // Route via daemon's kernel for subscriber delivery (job-dispatch, workspace-sync).
+    if let Err(e) = crate::network_client::event_route(&envelope, None, None).await {
+        tracing::warn!("job.created daemon routing failed: {e}");
     }
 
     serde_json::json!({"job_id": job_id}).to_string()

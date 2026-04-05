@@ -54,7 +54,7 @@ fn skill_peer(id: &str, adapter: MockAdapter, events: Vec<&str>) -> PeerHandle {
 /// wait for the relay task to finish.
 async fn run_relay(relay: EventRelay, events: Vec<EventEnvelope>) {
     let (tx, rx) = tokio::sync::mpsc::channel(64);
-    let mailbox = runtime::events::Mailbox::new_for_test(rx);
+    let mailbox = runtime::events::Mailbox::from_receiver(rx);
     let handle = relay.spawn(mailbox);
     for e in events {
         tx.send(e).await.unwrap();
@@ -184,7 +184,7 @@ async fn remove_peer_stops_delivery() {
 async fn relay_stops_on_mailbox_close() {
     use tokio::sync::mpsc;
     let (tx, rx) = mpsc::channel::<EventEnvelope>(16);
-    let mailbox = runtime::events::Mailbox::new_for_test(rx);
+    let mailbox = runtime::events::Mailbox::from_receiver(rx);
     let handle = EventRelay::new().spawn(mailbox);
     drop(tx);
     tokio::time::timeout(std::time::Duration::from_secs(1), handle)

@@ -14,10 +14,25 @@ export interface AgentEntry {
   status: string
 }
 
+export interface SessionEntry {
+  id: string
+  workspace_id: string
+  workspace_branch: string
+  status: string
+  started_at: string | null
+  ended_at: string | null
+  agent_id: string | null
+  primary_provider: string | null
+  goal: string | null
+  summary: string | null
+  tool_call_count: number
+}
+
 export interface UseDaemonReturn {
   connected: boolean
   workspaces: Workspace[]
   agents: AgentEntry[]
+  sessions: SessionEntry[]
   error: Error | null
 }
 
@@ -26,6 +41,7 @@ export interface UseDaemonReturn {
 export const daemonKeys = {
   workspaces: ['daemon', 'workspaces'] as const,
   agents: ['daemon', 'agents'] as const,
+  sessions: (wsId?: string) => ['daemon', 'sessions', wsId] as const,
 }
 
 /** Prefixes that indicate test-leaked workspaces from integration tests. */
@@ -56,6 +72,16 @@ async function fetchAgents(): Promise<AgentEntry[]> {
   return body.data.agents
 }
 
+async function fetchSessions(wsId?: string): Promise<SessionEntry[]> {
+  const url = wsId
+    ? `${DAEMON_BASE_URL}/api/runtime/sessions?workspace_id=${encodeURIComponent(wsId)}`
+    : `${DAEMON_BASE_URL}/api/runtime/sessions`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`daemon: sessions ${res.status}`)
+  const body = await res.json() as { ok: boolean; data: { sessions: SessionEntry[] } }
+  return body.data.sessions
+}
+
 // ---- Hook ----
 
 export function useDaemon(): UseDaemonReturn {
@@ -73,6 +99,15 @@ export function useDaemon(): UseDaemonReturn {
     retry: false,
   })
 
+  const activeWsId = (workspacesQuery.data ?? []).find((w) => w.status === 'active')?.branch
+  const sessionsQuery = useQuery<SessionEntry[], Error>({
+    queryKey: daemonKeys.sessions(activeWsId),
+    queryFn: () => fetchSessions(activeWsId),
+    refetchInterval: 10000,
+    retry: false,
+    enabled: !!activeWsId,
+  })
+
   const fetchError = workspacesQuery.error ?? agentsQuery.error ?? null
   const connected = !workspacesQuery.isError && workspacesQuery.data !== undefined
 
@@ -82,6 +117,7 @@ export function useDaemon(): UseDaemonReturn {
     connected,
     workspaces,
     agents: agentsQuery.data ?? [],
+    sessions: sessionsQuery.data ?? [],
     error: fetchError,
   }
 }

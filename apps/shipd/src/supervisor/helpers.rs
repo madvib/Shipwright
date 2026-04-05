@@ -182,7 +182,7 @@ pub(crate) fn provider_cli(providers: &[String]) -> Option<String> {
         match p.as_str() {
             "claude" | "claude-code" => {
                 return Some(
-                    "claude --dangerously-skip-permissions --dangerously-load-development-channels"
+                    "claude --dangerously-skip-permissions --dangerously-load-development-channels server:ship"
                         .to_string(),
                 )
             }

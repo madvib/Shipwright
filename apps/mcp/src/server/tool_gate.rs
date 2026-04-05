@@ -32,13 +32,20 @@ impl ShipServer {
         "get_session",
         "list_sessions",
         "list_skills",
+        "get_skill_vars",
+        "set_skill_var",
+        "list_skill_vars",
+        "create_job",
+        "update_job",
+        "list_jobs",
+        "get_job",
+        "write_session_file",
+        "read_session_file",
+        "list_session_files",
         "mesh_send",
         "mesh_broadcast",
         "mesh_discover",
         "mesh_status",
-        // Studio-only tools (pull_agents, push_bundle, list_local_agents,
-        // write/delete_skill_file, list_project_skills) are NOT here —
-        // they live exclusively on StudioServer.
     ];
 
     #[cfg(feature = "unstable")]

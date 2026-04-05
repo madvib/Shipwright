@@ -94,7 +94,7 @@ async fn service_on_start_and_on_stop_called() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn service_handle_called_for_each_mailbox_event() {
     let (tx, rx) = mpsc::channel(10);
-    let mailbox = Mailbox::new_for_test(rx);
+    let mailbox = Mailbox::from_receiver(rx);
 
     let tmp = tempdir().unwrap();
     let db_path = tmp.path().join("events.db");
@@ -119,7 +119,7 @@ async fn service_handle_called_for_each_mailbox_event() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn service_exits_cleanly_when_mailbox_closes() {
     let (tx, rx) = mpsc::channel(4);
-    let mailbox = Mailbox::new_for_test(rx);
+    let mailbox = Mailbox::from_receiver(rx);
 
     let tmp = tempdir().unwrap();
     let db_path = tmp.path().join("events.db");

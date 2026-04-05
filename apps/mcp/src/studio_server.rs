@@ -26,8 +26,6 @@ pub struct StudioServer {
     pub notification_peer: std::sync::Arc<tokio::sync::Mutex<Option<Peer<RoleServer>>>>,
     /// Actor-scoped event store for the studio actor.
     pub actor_store: std::sync::Arc<tokio::sync::Mutex<Option<runtime::events::ActorStore>>>,
-    /// Mailbox for receiving cross-actor events (e.g. agent → studio).
-    pub actor_mailbox: std::sync::Arc<tokio::sync::Mutex<Option<runtime::events::Mailbox>>>,
 }
 
 impl std::fmt::Debug for StudioServer {
@@ -63,7 +61,6 @@ impl StudioServer {
             active_project: std::sync::Arc::new(tokio::sync::Mutex::new(project_dir)),
             notification_peer: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
             actor_store: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
-            actor_mailbox: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
 
@@ -75,11 +72,19 @@ impl StudioServer {
         *self.notification_peer.lock().await = Some(peer);
     }
 
-    /// Spawn the studio actor via the global KernelRouter.
+    /// Spawn the studio actor in the daemon's KernelRouter.
     ///
     /// Called from `on_initialized`. The studio actor writes `studio.*` events
     /// and subscribes to `studio.*` and `agent.*` for cross-actor delivery.
     pub async fn spawn_studio_actor(&self) {
+        let global_dir = match runtime::project::get_global_dir() {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::warn!("studio: failed to resolve global dir: {e}");
+                return;
+            }
+        };
+
         let ship_dir = match dirs::home_dir() {
             Some(h) => h.join(".ship"),
             None => {
@@ -88,22 +93,7 @@ impl StudioServer {
             }
         };
 
-        let global_dir = match runtime::project::get_global_dir() {
-            Ok(d) => d,
-            Err(e) => {
-                tracing::warn!("studio: failed to resolve global dir: {e}");
-                return;
-            }
-        };
-        let kr = match runtime::events::init_kernel_router(global_dir) {
-            Ok(kr) => kr,
-            Err(e) => {
-                tracing::warn!("studio: failed to initialize KernelRouter: {e}");
-                return;
-            }
-        };
-
-        // Subscribe to all skill custom namespaces so Studio receives agent-emitted skill events.
+        // Subscribe to all skill custom namespaces
         let mut subscribe_namespaces = vec!["studio.".to_string(), "agent.".to_string()];
         if let Ok(skills) = runtime::list_skills(&ship_dir) {
             for ns in runtime::events::artifact_events::skill_custom_namespaces(&skills) {
@@ -120,28 +110,53 @@ impl StudioServer {
             subscribe_namespaces,
         };
 
-        let mut kr_guard = kr.lock().await;
-        // On reconnect the actor already exists — stop it so the old relay's
-        // mailbox sender is dropped (relay task exits) then respawn fresh.
-        let _ = kr_guard.stop_actor("studio");
-        match kr_guard.spawn_actor("studio", config) {
-            Ok((store, mailbox)) => {
-                *self.actor_store.lock().await = Some(store);
-                *self.actor_mailbox.lock().await = Some(mailbox);
-            }
+        // Spawn actor in daemon's kernel
+        match crate::network_client::actor_spawn("studio", &config, None).await {
+            Ok(_) => tracing::info!("studio actor spawned in daemon kernel"),
             Err(e) => {
-                tracing::warn!("studio: failed to spawn actor: {e}");
+                tracing::warn!("studio: daemon actor spawn failed: {e}");
             }
         }
 
+        // Create local ActorStore for persistence
+        match runtime::events::ActorStore::open(
+            "studio",
+            &global_dir,
+            config.write_namespaces.clone(),
+            config.read_namespaces.clone(),
+        ) {
+            Ok(store) => {
+                *self.actor_store.lock().await = Some(store);
+            }
+            Err(e) => {
+                tracing::warn!("studio: failed to open local ActorStore: {e}");
+            }
+        }
     }
 
-    /// Start a relay task that forwards cross-actor events (from the studio
-    /// mailbox) to the connected Studio SSE peer. Call once after
-    /// `spawn_studio_actor` and `store_peer`.
+    /// Start a relay task that forwards daemon SSE events to the connected
+    /// Studio peer. Call once after `spawn_studio_actor` and `store_peer`.
     pub async fn start_event_relay(&self) {
-        let mailbox = self.actor_mailbox.lock().await.take();
-        let Some(mailbox) = mailbox else { return };
+        // Connect to daemon's SSE stream for studio events
+        let sse_rx = match crate::network_client::mesh_subscribe("studio") {
+            Ok(rx) => rx,
+            Err(e) => {
+                tracing::warn!("studio: daemon SSE subscribe failed: {e}");
+                return;
+            }
+        };
+
+        // Bridge unbounded SSE receiver into bounded Mailbox
+        let (tx, rx) = tokio::sync::mpsc::channel(256);
+        tokio::spawn(async move {
+            let mut sse_rx = sse_rx;
+            while let Some(event) = sse_rx.recv().await {
+                if tx.send(event).await.is_err() {
+                    break;
+                }
+            }
+        });
+        let mailbox = runtime::events::Mailbox::from_receiver(rx);
 
         let peer = self.notification_peer.lock().await.clone();
         let Some(peer) = peer else { return };
@@ -152,7 +167,7 @@ impl StudioServer {
             id: "studio-relay".to_string(),
             actor_id: "studio".to_string(),
             adapter: Box::new(adapter),
-            allowed_events: std::collections::HashSet::new(), // receive all
+            allowed_events: std::collections::HashSet::new(),
         };
         relay.add_peer(peer_handle).await;
         let _handle = relay.spawn(mailbox);
@@ -437,18 +452,13 @@ impl StudioServer {
             }
         }
 
-        // Route via KernelRouter — delivers to agent mailboxes that subscribe to "studio."
-        let ctx = runtime::events::EmitContext {
-            caller_kind: runtime::events::CallerKind::Mcp,
-            skill_id: None,
-            workspace_id: Some(workspace_id.clone()),
-            session_id: None,
-        };
-        let Some(kr) = runtime::events::kernel_router() else {
-            return "Error: KernelRouter not initialized".to_string();
-        };
-        if let Err(e) = kr.lock().await.route(envelope.clone(), &ctx).await {
-            return format!("Error routing studio event: {}", e);
+        // Route via daemon's KernelRouter — delivers to agent mailboxes that subscribe to "studio."
+        if let Err(e) = crate::network_client::event_route(
+            &envelope,
+            Some(&workspace_id),
+            None,
+        ).await {
+            return format!("Error routing event via daemon: {}", e);
         }
 
         // Write to .ship-session/inbox/ so connected Claude Code sessions can

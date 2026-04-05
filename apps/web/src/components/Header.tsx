@@ -1,10 +1,11 @@
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
-import { LogOut, Settings, Users, Zap, Server, Upload, Layers, ChevronDown } from 'lucide-react'
+import { LogOut, Settings, Users, Zap, Server, Upload, Layers, ChevronDown, Loader2 } from 'lucide-react'
 import { useEffect, useState, useRef } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { ThemeToggle } from '@ship/primitives'
 import { authClient } from '#/lib/auth-client'
 import { DAEMON_BASE_URL } from '#/lib/daemon-config'
-import { useDaemon } from '#/features/studio/hooks/useDaemon'
+import { useDaemon, daemonKeys } from '#/features/studio/hooks/useDaemon'
 
 function NavDropdown({ label, href, items, isActive }: {
   label: string
@@ -162,7 +163,9 @@ const REGISTRY_ITEMS = [
 
 function WorkspacePicker() {
   const { connected, workspaces, agents } = useDaemon()
+  const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
+  const [activating, setActivating] = useState<string | null>(null)
   const ref = useRef<HTMLDivElement>(null)
 
   const activeWorkspace = workspaces.find((w) => w.status === 'active')
@@ -182,9 +185,15 @@ function WorkspacePicker() {
     }
   }, [open])
 
-  const activate = (branch: string) => {
+  const activate = async (branch: string) => {
     setOpen(false)
-    void fetch(`${DAEMON_BASE_URL}/api/workspaces/${encodeURIComponent(branch)}/activate`, { method: 'POST' })
+    setActivating(branch)
+    try {
+      await fetch(`${DAEMON_BASE_URL}/api/workspaces/${encodeURIComponent(branch)}/activate`, { method: 'POST' })
+      void queryClient.invalidateQueries({ queryKey: daemonKeys.workspaces })
+    } finally {
+      setActivating(null)
+    }
   }
 
   return (
@@ -198,7 +207,10 @@ function WorkspacePicker() {
           onClick={() => setOpen((p) => !p)}
           className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors font-mono"
         >
-          <span>{activeWorkspace?.branch ?? (connected ? 'no workspace' : 'offline')}</span>
+          {activating ? (
+            <Loader2 className="size-3 animate-spin text-muted-foreground" />
+          ) : null}
+          <span>{activating ?? activeWorkspace?.branch ?? (connected ? 'no workspace' : 'offline')}</span>
           <ChevronDown className="size-3 opacity-50" />
         </button>
         {open && (

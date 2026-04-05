@@ -15,6 +15,9 @@ use crate::requests::{
 };
 
 pub fn start_session(project_dir: &Path, req: StartSessionRequest, branch: &str) -> String {
+    // Reconcile workspace worktree state against git before session start.
+    let _ = runtime::reconcile_workspace(project_dir, branch, project_dir);
+
     match runtime_start_workspace_session(
         project_dir,
         branch,

@@ -202,16 +202,27 @@ async fn emit_job_dispatched(
 }
 
 /// Send agent CLI command into the tmux session with SHIP_MESH_ID set.
+/// Sends "1" + Enter after a delay to accept the development channels warning.
 fn spawn_agent_with_mesh_id(tmux_session: &str, slug: &str) {
     let cmd = format!(
-        "SHIP_MESH_ID={slug} claude --dangerously-skip-permissions --dangerously-load-development-channels"
+        "SHIP_MESH_ID={slug} claude --dangerously-skip-permissions --dangerously-load-development-channels server:ship"
     );
     let result = std::process::Command::new("tmux")
         .args(["send-keys", "-t", tmux_session, &cmd, "Enter"])
         .status();
     if let Err(e) = result {
         tracing::warn!(session = tmux_session, "job-dispatch: tmux send-keys failed: {e}");
+        return;
     }
+
+    // Accept the development channels warning prompt after a brief delay.
+    let session = tmux_session.to_string();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        let _ = std::process::Command::new("tmux")
+            .args(["send-keys", "-t", &session, "1", "Enter"])
+            .status();
+    });
 }
 
 /// Clean up worktree, tmux session, and branch for a completed/merged job.

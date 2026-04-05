@@ -3,6 +3,7 @@
 //! Exposes `run_network` for starting the HTTP/SSE MCP daemon and
 //! `network_status` / `network_stop` for CLI subcommands.
 
+pub mod actor_api;
 mod connections;
 mod handler;
 pub mod human_webhook;
@@ -94,6 +95,8 @@ pub async fn run_network(host: String, port: u16) -> Result<()> {
         .route("/mesh/discover", axum::routing::get(rest_api::mesh_discover))
         .route("/mesh/status", axum::routing::post(rest_api::mesh_status_update))
         .route("/mesh/events/{agent_id}", axum::routing::get(rest_api::mesh_events))
+        .route("/actor/spawn", axum::routing::post(actor_api::actor_spawn))
+        .route("/events/route", axum::routing::post(actor_api::event_route))
         .with_state(api_state.clone());
 
     let runtime_routes = axum::Router::new()

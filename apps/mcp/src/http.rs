@@ -167,14 +167,12 @@ pub async fn run_http_server(port: u16) -> Result<()> {
 /// Build the axum Router for the Studio MCP HTTP server.
 ///
 /// Serves two MCP endpoints on the same port — sharing one process and one
-/// `KernelRouter` (via `OnceLock`), which eliminates the split-brain routing bug:
+/// The daemon owns the single `KernelRouter`. MCP servers delegate event
+/// routing and actor spawning to the daemon via HTTP, receiving events back
+/// through SSE subscriptions.
 ///
 /// - `/mcp`   → `StudioServer`  — web UI (reduced tool set, studio actor)
 /// - `/agent` → `ShipServer`    — agent connections (full tool set, agent actor)
-///
-/// Both servers call `init_kernel_router` on first connection, which is idempotent.
-/// Because they run in the same process they get the same router instance and
-/// events flow between actors via in-memory channels.
 pub fn build_studio_app(token: Option<String>, ct: CancellationToken) -> Router {
     let studio_service: StreamableHttpService<StudioServer, LocalSessionManager> =
         StreamableHttpService::new(

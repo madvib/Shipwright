@@ -1,7 +1,8 @@
-//! Per-actor mailbox — the receive end of a kernel-managed message channel.
+//! Per-actor mailbox — the receive end of an event message channel.
 //!
-//! Created exclusively by `KernelRouter::spawn_actor`. Events are delivered
-//! to matching mailboxes by `KernelRouter::route`.
+//! Typically created by `KernelRouter::spawn_actor` for local routing, or
+//! via `Mailbox::from_receiver` when bridging an external event source
+//! (e.g. daemon SSE stream) into the relay pipeline.
 
 use tokio::sync::mpsc;
 
@@ -17,10 +18,11 @@ impl Mailbox {
         Self { rx }
     }
 
-    /// Construct a `Mailbox` from a raw receiver for use in tests.
+    /// Construct a `Mailbox` from an external receiver.
     ///
-    /// Prefer obtaining mailboxes via `KernelRouter::spawn_actor` in production.
-    pub fn new_for_test(rx: mpsc::Receiver<EventEnvelope>) -> Self {
+    /// Used when the mailbox source is not a local `KernelRouter` — e.g. when
+    /// bridging events from the daemon's SSE stream into the relay pipeline.
+    pub fn from_receiver(rx: mpsc::Receiver<EventEnvelope>) -> Self {
         Self { rx }
     }
 
