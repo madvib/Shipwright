@@ -298,16 +298,20 @@ fn spawn_agent_with_mesh_id(tmux_session: &str, slug: &str) {
         return;
     }
 
-    // Accept the development channels warning prompt.
-    // Send "1" + Enter at 5s and 8s to handle variable startup times.
+    // Accept development channels warning + send initial prompt to trigger job autostart.
     let session = tmux_session.to_string();
     std::thread::spawn(move || {
-        for delay in [5, 3] {
-            std::thread::sleep(std::time::Duration::from_secs(delay));
-            let _ = std::process::Command::new("tmux")
-                .args(["send-keys", "-t", &session, "1", "Enter"])
-                .status();
-        }
+        // Wait for Claude Code to start and show the warning
+        std::thread::sleep(std::time::Duration::from_secs(5));
+        // Enter confirms pre-selected option 1
+        let _ = std::process::Command::new("tmux")
+            .args(["send-keys", "-t", &session, "Enter"])
+            .status();
+        // Wait for the session to initialize, then send the autostart prompt
+        std::thread::sleep(std::time::Duration::from_secs(5));
+        let _ = std::process::Command::new("tmux")
+            .args(["send-keys", "-t", &session, "go", "Enter"])
+            .status();
     });
 }
 
