@@ -146,9 +146,8 @@
         jobs = Array.isArray(jobList) ? jobList : []
         const jobBySlug = new Map(jobs.map(j => [j.slug, j]))
 
-        // Parse file list — the API returns { ok, data: [...] } or just [...]
-        const files = Array.isArray(fileResult) ? fileResult
-          : (fileResult?.data || [])
+        // Parse file list — ViewHost returns full { ok, data: { files: [...] } }
+        const files = fileResult?.data?.files || fileResult?.files || []
 
         const specFiles = files.filter(f =>
           f.path && /^specs\/[^/]+\/[^/]+\/spec\.md$/.test(f.path)

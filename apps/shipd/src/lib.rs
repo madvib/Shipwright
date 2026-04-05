@@ -108,6 +108,7 @@ pub async fn run_network(host: String, port: u16) -> Result<()> {
             axum::routing::get(runtime_api::list_jobs)
                 .post(runtime_api::create_job),
         )
+        .route("/jobs/end", axum::routing::post(runtime_api::end_job))
         .route("/views", axum::routing::get(runtime_api::list_views))
         .route("/view/{name}", axum::routing::get(runtime_api::serve_view))
         .route("/events", axum::routing::get(runtime_api::event_stream))

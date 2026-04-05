@@ -312,6 +312,87 @@ pub async fn create_job(
     }
 }
 
+// ---- Job end (hook-triggered) ----
+
+#[derive(Deserialize)]
+pub struct JobEndRequest {
+    pub slug: String,
+}
+
+/// POST /api/runtime/jobs/end — mark a job as completed by slug.
+///
+/// Called by the session Stop hook when an agent's session ends.
+/// Resolves the job by slug, emits job.completed through the kernel.
+/// The job_dispatch subscriber handles cleanup and unblocking dependents.
+pub async fn end_job(
+    State(state): State<ApiState>,
+    Json(req): Json<JobEndRequest>,
+) -> impl IntoResponse {
+    // Find the job by slug
+    let jobs = match runtime::projections::job::load_jobs() {
+        Ok(j) => j,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(MeshResponse { ok: false, data: serde_json::json!(e.to_string()) }),
+            );
+        }
+    };
+
+    let job = match jobs.values().find(|j| j.slug == req.slug) {
+        Some(j) => j.clone(),
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(MeshResponse { ok: false, data: serde_json::json!(format!("no job with slug '{}'", req.slug)) }),
+            );
+        }
+    };
+
+    // Only complete jobs that are dispatched (running)
+    if job.status != runtime::projections::job::JobStatus::Dispatched {
+        return (
+            StatusCode::OK,
+            Json(MeshResponse { ok: true, data: serde_json::json!(format!("job '{}' is {:?}, not dispatched — skipping", req.slug, job.status)) }),
+        );
+    }
+
+    let payload = runtime::events::job::JobCompletedPayload {
+        job_id: job.job_id.clone(),
+        slug: job.slug.clone(),
+    };
+
+    let envelope = match EventEnvelope::new(event_types::JOB_COMPLETED, &job.job_id, &payload)
+        .map(|e| e.with_actor_id("hook"))
+    {
+        Ok(e) => e,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(MeshResponse { ok: false, data: serde_json::json!(e.to_string()) }),
+            );
+        }
+    };
+
+    let ctx = EmitContext {
+        caller_kind: CallerKind::Mcp,
+        skill_id: None,
+        workspace_id: None,
+        session_id: None,
+    };
+
+    match state.kernel.lock().await.route(envelope, &ctx).await {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(MeshResponse { ok: true, data: serde_json::json!(format!("job '{}' completed", req.slug)) }),
+        ),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(MeshResponse { ok: false, data: serde_json::json!(e.to_string()) }),
+        ),
+    }
+}
+
 /// Stops an actor when dropped — used to clean up the SSE stream actor.
 struct ActorGuard {
     actor_id: String,
