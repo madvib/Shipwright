@@ -263,6 +263,261 @@ async fn pipeline_advances_to_next_phase() {
     assert_eq!(payload["job_id"].as_str(), Some(job_id));
 }
 
+// ── Ports + Adapters: mock executor tests ────────────────────────────────────
+
+#[cfg(feature = "unstable")]
+mod ports {
+    use super::*;
+    use async_trait::async_trait;
+    use runtime::services::dispatch::{
+        ExecutorHandle, IsolationStrategy, JobContext, JobExecutor,
+    };
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct RecordingIsolation {
+        work_dir: PathBuf,
+        prepare_count: AtomicUsize,
+        cleanup_count: AtomicUsize,
+    }
+
+    impl RecordingIsolation {
+        fn new(work_dir: PathBuf) -> Self {
+            Self {
+                work_dir,
+                prepare_count: AtomicUsize::new(0),
+                cleanup_count: AtomicUsize::new(0),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl IsolationStrategy for RecordingIsolation {
+        async fn prepare(&self, _job: &JobContext) -> anyhow::Result<PathBuf> {
+            self.prepare_count.fetch_add(1, Ordering::SeqCst);
+            Ok(self.work_dir.clone())
+        }
+        async fn cleanup(&self, _job: &JobContext) -> anyhow::Result<()> {
+            self.cleanup_count.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    struct RecordingExecutor {
+        spawn_count: AtomicUsize,
+        stop_count: AtomicUsize,
+    }
+
+    impl RecordingExecutor {
+        fn new() -> Self {
+            Self {
+                spawn_count: AtomicUsize::new(0),
+                stop_count: AtomicUsize::new(0),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl JobExecutor for RecordingExecutor {
+        async fn spawn(&self, _ctx: &JobContext) -> anyhow::Result<ExecutorHandle> {
+            self.spawn_count.fetch_add(1, Ordering::SeqCst);
+            Ok(ExecutorHandle { pid: Some(99999), inner: Box::new(()) })
+        }
+        async fn is_alive(&self, _handle: &ExecutorHandle) -> bool { true }
+        async fn stop(&self, _handle: &ExecutorHandle) -> anyhow::Result<()> {
+            self.stop_count.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+        async fn send(
+            &self, _handle: &ExecutorHandle, _message: &str,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn test_ctx(slug: &str, work_dir: PathBuf) -> JobContext {
+        JobContext {
+            job_id: format!("j-{slug}"),
+            slug: slug.to_string(),
+            agent: "rust-runtime".to_string(),
+            branch: format!("job/{slug}"),
+            spec_path: ".ship-session/job-spec.md".to_string(),
+            work_dir,
+            env: [("SHIP_MESH_ID".to_string(), slug.to_string())].into(),
+            model: None,
+            provider: None,
+        }
+    }
+
+    /// Mock isolation returns the configured work_dir.
+    #[tokio::test]
+    async fn isolation_prepare_returns_work_dir() {
+        let dir = TempDir::new().unwrap();
+        let expected = dir.path().join("worktree");
+        let iso = RecordingIsolation::new(expected.clone());
+        let ctx = test_ctx("iso-test", dir.path().to_path_buf());
+
+        let result = iso.prepare(&ctx).await.unwrap();
+        assert_eq!(result, expected);
+        assert_eq!(iso.prepare_count.load(Ordering::SeqCst), 1);
+    }
+
+    /// Mock executor records spawn calls and returns a handle with pid.
+    #[tokio::test]
+    async fn executor_spawn_returns_handle() {
+        let dir = TempDir::new().unwrap();
+        let exec = RecordingExecutor::new();
+        let ctx = test_ctx("exec-test", dir.path().to_path_buf());
+
+        let handle = exec.spawn(&ctx).await.unwrap();
+        assert_eq!(handle.pid, Some(99999));
+        assert_eq!(exec.spawn_count.load(Ordering::SeqCst), 1);
+    }
+
+    /// Dispatch must delegate to IsolationStrategy::prepare during job creation.
+    ///
+    /// FAILS: dispatch_job uses inline worktree/tmux helpers, not IsolationStrategy.
+    /// Phase 2 wires dispatch_job to accept trait objects.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn dispatch_delegates_to_isolation() {
+        let dir = TempDir::new().unwrap();
+        let isolation = Arc::new(RecordingIsolation::new(dir.path().join("worktree")));
+        let _executor = Arc::new(RecordingExecutor::new());
+
+        let (_dir2, router) = super::setup();
+        let kernel = Arc::new(tokio::sync::Mutex::new(router));
+        let mut pending = std::collections::HashMap::new();
+
+        let event = super::ev(
+            event_types::JOB_CREATED,
+            serde_json::json!({
+                "job_id": "j-iso-dispatch",
+                "slug": "iso-dispatch",
+                "agent": "rust-runtime",
+                "branch": "job/iso-dispatch",
+                "spec_path": ".ship-session/job-spec.md",
+                "plan_id": null,
+            }),
+        );
+
+        // dispatch_job currently ignores isolation/executor traits
+        super::super::handle_job_created(&kernel, &event, &mut pending).await;
+
+        assert!(
+            isolation.prepare_count.load(Ordering::SeqCst) > 0,
+            "IsolationStrategy::prepare must be called during dispatch"
+        );
+    }
+
+    /// Dispatch must delegate to JobExecutor::spawn during job creation.
+    ///
+    /// FAILS: dispatch_job spawns via tmux send-keys, not JobExecutor::spawn.
+    /// Phase 2 wires dispatch_job to accept trait objects.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn dispatch_delegates_to_executor() {
+        let dir = TempDir::new().unwrap();
+        let _isolation = Arc::new(RecordingIsolation::new(dir.path().join("worktree")));
+        let executor = Arc::new(RecordingExecutor::new());
+
+        let (_dir2, router) = super::setup();
+        let kernel = Arc::new(tokio::sync::Mutex::new(router));
+        let mut pending = std::collections::HashMap::new();
+
+        let event = super::ev(
+            event_types::JOB_CREATED,
+            serde_json::json!({
+                "job_id": "j-exec-dispatch",
+                "slug": "exec-dispatch",
+                "agent": "rust-runtime",
+                "branch": "job/exec-dispatch",
+                "spec_path": ".ship-session/job-spec.md",
+                "plan_id": null,
+            }),
+        );
+
+        super::super::handle_job_created(&kernel, &event, &mut pending).await;
+
+        assert!(
+            executor.spawn_count.load(Ordering::SeqCst) > 0,
+            "JobExecutor::spawn must be called during dispatch"
+        );
+    }
+
+    /// Pipeline advancement must use JobExecutor::spawn for the next phase.
+    ///
+    /// FAILS: try_advance_pipeline calls spawn_agent_with_mesh_id directly.
+    /// Phase 2 wires pipeline advancement through JobExecutor.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn pipeline_advance_uses_executor() {
+        use runtime::events::store::{EventStore, SqliteEventStore};
+
+        let dir = TempDir::new().unwrap();
+        let slug = "pipe-exec-test";
+        let job_id = "j-pipe-exec";
+        let executor = Arc::new(RecordingExecutor::new());
+
+        let worktree_root = dir.path().join("worktrees");
+        let worktree_path = worktree_root.join(slug);
+        let global_dir = dir.path().join("global");
+        std::fs::create_dir_all(worktree_path.join(".ship-session")).unwrap();
+        std::fs::create_dir_all(&global_dir).unwrap();
+        std::fs::write(
+            worktree_path.join(".ship-session").join("job-spec.md"),
+            "---\nslug: pipe-exec-test\n---\n# Test\n",
+        )
+        .unwrap();
+
+        unsafe {
+            std::env::set_var("SHIP_WORKTREE_DIR", &worktree_root);
+            std::env::set_var("SHIP_GLOBAL_DIR", &global_dir);
+        }
+
+        let store = SqliteEventStore::new().unwrap();
+        store.append(&super::ev(
+            event_types::JOB_CREATED,
+            serde_json::json!({
+                "job_id": job_id, "slug": slug,
+                "agent": "test-writer", "branch": "job/pipe-exec-test",
+                "spec_path": ".ship-session/job-spec.md", "plan_id": null,
+                "pipeline": [
+                    { "agent": "test-writer", "goal": "Write tests" },
+                    { "agent": "rust-runtime", "goal": "Implement" }
+                ]
+            }),
+        )).unwrap();
+        store.append(&super::ev(
+            event_types::JOB_DISPATCHED,
+            serde_json::json!({
+                "job_id": job_id,
+                "worktree": worktree_path.to_string_lossy(),
+                "pid": null,
+            }),
+        )).unwrap();
+
+        let mut router = KernelRouter::new(dir.path().join(".ship")).unwrap();
+        let (_s, _mb) = router
+            .spawn_actor("service.job-dispatch", super::job_dispatch_config())
+            .unwrap();
+        let kernel = Arc::new(tokio::sync::Mutex::new(router));
+
+        let completed = super::ev(
+            event_types::JOB_COMPLETED,
+            serde_json::json!({ "job_id": job_id, "slug": slug }),
+        );
+        super::super::try_advance_pipeline(&kernel, &completed).await;
+
+        unsafe {
+            std::env::remove_var("SHIP_WORKTREE_DIR");
+            std::env::remove_var("SHIP_GLOBAL_DIR");
+        }
+
+        assert!(
+            executor.spawn_count.load(Ordering::SeqCst) > 0,
+            "JobExecutor::spawn must be called during pipeline advancement"
+        );
+    }
+}
+
 /// `job.created` with model/provider in the payload projects to a valid
 /// pending JobRecord.
 #[test]
