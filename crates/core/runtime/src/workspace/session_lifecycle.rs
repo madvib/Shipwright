@@ -5,7 +5,6 @@ use crate::db::session_events::{
 };
 use crate::db::workspace_state::get_workspace_config_generation_db;
 use crate::events::types::{SessionEnded, SessionRecorded, SessionStarted};
-use crate::projections::{Projection, SessionProjection};
 use anyhow::{Result, anyhow};
 use chrono::Utc;
 use std::path::Path;
@@ -155,11 +154,8 @@ pub fn start_workspace_session(
         config_generation_at_start,
         compiled_at: None,
     };
-    let start_envelope = insert_session_with_started_event(&session_id, &workspace.id, &started_payload)?;
-    // Apply session projection synchronously so get_workspace_session_db finds the row.
-    if let Ok(mut conn) = crate::db::open_db() {
-        let _ = SessionProjection::new().apply(&start_envelope, &mut conn);
-    }
+    // Event + projection applied atomically inside the emit function.
+    let _start_envelope = insert_session_with_started_event(&session_id, &workspace.id, &started_payload)?;
     let created = get_workspace_session_db(&session_id)?
         .ok_or_else(|| anyhow::anyhow!("Failed to load created workspace session"))?;
     let started = hydrate_workspace_session(created);
@@ -207,11 +203,7 @@ pub fn end_workspace_session(
         updated_workspace_ids: active.updated_workspace_ids.clone(),
         compile_error: active.compile_error.clone(),
     };
-    let end_envelope = update_session_with_ended_event(&active.id, &active.workspace_id, &ended_payload)?;
-    // Apply session projection synchronously so get_workspace_session_db finds the updated row.
-    if let Ok(mut conn) = crate::db::open_db() {
-        let _ = SessionProjection::new().apply(&end_envelope, &mut conn);
-    }
+    let _end_envelope = update_session_with_ended_event(&active.id, &active.workspace_id, &ended_payload)?;
 
     let ended = get_workspace_session_db(&active.id)?
         .ok_or_else(|| anyhow::anyhow!("Failed to load ended workspace session"))?;
@@ -234,11 +226,8 @@ pub fn end_workspace_session(
         gate_result: request.gate_result,
         workspace_branch: ended.workspace_branch.clone(),
     };
-    let recorded_envelope =
+    let _recorded_envelope =
         insert_session_recorded_event(&ended.id, &ended.workspace_id, &recorded_payload)?;
-    if let Ok(mut conn) = crate::db::open_db() {
-        let _ = SessionProjection::new().apply(&recorded_envelope, &mut conn);
-    }
 
     let mut ended = ended;
     ended.session_record_id = Some(record_id);

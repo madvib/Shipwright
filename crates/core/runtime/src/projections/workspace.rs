@@ -34,6 +34,8 @@ const HANDLED: &[&str] = &[
     event_types::WORKSPACE_STATUS_CHANGED,
     event_types::WORKSPACE_AGENT_CHANGED,
     event_types::WORKSPACE_RECONCILED,
+    event_types::WORKSPACE_TMUX_ASSIGNED,
+    event_types::WORKSPACE_STARTED,
     event_types::WORKSPACE_DELETED,
 ];
 
@@ -57,6 +59,8 @@ impl Projection for WorkspaceProjection {
             event_types::WORKSPACE_STATUS_CHANGED => apply_status_changed(entity, &event.payload_json, conn),
             event_types::WORKSPACE_AGENT_CHANGED => apply_agent_changed(entity, &event.payload_json, conn),
             event_types::WORKSPACE_RECONCILED => apply_reconciled(entity, &event.payload_json, conn),
+            event_types::WORKSPACE_TMUX_ASSIGNED => apply_tmux_assigned(entity, &event.payload_json, conn),
+            event_types::WORKSPACE_STARTED => apply_started(entity, &event.payload_json, conn),
             event_types::WORKSPACE_DELETED => apply_deleted(entity, conn),
             _ => Ok(()),
         }

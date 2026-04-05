@@ -208,8 +208,11 @@ pub(crate) fn compile_workspace_context(
     }
 
     let duration_ms = started.elapsed().as_millis() as u64;
-    // config_generation is tracked by the projection; pass 0 here as a
-    // signal that the projection should increment.
-    upsert_workspace_on_compiled(ship_dir, &workspace.branch, 0, duration_ms)?;
+    // Read current generation and compute next value for idempotent projection.
+    let current_gen = crate::db::workspace_state::get_workspace_config_generation_db(
+        &workspace.branch,
+    )?.unwrap_or(0);
+    let next_gen = (current_gen as u32).wrapping_add(1);
+    upsert_workspace_on_compiled(ship_dir, &workspace.branch, next_gen, duration_ms)?;
     Ok(providers)
 }

@@ -176,7 +176,7 @@ pub fn load_jobs() -> Result<HashMap<String, JobRecord>> {
     let mut conn = open_db_at(&db_path()?)?;
 
     const COLS: &str = "id, event_type, entity_id, actor, payload_json, version, \
-        correlation_id, causation_id, workspace_id, session_id, \
+        causation_id, workspace_id, session_id, \
         actor_id, parent_actor_id, elevated, created_at";
 
     let rows = block_on(async {
@@ -199,7 +199,7 @@ pub fn load_jobs() -> Result<HashMap<String, JobRecord>> {
 
 fn row_to_envelope(row: &sqlx::sqlite::SqliteRow) -> Result<EventEnvelope> {
     use sqlx::Row;
-    let created_at_str: String = row.get(13);
+    let created_at_str: String = row.get(12);
     let created_at = created_at_str
         .parse::<DateTime<Utc>>()
         .or_else(|_| {
@@ -214,13 +214,12 @@ fn row_to_envelope(row: &sqlx::sqlite::SqliteRow) -> Result<EventEnvelope> {
         actor: row.get(3),
         payload_json: row.get(4),
         version: row.get::<i64, _>(5) as u32,
-        correlation_id: row.get(6),
-        causation_id: row.get(7),
-        workspace_id: row.get(8),
-        session_id: row.get(9),
-        actor_id: row.get(10),
-        parent_actor_id: row.get(11),
-        elevated: row.get::<i64, _>(12) != 0,
+        causation_id: row.get(6),
+        workspace_id: row.get(7),
+        session_id: row.get(8),
+        actor_id: row.get(9),
+        parent_actor_id: row.get(10),
+        elevated: row.get::<i64, _>(11) != 0,
         created_at,
         target_actor_id: None,
     })

@@ -1,48 +1,26 @@
 //! Lifecycle-event-aware workspace functions.
 //!
-//! Each function emits a typed workspace event via the EventRouter, then
-//! applies WorkspaceProjection synchronously so the workspace table reflects
-//! the change immediately. The async projection task provides eventual
-//! consistency for any events that arrive via broadcast only.
+//! Each function emits a typed workspace event. The event append and
+//! projection update happen atomically in a single SQLite transaction
+//! inside `workspace_events::run_tx`.
 //!
 //! ADR GHihs2tn: all workspace lifecycle transitions must emit typed events.
 
 use crate::db::workspace_events::{
     emit_workspace_activated, emit_workspace_agent_changed, emit_workspace_archived,
     emit_workspace_compile_failed, emit_workspace_compiled, emit_workspace_created,
-    emit_workspace_deleted, emit_workspace_reconciled, emit_workspace_status_changed,
+    emit_workspace_deleted, emit_workspace_reconciled, emit_workspace_started,
+    emit_workspace_status_changed, emit_workspace_tmux_assigned,
 };
 use crate::events::types::{
     WorkspaceActivated, WorkspaceAgentChanged, WorkspaceArchived, WorkspaceCompileFailed,
-    WorkspaceCompiled, WorkspaceCreated, WorkspaceReconciled, WorkspaceStatusChanged,
+    WorkspaceCompiled, WorkspaceCreated, WorkspaceReconciled, WorkspaceStarted,
+    WorkspaceStatusChanged, WorkspaceTmuxAssigned,
 };
-use crate::events::EventEnvelope;
-use crate::projections::{Projection, WorkspaceProjection};
 use anyhow::Result;
 use std::path::Path;
 
 use super::helpers::workspace_id_from_branch;
-
-// ── helper ────────────────────────────────────────────────────────────────────
-
-/// Apply WorkspaceProjection to platform.db synchronously.
-/// Errors are logged but not propagated -- the event is already persisted.
-fn sync_workspace_projection(envelope: &EventEnvelope) {
-    let proj = WorkspaceProjection::new();
-    match crate::db::open_db() {
-        Ok(mut conn) => {
-            if let Err(e) = proj.apply(envelope, &mut conn) {
-                eprintln!(
-                    "[workspace-upsert] projection error for {}: {}",
-                    envelope.event_type, e
-                );
-            }
-        }
-        Err(e) => {
-            eprintln!("[workspace-upsert] db open error: {e}");
-        }
-    }
-}
 
 // ── public event-emitting functions ──────────────────────────────────────────
 
@@ -56,8 +34,7 @@ pub fn upsert_workspace_on_activate(
         agent_id: agent_id.map(str::to_string),
         providers: providers.to_vec(),
     };
-    let envelope = emit_workspace_activated(branch, &payload)?;
-    sync_workspace_projection(&envelope);
+    emit_workspace_activated(branch, &payload)?;
     Ok(())
 }
 
@@ -71,8 +48,7 @@ pub fn upsert_workspace_on_compiled(
         config_generation,
         duration_ms,
     };
-    let envelope = emit_workspace_compiled(branch, &payload)?;
-    sync_workspace_projection(&envelope);
+    emit_workspace_compiled(branch, &payload)?;
     Ok(())
 }
 
@@ -82,15 +58,13 @@ pub fn upsert_workspace_on_compile_failed(
     error: &str,
 ) -> Result<()> {
     let payload = WorkspaceCompileFailed { error: error.to_string() };
-    let envelope = emit_workspace_compile_failed(branch, &payload)?;
-    sync_workspace_projection(&envelope);
+    emit_workspace_compile_failed(branch, &payload)?;
     Ok(())
 }
 
 pub fn upsert_workspace_on_archived(_ship_dir: &Path, branch: &str) -> Result<()> {
     let payload = WorkspaceArchived {};
-    let envelope = emit_workspace_archived(branch, &payload)?;
-    sync_workspace_projection(&envelope);
+    emit_workspace_archived(branch, &payload)?;
     Ok(())
 }
 
@@ -114,14 +88,12 @@ pub fn upsert_workspace_on_created(
         is_worktree,
         worktree_path: worktree_path.map(str::to_string),
     };
-    let envelope = emit_workspace_created(branch, &payload)?;
-    sync_workspace_projection(&envelope);
+    emit_workspace_created(branch, &payload)?;
     Ok(())
 }
 
 pub fn upsert_workspace_on_deleted(_ship_dir: &Path, branch: &str) -> Result<()> {
-    let envelope = emit_workspace_deleted(branch)?;
-    sync_workspace_projection(&envelope);
+    emit_workspace_deleted(branch)?;
     Ok(())
 }
 
@@ -135,15 +107,13 @@ pub fn upsert_workspace_on_status_changed(
         old_status: old_status.to_string(),
         new_status: new_status.to_string(),
     };
-    let envelope = emit_workspace_status_changed(branch, &payload)?;
-    sync_workspace_projection(&envelope);
+    emit_workspace_status_changed(branch, &payload)?;
     Ok(())
 }
 
 pub fn emit_workspace_archived_event(_ship_dir: &Path, branch: &str) -> Result<()> {
     let payload = WorkspaceArchived {};
-    let envelope = emit_workspace_archived(branch, &payload)?;
-    sync_workspace_projection(&envelope);
+    emit_workspace_archived(branch, &payload)?;
     Ok(())
 }
 
@@ -159,8 +129,7 @@ pub fn upsert_workspace_on_reconciled(
         worktree_path: worktree_path.map(str::to_string),
         reason: reason.to_string(),
     };
-    let envelope = emit_workspace_reconciled(branch, &payload)?;
-    sync_workspace_projection(&envelope);
+    emit_workspace_reconciled(branch, &payload)?;
     Ok(())
 }
 
@@ -170,7 +139,32 @@ pub fn emit_workspace_agent_changed_event(
     agent_id: Option<&str>,
 ) -> Result<()> {
     let payload = WorkspaceAgentChanged { agent_id: agent_id.map(str::to_string) };
-    let envelope = emit_workspace_agent_changed(branch, &payload)?;
-    sync_workspace_projection(&envelope);
+    emit_workspace_agent_changed(branch, &payload)?;
+    Ok(())
+}
+
+pub fn upsert_workspace_on_tmux_assigned(
+    _ship_dir: &Path,
+    branch: &str,
+    tmux_session_name: Option<&str>,
+) -> Result<()> {
+    let payload = WorkspaceTmuxAssigned {
+        tmux_session_name: tmux_session_name.map(str::to_string),
+    };
+    emit_workspace_tmux_assigned(branch, &payload)?;
+    Ok(())
+}
+
+pub fn upsert_workspace_on_started(
+    _ship_dir: &Path,
+    branch: &str,
+    worktree_path: &str,
+    tmux_session_name: &str,
+) -> Result<()> {
+    let payload = WorkspaceStarted {
+        worktree_path: worktree_path.to_string(),
+        tmux_session_name: tmux_session_name.to_string(),
+    };
+    emit_workspace_started(branch, &payload)?;
     Ok(())
 }

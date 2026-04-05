@@ -27,6 +27,10 @@ const HANDLED: &[&str] = &[
     event_types::SESSION_STARTED,
     event_types::SESSION_ENDED,
     event_types::SESSION_RECORDED,
+    event_types::SESSION_DRAIN_STARTED,
+    event_types::SESSION_DRAIN_COMPLETED,
+    event_types::SESSION_DRAIN_ABORTED,
+    event_types::SESSION_TOOL_COUNT_INCREMENTED,
 ];
 
 impl Projection for SessionProjection {
@@ -43,6 +47,10 @@ impl Projection for SessionProjection {
             event_types::SESSION_STARTED => apply_started(event, conn),
             event_types::SESSION_ENDED => apply_ended(event, conn),
             event_types::SESSION_RECORDED => apply_recorded(event, conn),
+            event_types::SESSION_DRAIN_STARTED => apply_drain_started(event, conn),
+            event_types::SESSION_DRAIN_COMPLETED => apply_drain_completed(event, conn),
+            event_types::SESSION_DRAIN_ABORTED => apply_drain_aborted(event, conn),
+            event_types::SESSION_TOOL_COUNT_INCREMENTED => apply_tool_count_incremented(event, conn),
             _ => Ok(()),
         }
     }
@@ -236,6 +244,73 @@ fn apply_recorded(event: &EventEnvelope, conn: &mut SqliteConnection) -> Result<
         .bind(p.files_changed)
         .bind(&p.gate_result)
         .bind(&now)
+        .execute(conn)
+        .await?;
+        Ok(())
+    })
+}
+
+// ── Drain handlers ──────────────────────────────────────────────────────────
+
+fn apply_drain_started(event: &EventEnvelope, conn: &mut SqliteConnection) -> Result<()> {
+    #[derive(serde::Deserialize)]
+    struct P { drained_at: String }
+    let p: P = serde_json::from_str(&event.payload_json)?;
+    let now = event.created_at.to_rfc3339();
+    block_on(async {
+        sqlx::query(
+            "UPDATE workspace_session SET status = 'draining', drained_at = ?, updated_at = ? \
+             WHERE id = ? AND status IN ('active', 'draining')",
+        )
+        .bind(&p.drained_at)
+        .bind(&now)
+        .bind(&event.entity_id)
+        .execute(conn)
+        .await?;
+        Ok(())
+    })
+}
+
+fn apply_drain_completed(event: &EventEnvelope, conn: &mut SqliteConnection) -> Result<()> {
+    #[derive(serde::Deserialize)]
+    struct P { ended_at: String }
+    let p: P = serde_json::from_str(&event.payload_json)?;
+    let now = event.created_at.to_rfc3339();
+    block_on(async {
+        sqlx::query(
+            "UPDATE workspace_session SET status = 'ended', ended_at = ?, updated_at = ? \
+             WHERE id = ? AND status = 'draining'",
+        )
+        .bind(&p.ended_at)
+        .bind(&now)
+        .bind(&event.entity_id)
+        .execute(conn)
+        .await?;
+        Ok(())
+    })
+}
+
+fn apply_drain_aborted(event: &EventEnvelope, conn: &mut SqliteConnection) -> Result<()> {
+    let now = event.created_at.to_rfc3339();
+    block_on(async {
+        sqlx::query(
+            "UPDATE workspace_session SET status = 'active', drained_at = NULL, updated_at = ? \
+             WHERE id = ? AND status IN ('draining', 'active')",
+        )
+        .bind(&now)
+        .bind(&event.entity_id)
+        .execute(conn)
+        .await?;
+        Ok(())
+    })
+}
+
+fn apply_tool_count_incremented(event: &EventEnvelope, conn: &mut SqliteConnection) -> Result<()> {
+    block_on(async {
+        sqlx::query(
+            "UPDATE workspace_session SET tool_call_count = tool_call_count + 1 WHERE id = ?",
+        )
+        .bind(&event.entity_id)
         .execute(conn)
         .await?;
         Ok(())

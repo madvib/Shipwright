@@ -1,22 +1,23 @@
 //! Typed session event emission.
 //!
-//! Each function builds an EventEnvelope, persists it to platform.db via
-//! SqliteEventStore, and routes it through KernelRouter (when initialized)
-//! for delivery to actor mailboxes.
+//! Each function builds an EventEnvelope, persists the event and applies the
+//! session projection in a single SQLite transaction on one connection.
+//! Kernel routing happens after commit (fire-and-forget).
 //!
 //! session.progress is non-elevated so it goes to kernel routing only;
-//! it is still persisted to platform.db by SqliteEventStore.
+//! it is still persisted to platform.db by the transactional path.
 //!
 //! ADR GHihs2tn: all session lifecycle transitions must emit typed events.
 
 use anyhow::Result;
 
-use crate::db::block_on_anyhow;
-use crate::events::store::EventStore;
+use crate::db::{block_on, block_on_anyhow, open_db};
+use crate::events::store::append_event_with_conn;
 use crate::events::types::event_types;
 use crate::events::types::{SessionEnded, SessionProgress, SessionRecorded, SessionStarted};
 use crate::events::validator::{CallerKind, EmitContext};
-use crate::events::{EventEnvelope, SqliteEventStore};
+use crate::events::EventEnvelope;
+use crate::projections::{Projection, SessionProjection};
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -33,11 +34,25 @@ fn session_envelope<P: serde::Serialize>(
         .elevate())
 }
 
+/// Persist event + apply projection in one transaction, then route to kernel.
 fn emit_session(envelope: EventEnvelope, workspace_id: &str) -> Result<EventEnvelope> {
-    // Persist to platform.db for the reading path (CLI, sync, projections).
-    SqliteEventStore::new()?.append(&envelope)?;
+    let mut conn = open_db()?;
+    block_on(async { sqlx::query("BEGIN IMMEDIATE").execute(&mut conn).await })?;
 
-    // Route to actor mailboxes if the kernel router is running.
+    if let Err(e) = append_event_with_conn(&envelope, &mut conn) {
+        let _ = block_on(async { sqlx::query("ROLLBACK").execute(&mut conn).await });
+        return Err(e);
+    }
+
+    let proj = SessionProjection::new();
+    if let Err(e) = proj.apply(&envelope, &mut conn) {
+        let _ = block_on(async { sqlx::query("ROLLBACK").execute(&mut conn).await });
+        return Err(e);
+    }
+
+    block_on(async { sqlx::query("COMMIT").execute(&mut conn).await })?;
+
+    // Route to actor mailboxes after commit (fire-and-forget).
     let ctx = EmitContext {
         caller_kind: CallerKind::Runtime,
         skill_id: None,
@@ -53,9 +68,6 @@ fn emit_session(envelope: EventEnvelope, workspace_id: &str) -> Result<EventEnve
 
 // ── public API ────────────────────────────────────────────────────────────────
 
-/// Emit `session.started` to platform.db via the store.
-/// Returns the envelope so callers can apply SessionProjection for
-/// immediate read-back consistency.
 pub fn insert_session_with_started_event(
     session_id: &str,
     workspace_id: &str,
@@ -70,10 +82,7 @@ pub fn insert_session_with_started_event(
     emit_session(envelope, workspace_id)
 }
 
-/// Emit `session.progress` to platform.db via the store (non-elevated).
-///
-/// Progress events are not elevated — they are still persisted to platform.db
-/// but do not appear on the platform broadcast.
+/// Emit `session.progress` — non-elevated, no projection handler.
 pub fn insert_session_progress_event(
     session_id: &str,
     workspace_id: &str,
@@ -84,7 +93,8 @@ pub fn insert_session_progress_event(
         .with_actor_id(session_id)
         .with_parent_actor_id(workspace_id);
 
-    SqliteEventStore::new()?.append(&envelope)?;
+    let mut conn = open_db()?;
+    append_event_with_conn(&envelope, &mut conn)?;
 
     let ctx = EmitContext {
         caller_kind: CallerKind::Runtime,
@@ -99,9 +109,6 @@ pub fn insert_session_progress_event(
     Ok(())
 }
 
-/// Emit `session.ended` to platform.db via the store.
-/// Returns the envelope so callers can apply SessionProjection for
-/// immediate read-back consistency.
 pub fn update_session_with_ended_event(
     session_id: &str,
     workspace_id: &str,
@@ -116,9 +123,6 @@ pub fn update_session_with_ended_event(
     emit_session(envelope, workspace_id)
 }
 
-/// Emit `session.recorded` to platform.db via the store.
-/// Returns the envelope so callers can apply SessionProjection to write
-/// the workspace_session_record row.
 pub fn insert_session_recorded_event(
     session_id: &str,
     workspace_id: &str,
@@ -130,5 +134,16 @@ pub fn insert_session_recorded_event(
         workspace_id,
         payload,
     )?;
+    emit_session(envelope, workspace_id)
+}
+
+/// Emit a session drain/tool-count event transactionally.
+pub fn emit_session_drain_event<P: serde::Serialize>(
+    event_type: &str,
+    session_id: &str,
+    workspace_id: &str,
+    payload: &P,
+) -> Result<EventEnvelope> {
+    let envelope = session_envelope(event_type, session_id, workspace_id, payload)?;
     emit_session(envelope, workspace_id)
 }

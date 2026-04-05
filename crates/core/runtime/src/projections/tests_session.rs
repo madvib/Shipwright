@@ -163,6 +163,167 @@ mod session_tests {
         assert_eq!(status_before, status_after, "progress must not change session row");
     }
 
+    // ── Drain event tests ──────────────────────────────────────────────
+
+    fn drain_started_event(session_id: &str, ws_id: &str) -> EventEnvelope {
+        EventEnvelope::new(
+            event_types::SESSION_DRAIN_STARTED,
+            session_id,
+            &serde_json::json!({ "drained_at": "2026-04-05T00:00:00Z" }),
+        )
+        .unwrap()
+        .with_context(Some(ws_id), Some(session_id))
+        .elevate()
+    }
+
+    fn drain_completed_event(session_id: &str, ws_id: &str) -> EventEnvelope {
+        EventEnvelope::new(
+            event_types::SESSION_DRAIN_COMPLETED,
+            session_id,
+            &serde_json::json!({ "ended_at": "2026-04-05T00:01:00Z" }),
+        )
+        .unwrap()
+        .with_context(Some(ws_id), Some(session_id))
+        .elevate()
+    }
+
+    fn drain_aborted_event(session_id: &str, ws_id: &str) -> EventEnvelope {
+        EventEnvelope::new(
+            event_types::SESSION_DRAIN_ABORTED,
+            session_id,
+            &serde_json::json!({ "resumed_at": "2026-04-05T00:00:30Z" }),
+        )
+        .unwrap()
+        .with_context(Some(ws_id), Some(session_id))
+        .elevate()
+    }
+
+    fn tool_count_event(session_id: &str, ws_id: &str) -> EventEnvelope {
+        EventEnvelope::new(
+            event_types::SESSION_TOOL_COUNT_INCREMENTED,
+            session_id,
+            &serde_json::json!({}),
+        )
+        .unwrap()
+        .with_context(Some(ws_id), Some(session_id))
+        .elevate()
+    }
+
+    fn query_session_drain_status(
+        conn: &mut sqlx::SqliteConnection,
+        id: &str,
+    ) -> Option<(String, Option<String>)> {
+        let rows: Vec<(String, Option<String>)> = block_on(async {
+            sqlx::query_as("SELECT status, drained_at FROM workspace_session WHERE id = ?")
+                .bind(id)
+                .fetch_all(&mut *conn)
+                .await
+        })
+        .unwrap();
+        rows.into_iter().next()
+    }
+
+    fn query_tool_count(conn: &mut sqlx::SqliteConnection, id: &str) -> i64 {
+        block_on(async {
+            sqlx::query_scalar::<_, i64>(
+                "SELECT tool_call_count FROM workspace_session WHERE id = ?",
+            )
+            .bind(id)
+            .fetch_optional(&mut *conn)
+            .await
+        })
+        .unwrap()
+        .unwrap_or(0)
+    }
+
+    #[test]
+    fn drain_started_transitions_to_draining() {
+        let mut conn = setup();
+        let bus = bus();
+        let ws = "ws-drain";
+
+        bus.dispatch(&session_started_event("sess-drain-1", ws), &mut conn);
+        bus.dispatch(&drain_started_event("sess-drain-1", ws), &mut conn);
+
+        let (status, drained_at) = query_session_drain_status(&mut conn, "sess-drain-1").unwrap();
+        assert_eq!(status, "draining");
+        assert!(drained_at.is_some());
+    }
+
+    #[test]
+    fn drain_completed_transitions_to_ended() {
+        let mut conn = setup();
+        let bus = bus();
+        let ws = "ws-drain";
+
+        bus.dispatch(&session_started_event("sess-drain-2", ws), &mut conn);
+        bus.dispatch(&drain_started_event("sess-drain-2", ws), &mut conn);
+        bus.dispatch(&drain_completed_event("sess-drain-2", ws), &mut conn);
+
+        let status = query_session_status(&mut conn, "sess-drain-2");
+        assert_eq!(status.as_deref(), Some("ended"));
+    }
+
+    #[test]
+    fn drain_aborted_resumes_to_active() {
+        let mut conn = setup();
+        let bus = bus();
+        let ws = "ws-drain";
+
+        bus.dispatch(&session_started_event("sess-drain-3", ws), &mut conn);
+        bus.dispatch(&drain_started_event("sess-drain-3", ws), &mut conn);
+        bus.dispatch(&drain_aborted_event("sess-drain-3", ws), &mut conn);
+
+        let (status, drained_at) = query_session_drain_status(&mut conn, "sess-drain-3").unwrap();
+        assert_eq!(status, "active");
+        assert!(drained_at.is_none(), "drained_at must be cleared on abort");
+    }
+
+    #[test]
+    fn tool_count_increments() {
+        let mut conn = setup();
+        let bus = bus();
+        let ws = "ws-drain";
+
+        bus.dispatch(&session_started_event("sess-tool-1", ws), &mut conn);
+        bus.dispatch(&tool_count_event("sess-tool-1", ws), &mut conn);
+        bus.dispatch(&tool_count_event("sess-tool-1", ws), &mut conn);
+        bus.dispatch(&tool_count_event("sess-tool-1", ws), &mut conn);
+
+        let count = query_tool_count(&mut conn, "sess-tool-1");
+        assert_eq!(count, 3);
+    }
+
+    #[test]
+    fn drain_events_survive_rebuild() {
+        let mut conn = setup();
+        let bus = bus();
+        let ws = "ws-drain-rebuild";
+
+        let events = vec![
+            session_started_event("sess-drain-rb", ws),
+            drain_started_event("sess-drain-rb", ws),
+            tool_count_event("sess-drain-rb", ws),
+            tool_count_event("sess-drain-rb", ws),
+            drain_completed_event("sess-drain-rb", ws),
+        ];
+
+        for e in &events {
+            bus.dispatch(e, &mut conn);
+        }
+
+        let status_before = query_session_status(&mut conn, "sess-drain-rb");
+        let count_before = query_tool_count(&mut conn, "sess-drain-rb");
+
+        bus.rebuild(&events, &mut conn).unwrap();
+
+        let status_after = query_session_status(&mut conn, "sess-drain-rb");
+        let count_after = query_tool_count(&mut conn, "sess-drain-rb");
+
+        assert_eq!(status_before, status_after);
+        assert_eq!(count_before, count_after);
+    }
+
     #[test]
     fn rebuild_from_session_events_produces_identical_state() {
         let mut conn = setup();
