@@ -227,7 +227,7 @@ blocker: string; needs_human: boolean }
 /**
  * Emitted when a job is created. `entity_id` in the envelope is the job_id.
  */
-export type JobCreatedPayload = { job_id: string; slug: string; agent: string; branch: string; spec_path: string; plan_id: string | null; model: string | null; provider: string | null }
+export type JobCreatedPayload = { job_id: string; slug: string; agent: string; branch: string; spec_path: string; plan_id: string | null; model: string | null; provider: string | null; depends_on?: string[] | null }
 
 /**
  * Emitted when the job is assigned to a worktree and (optionally) a process.
@@ -257,17 +257,17 @@ export type JobGateRequestedPayload = { job_id: string; gate_agent: string }
 /**
  * Emitted when the job's branch is merged.
  */
-export type JobMergedPayload = { job_id: string }
+export type JobMergedPayload = { job_id: string; slug: string }
 
 /**
  * Projected state of a single job.
  */
-export type JobRecord = { job_id: string; slug: string; agent: string; branch: string; spec_path: string; status: JobStatus; worktree: string | null; blocker: string | null; error: string | null; created_at: string; updated_at: string }
+export type JobRecord = { job_id: string; slug: string; agent: string; branch: string; spec_path: string; depends_on: string[] | null; status: JobStatus; worktree: string | null; blocker: string | null; error: string | null; created_at: string; updated_at: string }
 
 /**
  * Current status of a job, derived from its event sequence.
  */
-export type JobStatus = "pending" | "dispatched" | "gate_pending" | "blocked" | "merged" | "failed"
+export type JobStatus = "pending" | "dispatched" | "completed" | "gate_pending" | "blocked" | "merged" | "failed"
 
 /**
  * Emitted by either side (human, commander, or agent) to send a mid-flight

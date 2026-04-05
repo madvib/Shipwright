@@ -31,6 +31,9 @@ export function DaemonEventListener() {
           if (envelope.event_type?.startsWith('workspace.')) {
             void queryClient.invalidateQueries({ queryKey: daemonKeys.workspaces })
           }
+          if (envelope.event_type?.startsWith('job.')) {
+            void queryClient.invalidateQueries({ queryKey: daemonKeys.jobs })
+          }
           queryClient.setQueryData<EventEnvelope[]>(mcpKeys.events(), (prev) => {
             const next = [envelope, ...(prev ?? [])]
             return next.length > EVENT_RING_BUFFER_SIZE ? next.slice(0, EVENT_RING_BUFFER_SIZE) : next
