@@ -427,15 +427,18 @@ async fn try_advance_pipeline(
     // Rewrite the spec with next phase context
     write_phase_spec(&worktree_path, &job.spec_path, &job.pipeline, Some(next));
 
-    // Re-run ship use with the new agent
-    if let Err(e) = compile_agent_config(&worktree_path, &next_phase.agent) {
-        tracing::error!(slug, agent = next_phase.agent, "job-dispatch: ship use failed for phase: {e}");
-        return false;
-    }
+    // Skip external process calls in test context
+    if !cfg!(test) {
+        // Re-run ship use with the new agent
+        if let Err(e) = compile_agent_config(&worktree_path, &next_phase.agent) {
+            tracing::error!(slug, agent = next_phase.agent, "job-dispatch: ship use failed for phase: {e}");
+            return false;
+        }
 
-    // Re-dispatch in the existing tmux session
-    let tmux_session = format!("job-{slug}");
-    spawn_agent_with_mesh_id(&tmux_session, &slug);
+        // Re-dispatch in the existing tmux session
+        let tmux_session = format!("job-{slug}");
+        spawn_agent_with_mesh_id(&tmux_session, &slug);
+    }
 
     // Emit job.dispatched for the new phase
     // (Re-use the existing payload but the worktree stays the same)

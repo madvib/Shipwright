@@ -60,6 +60,10 @@ pub fn apply(record: &mut JobRecord, event: &EventEnvelope) {
             if let Ok(p) = serde_json::from_str::<serde_json::Value>(&event.payload_json) {
                 record.worktree = p["worktree"].as_str().map(str::to_string);
             }
+            // Pipeline phase tracking: re-dispatch after completion means phase advanced
+            if record.status == JobStatus::Completed && record.pipeline.is_some() {
+                record.current_phase = Some(record.current_phase.map_or(1, |p| p + 1));
+            }
             record.status = JobStatus::Dispatched;
             record.updated_at = ts;
         }
