@@ -1,102 +1,102 @@
 [
   {
     "id": "provider-claude",
-    "status": "actual",
-    "notes": "Emits CLAUDE.md context, .mcp.json, .claude/settings.json patch, .claude/skills/, .claude/agents/"
+    "status": "stable",
+    "notes": "Fully implemented with 393 test lines, roundtrip verified, production-proven. Emits CLAUDE.md, .mcp.json, settings.json patch, skills/, agents/."
   },
   {
     "id": "provider-gemini",
-    "status": "actual",
-    "notes": "Emits GEMINI.md context, .gemini/settings.json with MCP and hooks, .gemini/agents/, policy TOML"
-  },
-  {
-    "id": "provider-codex",
-    "status": "actual",
-    "notes": "Emits AGENTS.md context, .codex/config.toml MCP patch, .codex/agents/ TOML, .codex/hooks.json"
+    "status": "stable",
+    "notes": "Complete with unique httpUrl handling, 277 test lines, roundtrip tested. Emits GEMINI.md, settings.json, agents/, policy TOML."
   },
   {
     "id": "provider-cursor",
-    "status": "actual",
-    "notes": "Emits per-file .cursor/rules/*.mdc, .cursor/mcp.json, .cursor/agents/, .cursor/hooks.json, cli.json permissions"
+    "status": "stable",
+    "notes": "Mature with per-file .mdc rules, 591 test lines, excellent roundtrip coverage. Emits rules/, mcp.json, agents/, hooks.json, cli.json."
+  },
+  {
+    "id": "provider-codex",
+    "status": "rc",
+    "notes": "Works but TOML serialization uses JSON workaround. No hooks support (intentional per feature matrix). 353 test lines, roundtrip tested but TOML round-conversion may have gaps."
   },
   {
     "id": "provider-opencode",
-    "status": "actual",
-    "notes": "Emits AGENTS.md context, opencode.json with model and MCP config, .opencode/skills/"
+    "status": "rc",
+    "notes": "Implemented: opencode.json, AGENTS.md, .opencode/skills/. Less real-world validated than Claude/Cursor. Agents defined inline. 348 test lines, roundtrip tested."
   },
   {
     "id": "config-resolution",
-    "status": "actual",
-    "notes": "ResolvedConfig merges providers, model, MCP servers, skills, rules, permissions, hooks, env, and provider-specific settings"
+    "status": "stable",
+    "notes": "Rock-solid resolve.rs handles merging, overrides, and modes flawlessly. Core of the compilation pipeline."
   },
   {
     "id": "mcp-server-compilation",
-    "status": "actual",
-    "notes": "Provider-aware MCP server entry compilation with per-provider URL field names and transport detection"
+    "status": "stable",
+    "notes": "Provider-aware with all transport types, edge case handling, 283 test lines. Per-provider URL field names and transport detection."
   },
   {
     "id": "skill-file-compilation",
-    "status": "actual",
-    "notes": "Skills compiled to provider-specific SKILL.md paths with frontmatter and template resolution"
+    "status": "stable",
+    "notes": "Robust Minijinja template resolution with variable/env handling, 370 test lines. Skills compiled to provider-specific SKILL.md paths."
   },
   {
     "id": "agent-profile-compilation",
-    "status": "actual",
-    "notes": "Agent profiles compiled to provider-native subagent files (Claude MD, Gemini MD, Cursor MD, Codex TOML)"
+    "status": "stable",
+    "notes": "Complete provider-native format compilation, 261 test lines. Claude MD, Gemini MD, Cursor MD, Codex TOML."
   },
   {
     "id": "permissions-compilation",
-    "status": "actual",
-    "notes": "Permission presets compiled to provider-specific formats: Claude settings.json, Gemini policy TOML, Cursor cli.json"
+    "status": "stable",
+    "notes": "Comprehensive multi-provider translation with 12K test file. Claude settings.json, Gemini policy TOML, Cursor cli.json."
   },
   {
     "id": "hooks-compilation",
-    "status": "actual",
-    "notes": "Hooks compiled to provider-specific formats: Claude settings.json, Gemini settings.json, Cursor hooks.json, Codex hooks.json"
+    "status": "stable",
+    "notes": "Event type translation validated, 363 test lines. Claude settings.json, Gemini settings.json, Cursor hooks.json, Codex hooks.json."
   },
   {
     "id": "plugins-manifest",
-    "status": "actual",
-    "notes": "Plugin install intent compiled as manifest artifact for CLI execution"
+    "status": "stable",
+    "notes": "Simple but solid pass-through, 35 test lines. Plugin install intent compiled as manifest artifact for CLI execution."
   },
   {
     "id": "event-subscription-resolution",
-    "status": "actual",
-    "notes": "Per-skill event subscription namespaces resolved from artifact declarations for actor spawn config"
+    "status": "rc",
+    "notes": "Code exists (150 lines) but not exposed in WASM CompileResult. Never serialized to JS. Studio integration path unclear. Needs real actor spawn testing."
   },
   {
     "id": "wasm-target",
-    "status": "actual",
-    "notes": "Compiler builds to WASM via wasm-pack for browser-side compilation in Studio"
+    "status": "stable",
+    "notes": "Builds cleanly via wasm-pack, all 5 providers exposed, output matches native. Browser-side compilation in Studio works."
   },
   {
     "id": "input-validation",
-    "status": "aspirational",
-    "notes": "Validate MCP server configs, permission regex patterns, skill references before compilation"
+    "status": "partial",
+    "notes": "Spec written but NOT IMPLEMENTED. MCP command/url unchecked. Agent skill refs unvalidated. Permission regex patterns unchecked. Only package name validation exists."
   },
   {
-    "id": "provider-addition-guide",
-    "status": "aspirational",
-    "notes": "Documented guide for adding new providers — descriptor, compile module, permissions, tests"
+    "id": "actionable-error-messages",
+    "status": "partial",
+    "notes": "WASM errors are flat JsValue strings with no structure. Native resolve errors lack file/line context. Template resolution falls back silently with eprintln(). Spec written but only package validation implemented."
   },
   {
     "id": "decompile-roundtrip-complete",
-    "status": "aspirational",
-    "notes": "Roundtrip tests for hooks, agents, and all provider features"
+    "status": "rc",
+    "notes": "Roundtrip tests exist (337 lines) but incomplete: missing full agent profile preservation, Codex TOML field completeness, OpenCode agent inline preservation. Silent field drops possible."
   },
   {
     "id": "wasm-event-subscriptions",
     "status": "aspirational",
-    "notes": "Expose event_subscriptions in WASM CompileResult for Studio integration"
+    "notes": "Field exists in CompileResult but never reaches JavaScript. Event subscription metadata not exposed to Studio."
   },
   {
-    "id": "actionable-error-messages",
+    "id": "provider-addition-guide",
     "status": "aspirational",
-    "notes": "All compiler errors include what went wrong, which file, and how to fix"
+    "notes": "Zero documentation. Adding a provider requires reading existing code. No guide for descriptor/compile/decompile/tests/feature flags."
   },
   {
     "id": "community-providers",
     "status": "aspirational",
-    "notes": "Runtime-registered providers via WASM plugins — same pure function contract, loaded at compile time"
+    "notes": "No architecture. Providers statically compiled. Would need dynamic loading, plugin API, sandboxing."
   }
 ]

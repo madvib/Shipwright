@@ -1,57 +1,82 @@
 [
   {
     "id": "agent-crud",
-    "status": "actual",
-    "notes": "Create, list, edit, delete, and clone agents via ship agents subcommands"
+    "status": "stable",
+    "notes": "Create, list, edit, delete, and clone agents via ship agents subcommands. Implemented in cli-framework with full CRUD operations, tested, and documented."
   },
   {
     "id": "agent-jsonc-config",
-    "status": "actual",
-    "notes": "Agent definitions in JSONC with identity, skills refs, MCP servers, permissions, rules, and provider_settings"
+    "status": "stable",
+    "notes": "Agent definitions in JSONC (and TOML legacy) with identity, skills refs, MCP servers, plugins, permissions, rules, and provider_settings. Full JSONC parser in agent_parser.rs with validation and schema support."
   },
   {
     "id": "agent-profile-compilation",
-    "status": "actual",
-    "notes": "AgentProfile TOML compiled into provider-native subagent files for Claude, Gemini, Cursor, and Codex"
+    "status": "stable",
+    "notes": "AgentProfile TOML/JSONC compiled into provider-native subagent files for Claude, Gemini, Cursor, and Codex. Tested in compile/agents.rs with 6+ test cases covering all providers. OpenCode support also exists."
   },
   {
     "id": "agent-provider-targeting",
-    "status": "actual",
-    "notes": "Agents can target specific providers or all providers when the providers list is empty"
+    "status": "stable",
+    "notes": "Agents can target specific providers (via profile.providers list) or all providers when the list is empty. Implemented in profile_targets_provider() with explicit tests for both cases."
   },
   {
     "id": "agent-permissions",
-    "status": "actual",
-    "notes": "Per-agent permission overrides with preset reference, tools_allow, tools_deny, and tools_ask lists"
+    "status": "stable",
+    "notes": "Per-agent permission overrides with preset reference, tools_allow, tools_deny, and tools_ask lists. Enforced at compile time via permissions.rs with violation detection and actionable error messages."
   },
   {
     "id": "agent-model-override",
-    "status": "actual",
-    "notes": "Per-agent model override compiled to each provider's model field"
+    "status": "stable",
+    "notes": "Per-agent model override compiled to each provider's model field. Implemented in compile/{claude,gemini,cursor,codex}.rs with provider-specific field handling."
   },
   {
     "id": "agent-provider-settings-passthrough",
-    "status": "actual",
-    "notes": "Per-provider settings passthrough (claude, codex, gemini, cursor, opencode) with Ship-managed key exclusions"
+    "status": "stable",
+    "notes": "Per-provider settings passthrough (claude, codex, gemini, cursor, opencode) with Ship-managed key exclusions (permissions, hooks, model, env). Schema validation enforces exclusions. Tested in realistic_tests.rs."
   },
   {
     "id": "agent-rules-inline",
-    "status": "actual",
-    "notes": "Inline rules appended to context file after .ship/rules/*.md files"
+    "status": "stable",
+    "notes": "Inline rules appended to agent's YAML frontmatter in provider-native agent files. Compiled into Claude/Gemini/Cursor agent bodies. Rules are part of ProfileRules struct with inline field populated in all 15 active agents."
   },
   {
     "id": "agent-plugins",
-    "status": "actual",
-    "notes": "Plugin installation intent with project or user scope, emitted as manifest for CLI execution"
+    "status": "stable",
+    "notes": "Plugin installation intent with project or user scope, emitted as manifest for CLI execution. Implemented in PluginRefs and PluginsManifest types. Compiler emits plugins_manifest in CompileOutput."
   },
   {
     "id": "agent-schema-validation",
-    "status": "actual",
-    "notes": "JSON Schema at schemas/agent.schema.json with upstream provider schema refs for editor autocompletion"
+    "status": "stable",
+    "notes": "JSON Schema at schemas/agent.schema.json with 200+ lines covering all agent properties and upstream provider schema refs for editor autocompletion. Schema version 1 supports forward-compatible migrations."
   },
   {
     "id": "agent-log",
-    "status": "actual",
-    "notes": "Hidden ship agents log command appends timestamped entries to .ship/agent.log"
+    "status": "stable",
+    "notes": "Hidden ship agents log command appends timestamped entries to .ship/agent.log. Implemented in apps/ship-studio-cli/src/agent.rs with RFC3339 timestamps. Used by skills to log progress during sessions."
+  },
+  {
+    "id": "agent-hooks",
+    "status": "partial",
+    "notes": "Spec exists (agent-hooks/spec.md) defining per-agent hooks that merge with project-level hooks. Schema describes the desired structure. However, AgentProfile struct in agent_profile.rs does NOT yet have a hooks field. The feature is designed but not implemented in the compiler pipeline."
+  },
+  {
+    "id": "agent-analytics-session-replay",
+    "status": "partial",
+    "notes": "Session events table and capture infrastructure exists (db/session_events.rs). Basic tool call counting works (tool_call_count in workspace_session). The spec (agent-analytics/spec.md) defines granular session_event table, timeline queries, and agent stats. However, get_session_timeline and get_agent_stats MCP tools are NOT implemented in shipd. Token counting is partial."
+  },
+  {
+    "id": "push-notifications-all-providers",
+    "status": "rc",
+    "notes": "Push notifications work on Claude (Notification hook + MCP ship/event notification) and Codex (patched). Gemini has Notification trigger mapped in compile/gemini.rs but untested with actual providers. Cursor Notification trigger explicitly unmapped (returns empty array). OpenCode not implemented. Need testing/hardening for Gemini and Cursor."
+  },
+  {
+    "id": "ship-native-agent-runtime",
+    "status": "aspirational",
+    "notes": "Ship's own agent runtime not dependent on third-party providers. Long-term roadmap. No code exists yet. Would require significant architecture work to replace provider delegation."
+  },
+  {
+    "id": "agent-quality-audit",
+    "status": "partial",
+    "notes": "Spec exists (agent-quality-audit/spec.md) with detailed audit framework and decision matrix for 22 agents. Audit not yet executed. Decision point decisions outlined: keep 14 agents, cut 6-8, merge 2-3 across clusters (React, Review, Rust, Lane stubs). Legacy .toml files still present alongside .jsonc."
   }
 ]

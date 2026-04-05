@@ -1,117 +1,122 @@
 [
   {
     "id": "cmd-init",
-    "status": "actual",
-    "notes": "Scaffold .ship/ with --global, --provider, and --force flags"
+    "status": "rc",
+    "notes": "Scaffolds .ship/ with --global, --provider, --force. Works but no validation of existing state or conflict detection."
   },
   {
     "id": "cmd-use",
-    "status": "actual",
-    "notes": "Activate agent with --path, --compile, and --with skill injection"
+    "status": "rc",
+    "notes": "Core command. Activates agent, compiles immediately, --with for skill injection. Used by humans and agents. Needs better error messages on missing agent/skills."
   },
   {
     "id": "cmd-compile",
-    "status": "actual",
-    "notes": "Compile active agent with --provider filter, --dry-run, and --path options"
+    "status": "stable",
+    "notes": "Compiles active agent with --provider filter, --dry-run, --path. Well-tested via compiler surface."
   },
   {
     "id": "cmd-validate",
-    "status": "actual",
-    "notes": "Validate .ship/ config with --agent, --json, and --path options"
+    "status": "rc",
+    "notes": "Validates .ship/ config with --agent, --json, --path. Works but validation depth is limited — compiler input-validation spec (partial) covers the gaps."
   },
   {
     "id": "cmd-status",
-    "status": "actual",
-    "notes": "Show active agent and compilation status"
-  },
-  {
-    "id": "cmd-agents",
-    "status": "actual",
-    "notes": "Subcommands: list, create, edit, delete, clone, log"
-  },
-  {
-    "id": "cmd-skills",
-    "status": "actual",
-    "notes": "Subcommands: add, list, remove, create"
-  },
-  {
-    "id": "cmd-vars",
-    "status": "actual",
-    "notes": "Subcommands: set, get, append, reset for skill variable state"
-  },
-  {
-    "id": "cmd-mcp",
-    "status": "actual",
-    "notes": "Subcommands: serve (stdio/http), add, add-stdio, list, remove"
-  },
-  {
-    "id": "cmd-install",
-    "status": "actual",
-    "notes": "Resolve dependencies from ship.toml with --frozen and --offline flags"
-  },
-  {
-    "id": "cmd-publish",
-    "status": "actual",
-    "notes": "Publish package to registry with --dry-run and --tag for pre-releases"
-  },
-  {
-    "id": "cmd-add",
-    "status": "actual",
-    "notes": "Add package dependency or import from Studio share link via --from"
-  },
-  {
-    "id": "cmd-audit",
-    "status": "actual",
-    "notes": "Scan for hidden Unicode prompt injection vectors with --json output"
+    "status": "stable",
+    "notes": "Shows active agent and compilation status. Default command (no args). Simple and correct."
   },
   {
     "id": "cmd-convert",
-    "status": "actual",
-    "notes": "Convert provider configs (CLAUDE.md, .cursor/) or getship.dev URLs into .ship/ format"
+    "status": "rc",
+    "notes": "Decompiles provider configs into .ship/ format. Roundtrip tested for Claude/Cursor/Gemini but incomplete for Codex/OpenCode edge cases."
+  },
+  {
+    "id": "cmd-install",
+    "status": "stable",
+    "notes": "Resolves dependencies from ship.toml with --frozen lockfile check and --offline mode. Tested."
+  },
+  {
+    "id": "cmd-publish",
+    "status": "stable",
+    "notes": "Publishes to registry with --dry-run and --tag. Validated server-side. CLI-side manifest validation is partial."
+  },
+  {
+    "id": "cmd-add",
+    "status": "rc",
+    "notes": "Adds package dependency or imports from Studio share link via --from. Works but error handling on bad URLs is weak."
+  },
+  {
+    "id": "cmd-audit",
+    "status": "stable",
+    "notes": "Scans for hidden Unicode prompt injection vectors with --json output. Unique security tool. Well-scoped."
   },
   {
     "id": "cmd-login-auth",
-    "status": "actual",
-    "notes": "Login, logout, whoami commands for registry authentication"
+    "status": "rc",
+    "notes": "Login, logout, whoami for registry auth. Works but token refresh and expiry handling untested."
   },
   {
     "id": "cmd-config",
-    "status": "actual",
-    "notes": "Subcommands: get, set, list, path for ~/.ship/config.toml"
+    "status": "stable",
+    "notes": "Get, set, list, path for ~/.ship/config.toml. Simple, correct, power user tool."
   },
   {
     "id": "cmd-docs",
-    "status": "actual",
-    "notes": "Built-in topic help system"
-  },
-  {
-    "id": "cmd-network",
-    "status": "actual",
-    "notes": "Subcommands: serve, status, stop for cross-agent communication daemon"
+    "status": "stable",
+    "notes": "Built-in topic help system. Works."
   },
   {
     "id": "cmd-daemon",
-    "status": "actual",
-    "notes": "Subcommands: start, stop, status for shipd background process"
+    "status": "rc",
+    "notes": "Start, stop, status for shipd background process. Works but status detection is PID-based, no health check."
   },
   {
     "id": "cmd-studio",
-    "status": "actual",
-    "notes": "Launch Studio visual IDE with --port and --open flags"
+    "status": "rc",
+    "notes": "Launches Studio MCP HTTP server with --port and --open. Works but this is the Studio MCP being replaced by daemon."
+  },
+  {
+    "id": "cmd-mcp-serve",
+    "status": "stable",
+    "notes": "Agent MCP sidecar entry point. stdio transport. Core infrastructure, used by every agent session."
+  },
+  {
+    "id": "cmd-mcp-config",
+    "status": "partial",
+    "notes": "add, add-stdio, list, remove for MCP server config. Works but overlaps with editing mcp.jsonc directly. Candidate for Studio GUI."
   },
   {
     "id": "cmd-hook",
-    "status": "actual",
-    "notes": "Hidden hook integration: session-start, before-tool, after-tool, session-end"
+    "status": "rc",
+    "notes": "Hidden. Provider hook integration: session-start, before-tool, after-tool, session-end. Functional but undocumented."
   },
   {
     "id": "cmd-events",
-    "status": "actual",
-    "notes": "Unstable: list events with --since, --actor, --entity, --action, --limit, --json filters"
+    "status": "partial",
+    "notes": "Unstable. List events with --since, --actor, --entity, --action, --limit, --json. Depends on RT-01 event discipline. Power user debugging tool."
+  },
+  {
+    "id": "cmd-network",
+    "status": "partial",
+    "notes": "serve, status, stop for ship-network daemon. Overlaps with cmd-daemon. Unclear boundary — network serve may be subsumed into shipd."
+  },
+  {
+    "id": "cmd-agents-crud",
+    "status": "rc",
+    "notes": "YAGNI. list, create, edit, delete, clone, log — all trivially done with filesystem operations on .ship/agents/*.jsonc. Candidate for removal."
+  },
+  {
+    "id": "cmd-skills-crud",
+    "status": "rc",
+    "notes": "YAGNI. add, list, remove, create — overlaps with ship install for registry packages. Local operations are filesystem trivial. Candidate for removal."
+  },
+  {
+    "id": "cmd-vars",
+    "status": "rc",
+    "notes": "YAGNI. set, get, append, reset for skill variable state. Admin GUI territory. No human types 'ship vars set commit-style gitmoji'. Candidate for removal."
   },
   {
     "id": "cmd-top",
     "status": "aspirational",
-    "notes": "Unstable: real-time TUI dashboard for workspaces, sessions, and events"
+    "notes": "Unstable. Real-time TUI dashboard for workspaces, sessions, events. Not v0.2.0."
   }
 ]

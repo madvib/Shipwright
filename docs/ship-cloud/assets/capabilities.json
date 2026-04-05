@@ -1,0 +1,47 @@
+[
+  {
+    "id": "better-auth-integration",
+    "status": "aspirational",
+    "notes": "Better Auth login, OAuth providers, user/org management, session handling"
+  },
+  {
+    "id": "stripe-billing",
+    "status": "aspirational",
+    "notes": "Stripe subscriptions, usage metering, plan limits, checkout flow"
+  },
+  {
+    "id": "registry-api-hosting",
+    "status": "actual",
+    "notes": "Registry API endpoints: publish, search, claim, star, deprecate, install. Hosted on Cloudflare Workers + D1."
+  },
+  {
+    "id": "github-app",
+    "status": "aspirational",
+    "notes": "GitHub App for auto-publish webhooks on release, PR integration, repo linking"
+  },
+  {
+    "id": "webhook-auto-publish",
+    "status": "actual",
+    "notes": "GitHub webhook receiver for release-triggered package publishing"
+  },
+  {
+    "id": "security-review-queue",
+    "status": "aspirational",
+    "notes": "Admin interface for reviewing flagged packages, trust tier management"
+  },
+  {
+    "id": "remote-workspace-sync",
+    "status": "aspirational",
+    "notes": "Cloud-backed workspace state for teams — session history, agent stats, shared config"
+  },
+  {
+    "id": "landing-page",
+    "status": "actual",
+    "notes": "Marketing landing at getship.dev — hero, showcase, features, CTA. Needs launch polish."
+  },
+  {
+    "id": "user-org-management",
+    "status": "aspirational",
+    "notes": "User profiles, org creation, namespace ownership, team member management"
+  }
+]

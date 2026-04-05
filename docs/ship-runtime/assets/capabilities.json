@@ -1,72 +1,187 @@
 [
   {
     "id": "shipd-daemon",
-    "status": "actual",
-    "notes": "Axum HTTP server hosting KernelRouter, service mesh, supervisor, and PTY bridge"
+    "status": "partial",
+    "notes": "Axum HTTP server starts, serves routes. No auth, no graceful shutdown, no startup reconciliation."
   },
   {
     "id": "kernel-router",
-    "status": "actual",
-    "notes": "Central event routing with namespace-scoped delivery, actor stores, mailboxes, and snapshots"
+    "status": "rc",
+    "notes": "Namespace-scoped delivery, actor stores, mailboxes. KERNEL vs RESERVED namespace mismatch, kernel_security 0 tests."
   },
   {
     "id": "event-store",
-    "status": "actual",
-    "notes": "SQLite-backed append-only event store with envelope, validator, filter, and cursor"
+    "status": "partial",
+    "notes": "Append-only SQLite store works. Dual-write bypass paths, 4x duplicated row_to_envelope, target_actor_id dropped in platform.db, no corruption recovery."
+  },
+  {
+    "id": "event-validation",
+    "status": "partial",
+    "notes": "Namespace and reserved-namespace validators work. 3/5 ValidationError variants dead code, no payload schema checks, elevated flag unchecked."
+  },
+  {
+    "id": "projections",
+    "status": "partial",
+    "notes": "Projection trait and EventBus exist with rebuild. Non-transactional dual-write, non-idempotent config_generation, direct SQL bypasses in workspace_state.rs and session_drain.rs."
   },
   {
     "id": "actor-lifecycle",
-    "status": "actual",
-    "notes": "Actor create, wake, sleep, stop, crash events with supervisor restart logic"
+    "status": "partial",
+    "notes": "Create, stop, suspend, restore. No health monitoring, no restart policies, kernel_security untested."
   },
   {
     "id": "service-mesh",
-    "status": "actual",
-    "notes": "Headless service actors for mesh, human gateway, and sync"
+    "status": "partial",
+    "notes": "Register, send, broadcast, discover work. No heartbeats, no backpressure, stale entries on crash, actor_id forgery via mesh_register."
   },
   {
     "id": "mesh-api",
-    "status": "actual",
-    "notes": "REST endpoints for mesh register, send, broadcast, discover, status, and SSE events"
+    "status": "partial",
+    "notes": "REST endpoints function. Zero HTTP-level tests, no auth, hardcoded CallerKind."
   },
   {
     "id": "runtime-api",
-    "status": "actual",
-    "notes": "Read-only REST API for Studio: workspaces, sessions, agents, and SSE event stream"
+    "status": "partial",
+    "notes": "Studio reads and SSE delivery work. No auth, no workspace isolation verification."
   },
   {
     "id": "supervisor",
-    "status": "actual",
-    "notes": "Workspace start, job dispatch, terminal launcher, and tmux session management"
+    "status": "partial",
+    "notes": "Starts workspaces and terminals. Fire-and-forget — no process monitoring, no restart, no graceful shutdown, in-memory pending jobs lost on restart."
   },
   {
     "id": "pty-bridge",
-    "status": "actual",
-    "notes": "WebSocket-to-tmux PTY bridge for workspace terminal access"
+    "status": "partial",
+    "notes": "WebSocket-to-tmux works with max 5 per workspace. Zero tests on connection layer."
   },
   {
     "id": "human-gateway",
-    "status": "actual",
-    "notes": "Telegram adapter for human-in-the-loop notifications via job events"
+    "status": "partial",
+    "notes": "Telegram outbound notifications work. Inbound unused. Single provider only."
   },
   {
     "id": "project-api",
-    "status": "actual",
-    "notes": "REST endpoints for session files, git status/diff/log, agents, skills, and workspace activation"
+    "status": "partial",
+    "notes": "Serves files, git status, agents, skills. Stale worktree_path bug being fixed (RT-06)."
   },
   {
     "id": "job-dispatch",
-    "status": "actual",
-    "notes": "Event-driven job dispatch subscribing to job events from the kernel"
-  },
-  {
-    "id": "global-kernel-router",
-    "status": "actual",
-    "notes": "Global singleton kernel router initialization from ~/.ship/ directory"
+    "status": "partial",
+    "notes": "Subscribes to job.created, spawns agents. 0 tests, dual dispatch paths, in-memory state lost on restart."
   },
   {
     "id": "database-layer",
-    "status": "actual",
-    "notes": "SQLite database with KV store, actor events, session events, workspace state, and ADR storage"
+    "status": "partial",
+    "notes": "SQLite via sqlx works. No connection pooling, no integrity checks, KV namespace isolation by convention only."
+  },
+  {
+    "id": "workspace-crud",
+    "status": "rc",
+    "notes": "Create, activate, list, get, delete. Works, tested via other modules."
+  },
+  {
+    "id": "workspace-status-machine",
+    "status": "partial",
+    "notes": "Status transitions work. lifecycle.rs 234 lines, 0 tests."
+  },
+  {
+    "id": "workspace-worktree",
+    "status": "partial",
+    "notes": "Git worktree creation works. Stale path detection being fixed."
+  },
+  {
+    "id": "workspace-agent-binding",
+    "status": "rc",
+    "notes": "Set agent, compile provider configs. Compiler handles output generation."
+  },
+  {
+    "id": "workspace-provider-matrix",
+    "status": "rc",
+    "notes": "Query provider matrix. Read-only, straightforward."
+  },
+  {
+    "id": "session-lifecycle",
+    "status": "partial",
+    "notes": "Start/end works. session_lifecycle.rs 254 lines, 0 tests."
+  },
+  {
+    "id": "session-records",
+    "status": "rc",
+    "notes": "Immutable records created on session end. Simple, works."
+  },
+  {
+    "id": "session-drain",
+    "status": "partial",
+    "notes": "148 lines, 0 tests, bypasses event system entirely. Data durability boundary."
+  },
+  {
+    "id": "workspace-event-upserts",
+    "status": "partial",
+    "notes": "Emits events and applies projections. Non-transactional, 0 tests, non-idempotent config_generation."
+  },
+  {
+    "id": "workspace-overrides",
+    "status": "rc",
+    "notes": "Per-workspace model, cost, MCP, skill, and provider overrides."
+  },
+  {
+    "id": "workspace-sync",
+    "status": "partial",
+    "notes": "Push/pull works. No conflict handling."
+  },
+  {
+    "id": "workspace-reconciliation",
+    "status": "partial",
+    "notes": "Reconcile logic written and committed on job/reactive-workspaces branch. Not merged, not wired to all entry points yet."
+  },
+  {
+    "id": "daemon-api-auth",
+    "status": "aspirational",
+    "notes": "Bearer token auth for daemon HTTP endpoints. Any local process can currently call any endpoint."
+  },
+  {
+    "id": "event-discipline-enforcement",
+    "status": "aspirational",
+    "notes": "All mutations through events, transactional projections, no direct SQL to projection tables."
+  },
+  {
+    "id": "projection-rebuild-cli",
+    "status": "aspirational",
+    "notes": "ship rebuild-projections command and daemon endpoint to replay events and reconstruct read models."
+  },
+  {
+    "id": "daemon-graceful-shutdown",
+    "status": "aspirational",
+    "notes": "SIGTERM handling: notify agents, end sessions, clean mesh, timeout, exit."
+  },
+  {
+    "id": "process-monitoring",
+    "status": "aspirational",
+    "notes": "Supervisor tracks launched processes, detects crashes, restart with backoff."
+  },
+  {
+    "id": "connection-lifecycle",
+    "status": "aspirational",
+    "notes": "Formalized agent connect/heartbeat/disconnect with health states."
+  },
+  {
+    "id": "rate-limiting",
+    "status": "aspirational",
+    "notes": "Per-caller rate limits on event emission to prevent flooding."
+  },
+  {
+    "id": "views-infrastructure",
+    "status": "aspirational",
+    "notes": "Daemon serves ship-sdk.js, views registry, .ship/views/ convention. Extension model for Studio."
+  },
+  {
+    "id": "hooks-infrastructure",
+    "status": "aspirational",
+    "notes": ".ship/hooks/ executables triggered by platform events. Extension model for automation."
+  },
+  {
+    "id": "git-post-checkout-hook",
+    "status": "aspirational",
+    "notes": "ship init installs git hook that notifies shipd on branch checkout."
   }
 ]

@@ -1,62 +1,92 @@
 [
   {
     "id": "package-publish",
-    "status": "actual",
-    "notes": "Publish packages to the registry via POST /api/registry/publish with repo_url"
+    "status": "stable",
+    "notes": "POST /api/registry/publish fully implemented with repo_url parsing, manifest validation, skill indexing, content hashing, duplicate detection by gitTag, and ownership verification. Server-side security scanning via scanSkillContent. Test coverage: 236 lines in -publish.test.ts with happy path and validation error cases. CLI integration (ship publish) computes per-export hashes and sends authenticated payload. Rate limited at 3/hour. Production-ready."
   },
   {
     "id": "package-search",
-    "status": "actual",
-    "notes": "Search packages by keyword via GET /api/registry/search"
+    "status": "stable",
+    "notes": "GET /api/registry/search fully implemented with query validation, scope/sort filters (installs/recent/name), pagination (page/limit with MAX_LIMIT=100), and result capping at 1000 total. Test coverage: 221 lines in -search.test.ts covering pagination, filtering, and empty results. Public endpoint with cache headers (max-age=60). Rate limited at 1/min. Production-ready."
   },
   {
     "id": "package-lookup",
-    "status": "actual",
-    "notes": "Resolve package metadata by path via GET /api/registry/$path"
+    "status": "stable",
+    "notes": "GET /api/registry/$path fully implemented with URL decoding, package/versions/skills fetching in parallel, and JSON response construction. Returns versions array with gitTag/commitSha/skills/agents/indexedAt and skills array with hashes. Used implicitly by search/publish tests. Public endpoint. Production-ready."
   },
   {
     "id": "package-install-tracking",
-    "status": "actual",
-    "notes": "Track installs via POST /api/registry/$path.install"
+    "status": "stable",
+    "notes": "POST /api/registry/$path.install increments install counter via repos.incrementInstalls(). Public endpoint, fire-and-forget model. Rate limited at 1/min. Straightforward functionality. Production-ready."
   },
   {
     "id": "package-star",
-    "status": "actual",
-    "notes": "Star/unstar packages via POST /api/registry/$path.star"
+    "status": "stable",
+    "notes": "POST /api/registry/$path.star increments star counter via repos.incrementStars(). Simple increment model (no per-user tracking or unstar). Test coverage: 131 lines in -star.test.ts. Authenticated endpoint. Rate limited at 1/min. Production-ready."
   },
   {
     "id": "package-deprecate",
-    "status": "actual",
-    "notes": "Deprecate packages via POST /api/registry/$path.deprecate"
+    "status": "stable",
+    "notes": "POST /api/registry/$path.deprecate marks packages as deprecated with ownership check (claimedBy == session.sub). Body requires deprecated_by field. Test coverage: 177 lines in -deprecate.test.ts. Authenticated endpoint. Rate limited at 1/hour. Production-ready."
   },
   {
     "id": "namespace-claim",
-    "status": "actual",
-    "notes": "Claim a namespace for publishing via POST /api/registry/claim"
+    "status": "stable",
+    "notes": "POST /api/registry/claim transfers package ownership from @unofficial to @community scope after verifying GitHub repo admin/write permission. Uses GitHub API to validate user permissions. Test coverage: 193 lines in -claim.test.ts with permission verification and conflict detection. Authenticated endpoint. Rate limited at 1/hour. Production-ready."
   },
   {
     "id": "github-webhook",
-    "status": "actual",
-    "notes": "GitHub webhook integration for automated package updates"
+    "status": "rc",
+    "notes": "POST /api/registry/webhook handles GitHub tag-create and installation events with HMAC-SHA256 signature verification and replay protection (5-min age check). Fetches ship.jsonc at tag, validates module section, creates package version, computes content hash. Test coverage: 318 lines across -webhook.test.ts and -webhook-installation.test.ts. Known limitation: does not fetch/index skills at tag, only records metadata. Full spec compliance needs verification. Functionally complete but needs hardening for edge cases."
   },
   {
     "id": "duplicate-detection",
-    "status": "actual",
-    "notes": "Detect duplicate packages via GET /api/registry/duplicates"
+    "status": "stable",
+    "notes": "GET /api/registry/duplicates finds packages with skills matching a content hash. Hash format validation (sha256:<64 hex>). Returns package_path/name/skill_name for all matches. Public endpoint. Functional and minimal. Production-ready."
   },
   {
     "id": "registry-seed",
-    "status": "actual",
-    "notes": "Seed the registry with @unofficial packages via POST /api/registry/seed"
+    "status": "rc",
+    "notes": "POST /api/registry/seed batch-imports @unofficial packages from seed-repos.json via importRepo(). Reads fixture repos, extracts agent config, creates package records with sourceType='imported', indexes rules as skills. Requires admin/first-time review. Known limitation: partial implementation, full flow needs verification. Needs test coverage for end-to-end seeding flow."
   },
   {
     "id": "cli-publish",
-    "status": "actual",
-    "notes": "CLI ship publish command with --dry-run preview and --tag for pre-release dist-tags"
+    "status": "stable",
+    "notes": "ship publish command in publish.rs reads .ship/ship.jsonc, validates manifest structure, computes per-export SHA-256 hashes via compute_export_hashes(), builds authenticated JSON payload, POSTs to /api/registry/publish. Supports --dry-run (no upload, prints metadata), --tag (pre-release), --export-path (single export). Requires ship login authentication. Production-ready."
   },
   {
     "id": "cli-install",
-    "status": "actual",
-    "notes": "CLI ship install resolves dependencies with --frozen lockfile check and --offline mode"
+    "status": "stable",
+    "notes": "ship install command resolves dependencies via resolve_and_fetch() in crates/core/runtime/src/registry/install.rs. Features: incremental resolution, version constraint parsing (^/~/exact/branch/commit), transitive dep discovery, hash verification (advisory), conflict detection with clear error messages. Supports --frozen (fail on lock changes) and --offline (skip install tracking). Test coverage via registry_e2e.rs. Production-ready."
+  },
+  {
+    "id": "content-security-scanning",
+    "status": "partial",
+    "notes": "IMPLEMENTED (NARROW SCOPE): skill-scan.ts detects prompt injection patterns — 'ignore previous instructions', role hijack, system prompt injection, jailbreak, DAN mode, sudo mode, developer mode, base64-encoded payloads. Test coverage: 145 lines in skill-scan.test.ts. Called by publish.ts, rejects on unsafe=true. MISSING: script analysis (curl|wget|fetch piping), env.var:SECRET detection, obfuscation detection, file system access patterns. Only prompt-injection-focused, not comprehensive per spec requirements."
+  },
+  {
+    "id": "publish-validation-pipeline",
+    "status": "partial",
+    "notes": "SERVER-SIDE: publish.ts validates repo_url, fetches manifest from GitHub, validates module section, checks export paths resolve, indexes skills with ID format regex, computes content hashes. Size limits: 100KB manifest, 50KB per skill. LOCAL: publish.rs computes hashes + builds payload but does NOT validate manifest structure, export existence, SKILL.md frontmatter, or vars.json. CLI validation incomplete. Spec requires local validation steps 1-4 before upload — missing local manifest validation, export checks, frontmatter validation, schema validation."
+  },
+  {
+    "id": "integrity-verification-on-install",
+    "status": "partial",
+    "notes": "IMPLEMENTED (ADVISORY ONLY): verify.rs check_registry_hash() fetches registry hash for new deps, warns on mismatch but DOES NOT BLOCK install. Returns None on offline/unavailable registry (silent). Registry verification is 'advisory only for v0.1' per code comment. MISSING: --skip-verify flag not implemented, --frozen hardening incomplete. Hash comparison for cached packages is strict (bails on mismatch) but new deps only warn. Spec requirement for 'hard error on mismatch' only partly met. Production use case of detecting tampering partially addressed."
+  },
+  {
+    "id": "private-registries",
+    "status": "aspirational",
+    "notes": "No implementation. No code in registry handlers for auth scoping, private namespace support, or access control lists. Spec exists but no architecture decision or design. Not started."
+  },
+  {
+    "id": "publish-docs-story",
+    "status": "partial",
+    "notes": "EXISTING: docs/ship-registry/references/docs/publishing.md covers manifest requirements, module fields, exports, versioning, content hashing algorithm, and pre-publish checklist (~97 lines). MISSING: security requirements section, scoped packages (@org/package) rules, @unofficial namespace guidelines, security scan results display, trusted publisher threshold, first-time review workflow, troubleshooting for all validation/scan errors, auto-publish webhook setup. Document is 60-70% complete per spec requirements."
+  },
+  {
+    "id": "registry-e2e-tests",
+    "status": "partial",
+    "notes": "REGISTRY ENDPOINTS: 1276 lines across 7 test files in __tests__/ covering publish, search, claim, deprecate, star, webhook. INSTALL PIPELINE: registry_e2e.rs and registry_e2e_deps.rs cover dependency resolution and install. MISSING: Spec requires 10 scenarios (S1-S10) as standalone e2e test files (e2e-publish-install.test.ts, e2e-security-scan.test.ts, e2e-auto-publish.test.ts, e2e-dependency-resolution.test.ts). Current tests are unit tests per endpoint + install unit tests, not full publish→install→verify lifecycle tests. Spec-defined e2e test suite not written."
   }
 ]

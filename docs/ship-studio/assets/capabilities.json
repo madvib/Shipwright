@@ -1,82 +1,137 @@
 [
   {
     "id": "skills-ide",
-    "status": "actual",
-    "notes": "Full skill editor with file explorer, frontmatter editor, text editor, markdown preview, and syntax highlighting"
+    "status": "rc",
+    "notes": "File explorer, frontmatter editor, text editor, markdown preview work well. Draft persistence to IndexedDB is solid. However, skill file saves are STUBBED (useSaveSkillFile console.warn) — edits exist only in browser. Needs daemon write endpoint to persist."
   },
   {
     "id": "skill-drafts",
-    "status": "actual",
-    "notes": "Draft system for creating and editing skills before saving to disk"
+    "status": "stable",
+    "notes": "Draft system fully implemented with IndexedDB persistence. Dirty detection, unsaved indicators work. Syncs across tabs via IndexedDB."
   },
   {
     "id": "skill-vars-editor",
-    "status": "actual",
-    "notes": "Visual editors for skill variable state with preview panel"
+    "status": "partial",
+    "notes": "Visual editor UI exists in preview panel. useSkillVars hook is STUBBED. useSetSkillVar is STUBBED. Viewing merged vars is not yet implemented against daemon."
   },
   {
     "id": "session-canvas",
-    "status": "actual",
-    "notes": "Session workspace with canvas, todo, diff viewer, and artifact viewer"
+    "status": "rc",
+    "notes": "HTML rendering in iframe works. Tab management works. Annotation overlay works. But session file edits (useSessionDrafts) are drafts-only — daemon writes are stubbed. Cannot actually persist edits back to .ship-session/."
   },
   {
     "id": "annotation-system",
-    "status": "actual",
-    "notes": "Annotation overlay with markers, cards, input, and list views on session artifacts"
+    "status": "stable",
+    "notes": "Full annotation overlay with markers, cards, input, list views. Export and clear actions work. Persists annotations to IndexedDB during session."
   },
   {
     "id": "git-integration",
-    "status": "actual",
-    "notes": "Git tab showing status, diff, and log for the active workspace"
+    "status": "rc",
+    "notes": "Git tab fetches and displays status, diff, log from daemon. Read-only. All endpoints working (GET /api/workspaces/{id}/git/status|diff|log). No git operations (commit, push) available in UI yet."
   },
   {
     "id": "chat-draft-area",
-    "status": "actual",
-    "notes": "Chat drafting interface for session communication"
-  },
-  {
-    "id": "terminal-tab",
-    "status": "actual",
-    "notes": "Terminal tab for workspace PTY access"
+    "status": "partial",
+    "notes": "ChatDraftArea component exists with editor. Drafts persist to IndexedDB. Never tested with actual session agent communication. No integration with daemon event stream to show agent responses."
   },
   {
     "id": "local-mcp-connection",
-    "status": "actual",
-    "notes": "MCP bridge connecting Studio to the local ship daemon for real-time state"
+    "status": "partial",
+    "notes": "useLocalMcp.ts and LocalMcpContext.tsx still present and active. Handles MCP connection, tool discovery, and callTool. NOT deprecated. Still functional for environments running 'ship mcp serve --http'. However, daemon migration strategy aims to replace this entirely."
   },
   {
     "id": "event-stream-panel",
-    "status": "actual",
-    "notes": "Real-time event stream panel with debug view using SSE from shipd"
+    "status": "rc",
+    "notes": "EventDebugPanel and useEventStream work. Receives SSE from /api/runtime/events. Displays event stream in debug view. Cache invalidation logic exists but incomplete — only invalidates workspace queries on workspace.* events, not all affected caches."
   },
   {
     "id": "publish-dialog",
-    "status": "actual",
-    "notes": "Publish skills and agents to the Ship registry from Studio"
-  },
-  {
-    "id": "push-to-github",
-    "status": "actual",
-    "notes": "Push compiled config to GitHub from Studio"
+    "status": "partial",
+    "notes": "PublishDialog component exists with UI for publishing. No evidence of actual publishing flow tested. Likely stub for future registry integration."
   },
   {
     "id": "sync-status",
-    "status": "actual",
-    "notes": "Real-time sync status indicator between Studio and local CLI"
+    "status": "stable",
+    "notes": "SyncStatus component fully implemented with idle/saving/saved/error states. Non-blocking indicator. Fades automatically. Well-tested (has test file). Only shows local draft status, not actual daemon sync."
   },
   {
     "id": "permissions-editor",
-    "status": "actual",
-    "notes": "Visual editor for agent permission presets"
+    "status": "rc",
+    "notes": "PermissionsEditor component with UI for configuring permission presets. Reads from agent config. Saves are STUBBED via usePushBundle — changes don't persist to daemon."
   },
   {
     "id": "compile-output-download",
-    "status": "actual",
-    "notes": "Download compiled provider output from Studio"
+    "status": "rc",
+    "notes": "download-compile-output.ts utility exists and works. Can download agent config as JSON or TypeScript. Only reads from compiled bundle in memory — no actual compilation against daemon."
   },
   {
     "id": "daemon-event-listener",
-    "status": "actual",
-    "notes": "Real-time daemon event listener for workspace and session updates"
+    "status": "rc",
+    "notes": "DaemonEventListener component mounts in app root. Receives SSE from /api/runtime/events. Updates React Query cache on workspace.* events. Exponential backoff reconnection. But invalidation coverage is incomplete for all mutation types (skill/agent writes)."
+  },
+  {
+    "id": "registry-browser",
+    "status": "partial",
+    "notes": "UI components complete: search, type filters, category tabs, pagination, package cards, detail page at /registry/$path. Never tested with real data. No seed data. Install flow exists but not connected to daemon. Unknown how it handles actual packages."
+  },
+  {
+    "id": "daemon-migration",
+    "status": "partial",
+    "notes": "Read endpoints working (agents, skills, files, git, workspace status). Write mutations STUBBED: usePushBundle, useSaveSkillFile, useDeleteSkillFile, useSkillVars, useSetSkillVar all console.warn. Daemon endpoints not yet added. MCP bridge still active and not deprecated. Estimated 40% complete."
+  },
+  {
+    "id": "workspace-management-ui",
+    "status": "partial",
+    "notes": "SessionsTab shows minimal workspace list with activate button. No create flow. No deactivate/archive actions. No session history per workspace. No worktree status display. No detail view. Only 20% of spec implemented."
+  },
+  {
+    "id": "artifact-system",
+    "status": "partial",
+    "notes": "ArtifactViewer routes on file type (image, markdown, JSON, text, URL). Basic rendering works. Missing: per-artifact error boundaries (would cascade), size guards (1MB/10MB), HTML iframe sandboxing, skill-declared artifact types. Likely to fail on edge cases."
+  },
+  {
+    "id": "registry-data-polish",
+    "status": "aspirational",
+    "notes": "Routes exist but never validated with real data. No seed data. No install flow integration. No security badges. No version history UI. Routes will likely break or show empty states with actual packages."
+  },
+  {
+    "id": "skills-agents-polish",
+    "status": "partial",
+    "notes": "Skills page works but skill saves are stubbed. Agents page exists. IndexedDB caching applied inconsistently — skills use it, agents may not. Polish incomplete: missing confirmations, better UX, consistent caching strategy."
+  },
+  {
+    "id": "loading-error-states",
+    "status": "partial",
+    "notes": "StudioErrorBoundary exists for route-level errors. StudioSkeleton.tsx exists for some routes. But: not all routes have proper pending states, per-artifact error boundaries missing, settings page skeleton unclear. Inconsistent across the app."
+  },
+  {
+    "id": "studio-e2e-tests",
+    "status": "partial",
+    "notes": "Storybook exists with partial component coverage. No Playwright/Cypress e2e suite. Skill drafts and related utils have unit tests. Missing: full user flow tests, daemon integration tests, offline scenarios."
+  },
+  {
+    "id": "studio-mcp-archive",
+    "status": "aspirational",
+    "notes": "MCP tools (write_skill_file, delete_skill_file, list_project_skills) still referenced. useLocalMcp.ts and LocalMcpContext.tsx still active. No deprecation notices. Not archived. Still requires 'ship mcp serve --http' to function."
+  },
+  {
+    "id": "first-time-flow",
+    "status": "aspirational",
+    "notes": "Studio redirects /studio/ to /studio/agents. No onboarding. No guided first path. No steppers. Empty agents page with no 'create' flow visible. Jumping directly to agent list is poor first experience."
+  },
+  {
+    "id": "embedded-terminal",
+    "status": "aspirational",
+    "notes": "TerminalTab.tsx skeleton exists with xterm.js integration. Attempts to connect to /api/runtime/workspaces/{id}/pty WebSocket. No evidence daemon PTY endpoint exists. Code will fail to connect. Zero testing."
+  },
+  {
+    "id": "analytics-dashboard",
+    "status": "aspirational",
+    "notes": "No implementation. Spec says 'depends on agent-analytics runtime work'. Not started."
+  },
+  {
+    "id": "app-architecture-split",
+    "status": "aspirational",
+    "notes": "Single app at /studio handles config IDE, registry, agents, skills. No split. Not started. Decision deferred for future."
   }
 ]

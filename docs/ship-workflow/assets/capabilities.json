@@ -1,67 +1,6 @@
 [
   {
-    "id": "workspace-crud",
-    "status": "actual",
-    "notes": "Create, activate, list, get, delete, and repair workspaces keyed by git branch"
-  },
-  {
-    "id": "workspace-status-machine",
-    "status": "actual",
-    "notes": "Workspace status transitions (active, archived) with validation"
-  },
-  {
-    "id": "workspace-worktree",
-    "status": "actual",
-    "notes": "Git worktree creation and management for workspace isolation"
-  },
-  {
-    "id": "workspace-agent-binding",
-    "status": "actual",
-    "notes": "Set active agent per workspace and compile provider configs into worktree"
-  },
-  {
-    "id": "workspace-provider-matrix",
-    "status": "actual",
-    "notes": "Query provider matrix for a workspace showing compiled providers and their status"
-  },
-  {
-    "id": "session-lifecycle",
-    "status": "actual",
-    "notes": "Start, progress, end sessions with one active session per workspace"
-  },
-  {
-    "id": "session-records",
-    "status": "actual",
-    "notes": "Immutable session records with timestamps, summaries, and progress entries"
-  },
-  {
-    "id": "session-drain",
-    "status": "actual",
-    "notes": "Session drain mechanism for archiving completed session data"
-  },
-  {
-    "id": "workspace-event-upserts",
-    "status": "actual",
-    "notes": "Event-driven workspace state updates on create, activate, compile, archive, and delete"
-  },
-  {
-    "id": "workspace-overrides",
-    "status": "actual",
-    "notes": "Per-workspace model, cost, MCP, skill, and provider overrides via WorkspaceOverrides"
-  },
-  {
-    "id": "workspace-sync",
-    "status": "actual",
-    "notes": "Sync workspace state between local and remote via workspace sync function"
-  },
-  {
-    "id": "workspace-reconciliation",
-    "status": "aspirational",
-    "notes": "Reconcile workspace record against git state on session start — detect worktree moves, stale paths"
-  },
-  {
-    "id": "git-post-checkout-hook",
-    "status": "aspirational",
-    "notes": "ship init installs git hook that notifies shipd on branch checkout"
+    "_note": "ship-workflow is a conceptual guide for users. Capabilities live under ship-runtime.",
+    "kind": "guide"
   }
 ]
