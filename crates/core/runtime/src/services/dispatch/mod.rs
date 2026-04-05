@@ -62,7 +62,13 @@ pub enum AgentStatus {
     Stopped,
 }
 
-// ── ProviderAdapter trait ─────────────────────────────────────────────────────
+// ── Re-export port types (always available, not gated) ──────────────────────
+
+pub use super::dispatch_ports::{
+    ExecutorHandle, IsolationStrategy, JobContext, JobExecutor,
+};
+
+// ── ProviderAdapter trait (deprecated — migrate to JobExecutor) ──────────────
 
 /// Implemented by each provider (Claude, Codex) to manage agent processes.
 #[async_trait]
